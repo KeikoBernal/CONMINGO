@@ -81,10 +81,19 @@ const cargarDatosOficial = async () => {
 
   // --- REEMPLAZO DEL useEffect: Inicializamos Socket PRIMERO ---
   useEffect(() => { 
-    socketRef.current = io(SOCKET_URL);
+
+    socketRef.current = io(SOCKET_URL, {
+      transports: ['websocket'],
+      upgrade: false
+    });
+    
     cargarDatosOficial(); 
-    return () => socketRef.current?.disconnect(); 
-  }, [usuario]);
+    
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect(); 
+    };
+  }, []);
+
   useEffect(() => {
     if (partidoActivo && (Object.keys(efectividadJugadores).length > 0 || puntosPorManoLocal.some(p => p !== ''))) {
       const backup = { efectividadJugadores, manualStats, puntosPorManoLocal, puntosPorManoVisita, timestamp: Date.now() };

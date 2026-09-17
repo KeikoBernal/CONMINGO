@@ -85,10 +85,18 @@ const cargarDatosOficial = async () => {
   };
 
   useEffect(() => { 
-    socketRef.current = io(SOCKET_URL);
+
+    socketRef.current = io(SOCKET_URL, {
+      transports: ['websocket'],
+      upgrade: false
+    });
+    
     cargarDatosOficial(); 
-    return () => socketRef.current?.disconnect(); 
-  }, [usuario]);
+    
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect(); 
+    };
+  }, []);
 
   // EFECTO QUE HACE AVANZAR EL RELOJ DEL ÁRBITRO
   useEffect(() => {

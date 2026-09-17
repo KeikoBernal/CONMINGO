@@ -31,7 +31,7 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
   useEffect(() => { chatActivoRef.current = chatActivo; }, [chatActivo]);
   useEffect(() => { vistaRef.current = vista; }, [vista]);
 
-  // ACTUALIZACIÓN DEL useEffect PARA ESCUCHAR CAMBIOS DE LIGA
+  // 1. EFECTO PARA CARGAR DATOS E INICIALIZAR EL SOCKET (SIN RECONECTAR)
   useEffect(() => {
     if (!usuario || !token) return;
 
@@ -40,7 +40,12 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
 
     // Solo inicializamos el socket una vez
     if (!socketRef.current) {
-      socketRef.current = io(SOCKET_URL);
+      // AQUÍ FORZAMOS WEBSOCKETS NATIVOS
+      socketRef.current = io(SOCKET_URL, {
+        transports: ['websocket'],
+        upgrade: false
+      });
+      
       socketRef.current.on('connect', () => {
         socketRef.current.emit('registrar_usuario_mensajeria', { id: usuario.id });
       });
@@ -57,10 +62,18 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
       });
     }
 
+    // Nota: Ya no retornamos el disconnect() aquí para que cambiar de liga no mate el socket.
+  }, [usuario, token, ligaActivaId]);
+
+  // 2. EFECTO INDEPENDIENTE PARA LIMPIAR EL SOCKET SOLO AL DESMONTAR EL COMPONENTE
+  useEffect(() => {
     return () => {
-       // Opcional: desconectar en el desmontaje final.
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, [usuario, token, ligaActivaId]); // <-- DEPENDENCIA AÑADIDA
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
