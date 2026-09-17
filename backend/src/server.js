@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit'); // <-- NUEVA IMPORTACIÓN
 require('dotenv').config();
 const http = require('http'); 
 const { Server } = require('socket.io'); 
@@ -10,7 +11,9 @@ const db = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Middlewares de seguridad
+// ==========================================
+// MIDDLEWARES DE SEGURIDAD Y RATE LIMITING
+// ==========================================
 app.use(helmet());
 app.use(cors({
   origin: '*', 
@@ -18,6 +21,24 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+
+// Configuración del Rate Limiter: Máximo 100 peticiones por IP cada 10 minutos
+const apiLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutos
+  max: 100, // Límite de 100 peticiones por IP en esa ventana de tiempo
+  message: { 
+    error: '🚨 Hemos detectado un exceso de peticiones desde tu red. Por medidas de seguridad, por favor espera 10 minutos antes de volver a intentarlo.' 
+  },
+  standardHeaders: true, // Retorna la info del límite en los headers `RateLimit-*`
+  legacyHeaders: false, // Deshabilita los headers obsoletos `X-RateLimit-*`
+});
+
+// Aplicamos el blindaje a TODAS las rutas de la API
+app.use('/api', apiLimiter);
+
+// ==========================================
+// CONFIGURACIÓN DEL SERVIDOR HTTP Y SOCKETS
+// ==========================================
 
 // Crear el servidor HTTP vinculándolo con Express
 const server = http.createServer(app);
@@ -45,7 +66,9 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Rutas RESTful
+// ==========================================
+// RUTAS RESTFUL
+// ==========================================
 const authRoutes = require('./routes/authRoutes');
 app.use('/api', authRoutes);
 
@@ -61,7 +84,7 @@ app.use('/api/operativo', operativoRoutes);
 const publicRoutes = require('./routes/publicRoutes');
 app.use('/api/publico', publicRoutes); 
 
-const mensajeriaRoutes = require('./routes/mensajeriaRoutes'); // Asegúrate de que el nombre coincida con tu archivo en la carpeta routes
+const mensajeriaRoutes = require('./routes/mensajeriaRoutes'); 
 app.use('/api/mensajeria', mensajeriaRoutes);
 
 const delegadoRoutes = require('./routes/delegadoRoutes');
@@ -83,7 +106,6 @@ io.on('connection', (socket) => {
     const { id, rol } = data;
     if (id) socket.join(`usuario_${id}`);
     
-    // NORMALIZAR ROL PARA EVITAR ERRORES DE ACENTOS Y MAYÚSCULAS[cite: 27]
     if (rol) {
       const normalizedRol = rol.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       socket.join(`rol_${normalizedRol}`);
