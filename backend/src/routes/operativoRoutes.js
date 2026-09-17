@@ -5,33 +5,48 @@ const { verificarToken } = require('../middleware/authMiddleware');
 
 router.use(verificarToken);
 
-// 1. OBTENER MIS PARTIDOS
+// 1. OBTENER MIS PARTIDOS (CORREGIDO)
 router.get('/mis-partidos', async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
     const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
 
     let query = `
-        SELECT p.*, 
-              t.organizacion_id,
-              COALESCE(o.nombre, 'Liga Desconocida') as organizacion_nombre,
-              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
-              t.nombre AS torneo_nombre, s.nombre AS sede_nombre
-              /* ... mantén los demás campos (arbitro_nombre, etc) ... */
-        FROM public.partidos p
-        LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
-        LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
-        LEFT JOIN public.torneos t ON p.torneo_id = t.id
-        LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id
-        /* ... mantén los demás LEFT JOINS ... */
-      `;
+      SELECT p.*, 
+             t.organizacion_id,
+             COALESCE(o.nombre, 'Partidos Independientes') as organizacion_nombre,
+             el.nombre AS local_nombre, ev.nombre AS visita_nombre,
+             t.nombre AS torneo_nombre, s.nombre AS sede_nombre,
+             COALESCE(ua.nombre || ' ' || ua.apellido, 'Por definir') AS arbitro_nombre,
+             COALESCE(un.nombre || ' ' || un.apellido, 'Por definir') AS anotador_nombre,
+             COALESCE(jl.nombre || ' ' || jl.apellido, 'Por definir') AS capitan_local_nombre,
+             COALESCE(jv.nombre || ' ' || jv.apellido, 'Por definir') AS capitan_visita_nombre
+      FROM public.partidos p
+      LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
+      LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
+      LEFT JOIN public.torneos t ON p.torneo_id = t.id
+      LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id
+      LEFT JOIN public.sedes s ON p.sede_id = s.id
+      LEFT JOIN public.usuarios ua ON p.arbitro_id = ua.id
+      LEFT JOIN public.usuarios un ON p.anotador_id = un.id
+      LEFT JOIN public.jugadores jl ON el.capitan_id = jl.id
+      LEFT JOIN public.jugadores jv ON ev.capitan_id = jv.id
+    `;
+    
     const params = [];
-    if (!esAdmin) { query += ` WHERE p.arbitro_id = $1 OR p.anotador_id = $1 `; params.push(usuarioId); }
+    if (!esAdmin) { 
+      // Es vital el casting ::uuid para que PostgreSQL no arroje error
+      query += ` WHERE p.arbitro_id = $1::uuid OR p.anotador_id = $1::uuid `; 
+      params.push(usuarioId); 
+    }
     query += ` ORDER BY p.fecha_hora ASC `;
 
     const resDb = await db.query(query, params);
     res.json(resDb.rows);
-  } catch (error) { res.status(500).json({ error: 'Error consultando partidos asignados.' }); }
+  } catch (error) { 
+    console.error("Error consultando mis-partidos:", error);
+    res.status(500).json({ error: 'Error consultando partidos asignados.' }); 
+  }
 });
 
 router.get('/mis-ligas', async (req, res) => {
