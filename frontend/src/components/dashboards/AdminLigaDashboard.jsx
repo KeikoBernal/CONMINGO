@@ -104,9 +104,12 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const subirLogoOrganizacion = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const base64 = await toBase64(file);
-    const res = await fetchConToken('/mi-organizacion/logo', { method: 'PUT', body: JSON.stringify({ logo_url: base64 }) });
-    if (res.ok) alert('Logo actualizado correctamente'); else alert('Error subiendo logo');
+    try {
+      const base64 = await toBase64(file);
+      const res = await fetchConToken('/mi-organizacion/logo', { method: 'PUT', body: JSON.stringify({ logo_url: base64 }) });
+      const data = await res.json();
+      if (res.ok) alert(data.mensaje || 'Logo actualizado correctamente'); else alert(data.error || 'Error subiendo logo');
+    } catch (err) { alert('Error al procesar la imagen del logo.'); }
   };
 
   // NUEVA FUNCIÓN PARA SUBIDA MASIVA DE FOTOS POR LOTE (NOMBRE = CÉDULA)
@@ -747,6 +750,9 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                 <input type="email" placeholder="Correo Obligatorio" value={formJugador.correo} onChange={e => setFormJugador({...formJugador, correo: e.target.value})} required />
                 <input type="text" placeholder="Teléfono Obligatorio" value={formJugador.telefono} onChange={e => setFormJugador({...formJugador, telefono: e.target.value})} required />
                 <input type="number" min="1" placeholder="Dorsal Positivo" value={formJugador.numero_dorsal} onChange={e => setFormJugador({...formJugador, numero_dorsal: e.target.value})} required />
+                <label style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column' }}>
+                  Foto: <input type="file" accept="image/*" onChange={async e => { const f = e.target.files[0]; if(f) setFormJugador({...formJugador, foto_url: await toBase64(f)}); }} style={{ fontSize: '0.8em' }} />
+                </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <input type="checkbox" checked={formJugador.es_capitan} onChange={e => setFormJugador({...formJugador, es_capitan: e.target.checked})} /> Capitán
                 </label>
@@ -893,7 +899,6 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
             <button onClick={() => setSubPestanaTorneo('partido-suelto')} style={{ fontWeight: subPestanaTorneo === 'partido-suelto' ? 'bold' : 'normal' }}>⚡ Agendar Partido Suelto</button>
             <button onClick={() => setSubPestanaTorneo('posiciones')} style={{ fontWeight: subPestanaTorneo === 'posiciones' ? 'bold' : 'normal' }}>📊 Posiciones y Grupos</button>
             <button onClick={() => setSubPestanaTorneo('acumulado')} style={{ fontWeight: subPestanaTorneo === 'acumulado' ? 'bold' : 'normal' }}>🏅 Acumulado Anual</button>
-            <button onClick={() => setSubPestanaTorneo('historial')} style={{ fontWeight: subPestanaTorneo === 'historial' ? 'bold' : 'normal' }}>📜 Historial</button>
           </div>
 
           {/* VISTA 1: TORNEOS ACTIVOS / PRÓXIMOS Y PARTIDOS SUSPENDIDOS */}
@@ -1216,7 +1221,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
             </div>
           )}
 
-          {/* VISTA NUEVA: AGENDAR PARTIDO SUELTO */}
+        {/* VISTA NUEVA: AGENDAR PARTIDO SUELTO */}
           {subPestanaTorneo === 'partido-suelto' && (
             <div style={{ maxWidth: '600px' }}>
               <h3>⚡ Agendar Partido Suelto (Prueba Operativa)</h3>
@@ -1309,10 +1314,28 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
             </div>
           )}
 
-          {/* TABLAS GENERALES AGRUPADAS POR CATEGORÍA */}
-              {posicionesGrupoA.length === 0 && posicionesGrupoB.length === 0 && (
+          {/* VISTA 4: POSICIONES Y GRUPOS */}
+          {subPestanaTorneo === 'posiciones' && (
+            <div>
+              <h3>📊 Tabla de Posiciones y Grupos por Torneo</h3>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ fontWeight: 'bold' }}>Seleccionar Torneo: 
+                  <select 
+                    value={torneoPosicionesId} 
+                    onChange={e => {
+                      setTorneoPosicionesId(e.target.value);
+                      consultarPosicionesAgrupadas(e.target.value);
+                    }} 
+                    style={{ marginLeft: '10px', padding: '6px' }}
+                  >
+                    <option value="">-- Selecciona un Torneo --</option>
+                    {torneosList.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              {torneoPosicionesId ? (
                 <div>
-                  {/* Extraer categorías únicas de las posiciones recibidas */}
                   {[...new Set(posicionesGeneral.map(p => `${p.categoria} - ${p.tipo_genero}`))].map(catName => {
                     const equiposDeCat = posicionesGeneral.filter(p => `${p.categoria} - ${p.tipo_genero}` === catName);
                     if(equiposDeCat.length === 0) return null;
@@ -1340,11 +1363,15 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                       </div>
                     );
                   })}
-                  {posicionesGeneral.length === 0 && <p style={{ color: '#666' }}>Selecciona un torneo para consultar sus posiciones.</p>}
+                  {posicionesGeneral.length === 0 && <p style={{ color: '#666' }}>No hay registros de posiciones para este torneo.</p>}
                 </div>
+              ) : (
+                <p style={{ color: '#666' }}>Selecciona un torneo para consultar sus posiciones.</p>
               )}
+            </div>
+          )}
 
-          {/* VISTA 4: ACUMULADO ANUAL */}
+          {/* VISTA 5: ACUMULADO ANUAL */}
           {subPestanaTorneo === 'acumulado' && (
             <div>
               <h3>🏅 Tabla de Acumulación Anual (Filtro 60% Asistencia)</h3>
@@ -1470,27 +1497,26 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                 <th style={{ padding: '8px' }}>Torneo</th>
                 <th style={{ padding: '8px' }}>Encuentro</th>
                 <th style={{ padding: '8px' }}>Marcador</th>
-                <th style={{ padding: '8px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {partidos.filter(p => p.estado === 'Finalizado').map(p => (
-                <tr key={p.id}>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.torneo_nombre}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.local_nombre} vs {p.visita_nombre}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'Pendiente'}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px', display: 'flex', gap: '5px' }}>
-                    <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} style={{ background: '#3182CE', color: 'white', border: 'none', padding: '4px' }}>Reset</button>
-                    <button onClick={() => removerCredencial(u.id, u.nombre)} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '4px' }}>Remover</button>
-                  </td>
-                </tr>
-              ))}
+              {partidos.filter(p => p.estado === 'Finalizado').length === 0 ? (
+                <tr><td colSpan={4} style={{ textAlign: 'center', padding: '15px', color: '#666' }}>No hay partidos finalizados en el historial.</td></tr>
+              ) : (
+                partidos.filter(p => p.estado === 'Finalizado').map(p => (
+                  <tr key={p.id}>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.torneo_nombre}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.local_nombre} vs {p.visita_nombre}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'Pendiente'}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       )}
-
+      
     </div>
   );
 }
