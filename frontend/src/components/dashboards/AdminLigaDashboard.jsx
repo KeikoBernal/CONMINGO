@@ -796,44 +796,64 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
         </div>
       )}
 
-      {/* CREDENCIALES */}
+{/* CREDENCIALES */}
       {pestana === 'credenciales' && (
         <div>
           <h3>👤 Crear Credencial y Gestión de Usuarios Operativos</h3>
-            <form onSubmit={guardarCredencial} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', marginBottom: '30px' }}>
-              {/* 1. CEDULA PRIMERO CON VALIDACION NUMÉRICA */}
-              <input 
-                type="text" 
-                placeholder="Cédula (Ingrese para verificar existencia)" 
-                value={formCredencial.cedula} 
-                onChange={e => setFormCredencial({...formCredencial, cedula: e.target.value.replace(/\D/g, '')})} 
-                onBlur={async (e) => {
-                  if(e.target.value.length >= 5) {
-                    const res = await fetchConToken(`/verificar-cedula/${e.target.value}`);
-                    const data = await res.json();
-                    if(data.existe) {
-                      alert(`✅ Usuario encontrado: ${data.usuario.nombre} ${data.usuario.apellido}. Al guardar, será asociado a tu liga.`);
-                      setFormCredencial(prev => ({...prev, nombre: data.usuario.nombre, apellido: data.usuario.apellido, email: data.usuario.email}));
-                    }
+          <form onSubmit={guardarCredencial} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', marginBottom: '30px' }}>
+            
+            {/* 1. CÉDULA PRIMERO CON VALIDACIÓN NUMÉRICA Y VERIFICACIÓN EN VIVO */}
+            <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Cédula de Identidad:</label>
+            <input 
+              type="text" 
+              placeholder="Ingrese cédula (solo números)..." 
+              value={formCredencial.cedula} 
+              onChange={e => setFormCredencial({...formCredencial, cedula: e.target.value.replace(/\D/g, '')})} 
+              onBlur={async (e) => {
+                const ced = e.target.value;
+                if(ced.length >= 5) {
+                  const res = await fetchConToken(`/verificar-cedula/${ced}`);
+                  const data = await res.json();
+                  if(data.existe) {
+                    alert(`✅ Usuario encontrado: ${data.usuario.nombre} ${data.usuario.apellido}. Al guardar, será asociado a tu liga sin duplicar credenciales.`);
+                    setFormCredencial(prev => ({...prev, nombre: data.usuario.nombre, apellido: data.usuario.apellido, email: data.usuario.email}));
                   }
-                }}
-                required 
-              />
+                }
+              }}
+              required 
+            />
 
-              <select value={formCredencial.rol} onChange={e => setFormCredencial({...formCredencial, rol: e.target.value, equipo_id: ''})}>
-                <option value="arbitro">Árbitro</option>
-                <option value="anotador">Anotador</option>
-                <option value="delegado de equipo">Delegado de Equipo</option>
-              </select>
+            <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Rol Operativo:</label>
+            <select value={formCredencial.rol} onChange={e => setFormCredencial({...formCredencial, rol: e.target.value, equipo_id: ''})}>
+              <option value="arbitro">Árbitro</option>
+              <option value="anotador">Anotador</option>
+              <option value="delegado de equipo">Delegado de Equipo</option>
+            </select>
 
-              {/* (Mantén el Select de equipo_id del delegado aquí) */}
-              
-              <input type="text" placeholder="Nombre" value={formCredencial.nombre} onChange={e => setFormCredencial({...formCredencial, nombre: e.target.value})} required />
-              <input type="text" placeholder="Apellido" value={formCredencial.apellido} onChange={e => setFormCredencial({...formCredencial, apellido: e.target.value})} required />
-              <input type="email" placeholder="Correo Electrónico" value={formCredencial.email} onChange={e => setFormCredencial({...formCredencial, email: e.target.value})} required />
+            {/* 2. SELECTOR DE EQUIPO CONDICIONAL SI ES DELEGADO */}
+            {formCredencial.rol === 'delegado de equipo' && (
+              <>
+                <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Asignar al Equipo:</label>
+                <select value={formCredencial.equipo_id} onChange={e => setFormCredencial({...formCredencial, equipo_id: e.target.value})} required style={{ padding: '8px' }}>
+                  <option value="">-- Seleccionar Equipo --</option>
+                  {equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}
+                </select>
+              </>
+            )}
 
-          <button type="submit">Generar / Asociar Credencial</button>
-            </form>
+            <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Nombre(s):</label>
+            <input type="text" placeholder="Nombre" value={formCredencial.nombre} onChange={e => setFormCredencial({...formCredencial, nombre: e.target.value})} required />
+            
+            <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Apellido(s):</label>
+            <input type="text" placeholder="Apellido" value={formCredencial.apellido} onChange={e => setFormCredencial({...formCredencial, apellido: e.target.value})} required />
+            
+            <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Correo Electrónico:</label>
+            <input type="email" placeholder="Correo Electrónico" value={formCredencial.email} onChange={e => setFormCredencial({...formCredencial, email: e.target.value})} required />
+
+            <button type="submit" style={{ background: '#3182CE', color: 'white', padding: '10px', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '5px' }}>
+              Generar / Asociar Credencial
+            </button>
+          </form>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <h3>Listado de Usuarios Operativos Registrados en la Liga</h3>
@@ -846,7 +866,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                 <th style={{ padding: '8px' }}>Rol</th>
                 <th style={{ padding: '8px' }}>Cédula</th>
                 <th style={{ padding: '8px' }}>Correo</th>
-                <th style={{ padding: '8px' }}>Acción</th>
+                <th style={{ padding: '8px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -856,8 +876,10 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{u.rol}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{u.cedula}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{u.email}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                    <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)}>Reset Clave</button>
+                  <td style={{ border: '1px solid #ddd', padding: '8px', display: 'flex', gap: '5px' }}>
+                    <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} style={{ background: '#3182CE', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer' }}>Reset Clave</button>
+                    {/* 3. BOTÓN DE REMOVER / ELIMINAR VINCULADO AL BACKEND */}
+                    <button onClick={() => removerCredencial(u.id, `${u.nombre} ${u.apellido}`)} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer' }}>Remover / Eliminar</button>
                   </td>
                 </tr>
               ))}
@@ -1440,10 +1462,19 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
         </div>
       )}
 
-      {/* ESTADÍSTICAS */}
+{/* ESTADÍSTICAS */}
       {pestana === 'estadisticas' && estadisticas && (
         <div>
-          <h3>📊 Métricas y Estadísticas de la Liga</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3>📊 Métricas y Estadísticas de la Liga</h3>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span style={{ fontSize: '0.9em', alignSelf: 'center', fontWeight: 'bold' }}>📥 Descargar Reporte:</span>
+              <button onClick={() => exportarReporteEstadisticas('csv')} style={{ background: '#D69E2E', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer' }}>CSV</button>
+              <button onClick={() => exportarReporteEstadisticas('excel')} style={{ background: '#276749', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer' }}>Excel</button>
+              <button onClick={() => exportarReporteEstadisticas('json')} style={{ background: '#4A5568', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer' }}>JSON</button>
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '20px' }}>
             <div style={{ border: '1px solid #ccc', padding: '15px', textAlign: 'center', borderRadius: '6px' }}><h4>Partidos Jugados</h4><p style={{ fontSize: '2em', margin: 0 }}>{estadisticas.partidos_jugados}</p></div>
             <div style={{ border: '1px solid #ccc', padding: '15px', textAlign: 'center', borderRadius: '6px' }}><h4>Torneos Totales</h4><p style={{ fontSize: '2em', margin: 0 }}>{estadisticas.total_torneos}</p></div>
@@ -1460,7 +1491,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
         </div>
       )}
 
-      {/* HISTORIAL ACTUALIZADO Y DIVIDIDO */}
+    {/* HISTORIAL ACTUALIZADO Y DIVIDIDO */}
       {pestana === 'historial' && (
         <div>
           <h3>🚨 Partidos Suspendidos (Requieren Acción)</h3>
@@ -1489,7 +1520,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
             </tbody>
           </table>
 
-          <h3>📜 Historial de Partidos Finalizados</h3>
+          <h3>📜 Historial de Partidos Finalizados y Planillas de Puntaje</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
             <thead>
               <tr style={{ background: '#eee' }}>
@@ -1497,18 +1528,31 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                 <th style={{ padding: '8px' }}>Torneo</th>
                 <th style={{ padding: '8px' }}>Encuentro</th>
                 <th style={{ padding: '8px' }}>Marcador</th>
+                <th style={{ padding: '8px' }}>Visualizar Planilla</th>
+                <th style={{ padding: '8px' }}>Descargar Planilla (Formatos)</th>
               </tr>
             </thead>
             <tbody>
               {partidos.filter(p => p.estado === 'Finalizado').length === 0 ? (
-                <tr><td colSpan={4} style={{ textAlign: 'center', padding: '15px', color: '#666' }}>No hay partidos finalizados en el historial.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '15px', color: '#666' }}>No hay partidos finalizados en el historial.</td></tr>
               ) : (
                 partidos.filter(p => p.estado === 'Finalizado').map(p => (
                   <tr key={p.id}>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.torneo_nombre}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.local_nombre} vs {p.visita_nombre}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'Pendiente'}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}><strong>{p.local_nombre}</strong> vs <strong>{p.visita_nombre}</strong></td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'Pendiente'}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>
+                      <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} style={{ background: '#2B6CB0', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                        👁️ Ver Acta
+                      </button>
+                    </td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px', display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} title="Descargar PDF" style={{ background: '#38A169', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em' }}>PDF</button>
+                      <button onClick={() => exportarPlanillaFormato(p.id, 'csv')} title="Descargar CSV" style={{ background: '#D69E2E', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em' }}>CSV</button>
+                      <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} title="Descargar Excel" style={{ background: '#276749', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em' }}>Excel</button>
+                      <button onClick={() => exportarPlanillaFormato(p.id, 'json')} title="Descargar JSON" style={{ background: '#4A5568', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em' }}>JSON</button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -1516,7 +1560,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
           </table>
         </div>
       )}
-      
+
     </div>
   );
 }
