@@ -246,6 +246,7 @@ router.post('/jugadores', async (req, res) => {
     return res.status(400).json({ error: 'El número dorsal debe ser un número entero positivo.' });
   }
   try {
+    const orgId = await obtenerOrgId(req.usuario);
     const dorsalCheck = await db.query(`SELECT id FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND estado = 'Activo'`, [equipo_id, dorsalNum]);
     if (dorsalCheck.rows.length > 0) {
       return res.status(400).json({ error: `El número dorsal #${dorsalNum} ya está asignado a otro jugador activo.` });
@@ -256,7 +257,9 @@ router.post('/jugadores', async (req, res) => {
       [equipo_id, cedula.trim(), formatearTexto(nombre), formatearTexto(apellido), fecha_nacimiento, correo.trim(), telefono.trim(), dorsalNum, foto_url || null]
     );
     if (es_capitan) {
-      await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [resDb.rows[0].id, equipo_id]);
+      const jugadorId = resDb.rows[0].id;
+      await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [jugadorId, equipo_id]);
+      await gestionarDelegadoPorCapitan(equipo_id, jugadorId, orgId);
     }
     res.status(201).json({ mensaje: 'Jugador registrado.', jugador: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al registrar el jugador. Cédula duplicada.' }); }
@@ -283,6 +286,7 @@ router.put('/jugadores/:id', async (req, res) => {
   }
   
   try {
+    const orgId = await obtenerOrgId(req.usuario);
     const jugadorPrevio = await db.query('SELECT equipo_id FROM public.jugadores WHERE id = $1', [id]);
     if (jugadorPrevio.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado.' });
     
@@ -320,6 +324,7 @@ router.put('/jugadores/:id', async (req, res) => {
 
     if (es_capitan) {
       await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [id, equipoId]);
+      await gestionarDelegadoPorCapitan(equipoId, id, orgId);
     } else {
       await db.query(`UPDATE public.equipos SET capitan_id = NULL WHERE id = $1 AND capitan_id = $2`, [equipoId, id]);
     }
@@ -334,11 +339,12 @@ router.put('/jugadores/:id', async (req, res) => {
 router.put('/jugadores/:id/estado', async (req, res) => {
   const { estado, nuevo_capitan_id, equipo_id } = req.body;
   try {
+    const orgId = await obtenerOrgId(req.usuario);
     const resDb = await db.query(`UPDATE public.jugadores SET estado = $1 WHERE id = $2 RETURNING *`, [estado, req.params.id]);
     
-    // Si se envía un nuevo capitán por la desactivación del actual
     if (nuevo_capitan_id && equipo_id) {
       await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [nuevo_capitan_id, equipo_id]);
+      await gestionarDelegadoPorCapitan(equipo_id, nuevo_capitan_id, orgId);
     }
     
     res.json({ mensaje: `Jugador ${estado.toLowerCase()} con éxito.`, jugador: resDb.rows[0] });
@@ -438,28 +444,14 @@ router.delete('/remover-credencial/:id', async (req, res) => {
     );
 
     if (equiposDelDelegado.rows.length > 0) {
-      // Verificar si hay otros usuarios operativos con rol de delegado en la organización
-      const otrosDelegados = await db.query(
-        `SELECT u.id FROM public.usuarios u
-         JOIN public.usuario_organizaciones uo ON u.id = uo.usuario_id
-         WHERE uo.organizacion_id = $1 AND LOWER(uo.rol) = 'delegado de equipo' AND u.id != $2`,
-        [orgId, usuarioId]
-      );
-
-      if (otrosDelegados.rows.length === 0) {
-        return res.status(400).json({ 
-          error: `⚠️ Acción denegada: No se puede eliminar la credencial de este delegado porque está asignado al equipo "${equiposDelDelegado.rows.length === 1 ? equiposDelDelegado.rows[0].nombre : 'varios equipos'}" y no hay ningún otro delegado registrado en la organización.` 
-        });
-      } else {
-        // Si hay otros delegados, desvinculamos al usuario de los equipos de esta liga
-        await db.query('UPDATE public.equipos SET delegado_id = NULL WHERE delegado_id = $1 AND organizacion_id = $2', [usuarioId, orgId]);
-      }
+      const nombresEquipos = equiposDelDelegado.rows.map(e => e.nombre).join(', ');
+      return res.status(400).json({ 
+        error: `⚠️ Acción denegada: Un equipo nunca puede quedar sin delegado. Este usuario es el delegado actual del/los equipo(s): [${nombresEquipos}]. Debe asignar otro delegado a dicho(s) equipo(s) antes de poder eliminar sus credenciales.` 
+      });
     }
     
-    // Remover la relación con la organización actual
     await db.query('DELETE FROM public.usuario_organizaciones WHERE usuario_id = $1 AND organizacion_id = $2', [usuarioId, orgId]);
     
-    // Verificar si el usuario ya no pertenece a ninguna otra liga en el sistema
     const ligasRestantes = await db.query('SELECT count(*) FROM public.usuario_organizaciones WHERE usuario_id = $1', [usuarioId]);
     
     if (parseInt(ligasRestantes.rows[0].count) === 0) {
@@ -526,6 +518,72 @@ router.post('/plantillas-reglas', async (req, res) => {
     res.status(201).json({ mensaje: 'Plantilla de reglas guardada con éxito.', plantilla: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error guardando reglas.' }); }
 });
+
+// Función auxiliar para gestionar o crear automáticamente las credenciales de delegado al asignar un capitán
+const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
+  try {
+    const jugRes = await db.query('SELECT cedula, nombre, apellido, correo FROM public.jugadores WHERE id = $1', [jugadorId]);
+    if (jugRes.rows.length === 0) return;
+    const { cedula, nombre, apellido, correo } = jugRes.rows[0];
+    if (!cedula) return;
+
+    // Verificar si ya existe un usuario con esta cédula en el sistema
+    const userRes = await db.query('SELECT id FROM public.usuarios WHERE cedula = $1', [cedula.trim()]);
+    let usuarioId;
+
+    if (userRes.rows.length > 0) {
+      usuarioId = userRes.rows[0].id;
+      // Asociar a la organización con rol de delegado de equipo
+      await db.query(
+        `INSERT INTO public.usuario_organizaciones (usuario_id, organizacion_id, rol) VALUES ($1, $2, 'delegado de equipo')
+         ON CONFLICT (usuario_id, organizacion_id) DO UPDATE SET rol = 'delegado de equipo'`,
+        [usuarioId, orgId]
+      );
+    } else {
+      // Crear credenciales nuevas si el jugador no tenía cuenta de usuario
+      const emailReal = (correo || `${cedula.trim()}@liga.local`).toLowerCase();
+      const passwordInicial = `${nombre.split(' ')[0]}${cedula.trim().substring(0, 5)}!`;
+      const hashedPwd = await bcrypt.hash(passwordInicial, 10);
+
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: emailReal, password: passwordInicial, email_confirm: true,
+        user_metadata: { rol: 'delegado de equipo', nombre, apellido, cedula: cedula.trim(), debe_cambiar_password: true }
+      });
+
+      if (authError) {
+        const existingEmail = await db.query('SELECT id FROM public.usuarios WHERE email = $1', [emailReal]);
+        if (existingEmail.rows.length > 0) {
+          usuarioId = existingEmail.rows[0].id;
+        } else {
+          console.error('Error creando usuario en Auth para capitán:', authError);
+          return;
+        }
+      } else {
+        usuarioId = authUser.user.id;
+      }
+
+      if (usuarioId) {
+        await db.query(
+          `INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, password_hash, debe_cambiar_password) 
+           VALUES ($1, $2, 'delegado de equipo', $3, $4, $5, $6, $7, true)
+           ON CONFLICT (id) DO UPDATE SET rol = 'delegado de equipo'`,
+          [usuarioId, emailReal, nombre, apellido, cedula.trim(), orgId, hashedPwd]
+        );
+        await db.query(
+          `INSERT INTO public.usuario_organizaciones (usuario_id, organizacion_id, rol) VALUES ($1, $2, 'delegado de equipo')
+           ON CONFLICT (usuario_id, organizacion_id) DO UPDATE SET rol = 'delegado de equipo'`,
+          [usuarioId, orgId]
+        );
+      }
+    }
+
+    if (usuarioId) {
+      await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2`, [usuarioId, equipoId]);
+    }
+  } catch (err) {
+    console.error('Error en gestionarDelegadoPorCapitan:', err);
+  }
+};
 
 // ==========================================
 // TORNEOS Y RECURSOS

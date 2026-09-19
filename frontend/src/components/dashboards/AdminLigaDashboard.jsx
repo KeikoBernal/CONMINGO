@@ -290,15 +290,13 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
     });
     
     if (res.ok) {
-      alert('Capitán reemplazado exitosamente.');
+      alert('Capitán reemplazado y credenciales de delegado actualizadas exitosamente en el sistema.');
       setModalCapitan({ visible: false, viejoId: null, equipoId: null, candidatos: [], nuevoCapitanId: '' });
       seleccionarEquipoModal(equipoSeleccionado);
-      
-      if(window.confirm('¿Deseas generar inmediatamente las credenciales de Delegado para el nuevo capitán? (Esto reemplazará al delegado anterior del equipo)')) {
-        const nuevoCap = modalCapitan.candidatos.find(j => j.id === parseInt(modalCapitan.nuevoCapitanId));
-        setFormCredencial({ nombre: nuevoCap.nombre, apellido: nuevoCap.apellido, cedula: nuevoCap.cedula, email: nuevoCap.correo || '', rol: 'delegado de equipo', equipo_id: modalCapitan.equipoId });
-        setPestana('credenciales'); // Redirige a credenciales
-      }
+      cargarDatos();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Error al reemplazar capitán.');
     }
   };
 
