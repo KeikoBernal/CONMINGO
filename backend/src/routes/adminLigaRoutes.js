@@ -30,7 +30,73 @@ const obtenerOrgId = async (usuario) => {
   return res.rows[0]?.organizacion_id || null;
 };
 
+const validarConflictos = async (fecha_hora, eqLocal, eqVisita, arbitro, anotador, partidoIgnorado = null) => {
+  // Buscamos jugadores de los equipos local y visitante para verificar que no jueguen en paralelo
+  const obtenerJugadores = async (eId) => {
+    if (!eId) return [];
+    const r = await db.query('SELECT id FROM public.jugadores WHERE equipo_id = $1 AND estado = $2', [eId, 'Activo']);
+    return r.rows.map(x => x.id);
+  };
+
+  const jugLocal = await obtenerJugadores(eqLocal);
+  const jugVisita = await obtenerJugadores(eqVisita);
+  const todosJugadores = [...jugLocal, ...jugVisita];
+
+  const query = `
+    SELECT p.id FROM public.partidos p
+    LEFT JOIN public.jugadores j_loc ON p.equipo_local_id = j_loc.equipo_id
+    LEFT JOIN public.jugadores j_vis ON p.equipo_visita_id = j_vis.equipo_id
+    WHERE p.estado IN ('Agendado', 'En Curso')
+    AND p.id::text != $1
+    AND ABS(EXTRACT(EPOCH FROM (p.fecha_hora::timestamp - $2::timestamp))) < 7200
+    AND (
+      p.equipo_local_id::text = $3 OR p.equipo_visita_id::text = $3 OR
+      p.equipo_local_id::text = $4 OR p.equipo_visita_id::text = $4 OR
+      p.arbitro_id::text = $5 OR p.anotador_id::text = $5 OR
+      p.arbitro_id::text = $6 OR p.anotador_id::text = $6 OR
+      j_loc.id = ANY($7::int[]) OR j_vis.id = ANY($7::int[])
+    ) LIMIT 1
+  `;
+  const params = [
+    partidoIgnorado || '00000000-0000-0000-0000-000000000000',
+    fecha_hora,
+    eqLocal ? String(eqLocal) : 'N/A',
+    eqVisita ? String(eqVisita) : 'N/A',
+    arbitro ? String(arbitro) : 'N/A',
+    anotador ? String(anotador) : 'N/A',
+    todosJugadores.length > 0 ? todosJugadores : [0]
+  ];
+  const res = await db.query(query, params);
+  return res.rows.length > 0;
+};
+
+// NUEVA FUNCIÓN PARA SUSPENDER AUTOMÁTICAMENTE PARTIDOS PASADOS SIN INICIAR
+const suspenderPartidosPasados = async (orgId) => {
+  try {
+    await db.query(`
+      UPDATE public.partidos p
+      SET estado = 'Suspendido'
+      FROM public.torneos t
+      WHERE p.torneo_id = t.id 
+      AND t.organizacion_id = $1 
+      AND p.estado = 'Agendado' 
+      AND p.fecha_hora::timestamp < CURRENT_TIMESTAMP
+    `, [orgId]);
+  } catch (error) { console.error('Error al auto-suspender partidos:', error); }
+};
+
 router.use(verificarToken, autorizarRoles('Administrador de Liga', 'Superadmin'));
+
+
+
+router.put('/mi-organizacion/logo', async (req, res) => {
+  const { logo_url } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    await db.query(`UPDATE public.organizaciones SET logo_url = $1 WHERE id = $2`, [logo_url, orgId]);
+    res.json({ mensaje: 'Logo de la organización actualizado exitosamente.' });
+  } catch (error) { res.status(500).json({ error: 'Error al actualizar el logo.' }); }
+});
 
 router.post('/cambiar-password-obligatorio', async (req, res) => {
   const { nueva_password } = req.body;
@@ -194,6 +260,18 @@ router.post('/jugadores', async (req, res) => {
     }
     res.status(201).json({ mensaje: 'Jugador registrado.', jugador: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al registrar el jugador. Cédula duplicada.' }); }
+});
+
+router.post('/jugadores/batch-fotos', async (req, res) => {
+  const { batch, equipo_id } = req.body; 
+  try {
+    let actualizados = 0;
+    for(let item of batch) {
+      const resp = await db.query(`UPDATE public.jugadores SET foto_url = $1 WHERE cedula = $2 AND equipo_id = $3 RETURNING id`, [item.foto_url, item.cedula, equipo_id]);
+      if(resp.rows.length > 0) actualizados++;
+    }
+    res.json({ mensaje: `Proceso completado. Se actualizaron las fotos de ${actualizados} jugador(es).` });
+  } catch(e) { res.status(500).json({ error: 'Error en la actualización masiva de fotos.' }); }
 });
 
 router.put('/jugadores/:id', async (req, res) => {
@@ -424,6 +502,7 @@ router.post('/plantillas-reglas', async (req, res) => {
 router.get('/torneos', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    await suspenderPartidosPasados(orgId);
     const torneosRes = await db.query('SELECT * FROM public.torneos WHERE organizacion_id = $1 ORDER BY fecha_inicio DESC', [orgId]);
     
     const torneosConPartidos = [];
@@ -446,6 +525,7 @@ router.get('/torneos', async (req, res) => {
 router.get('/torneos/recursos', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    await suspenderPartidosPasados(orgId);
     const sedes = await db.query('SELECT * FROM public.sedes WHERE organizacion_id = $1', [orgId]);
     const arbitros = await db.query(`SELECT id, nombre, apellido FROM public.usuarios WHERE (LOWER(rol) = 'arbitro' OR LOWER(rol) = 'árbitro') AND organizacion_id = $1`, [orgId]);
     const anotadores = await db.query(`SELECT id, nombre, apellido FROM public.usuarios WHERE LOWER(rol) = 'anotador' AND organizacion_id = $1`, [orgId]);
@@ -477,6 +557,13 @@ router.post('/torneos', async (req, res) => {
   }
 
   try {
+
+    for (const p of partidos_iniciales) {
+      if (await validarConflictos(p.fecha_hora, p.local_id, p.visita_id, p.arbitro_id, p.anotador_id)) {
+        return res.status(400).json({ error: `Conflicto de Horario: Existen personas u equipos ocupados cerca de la fecha ${new Date(p.fecha_hora).toLocaleString()} (±2 horas).` });
+      }
+    }
+
     const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1', [plantilla_id]);
     let reglasJson = reglaDb.rows.length > 0 ? reglaDb.rows[0].reglas : {};
     reglasJson.estado = 'Activo';
@@ -564,6 +651,7 @@ router.get('/estadisticas', async (req, res) => {
 router.get('/partidos-finalizados', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    await suspenderPartidosPasados(orgId);
     const resultado = await db.query(`
       SELECT p.id, p.fecha_hora, p.estado, t.nombre as torneo_nombre, el.nombre as local_nombre, ev.nombre as visita_nombre, r.marcador_local, r.marcador_visita, p.equipo_local_id, p.equipo_visita_id, p.arbitro_id, p.anotador_id
       FROM public.partidos p
@@ -720,13 +808,43 @@ router.post('/partidos-sueltos', async (req, res) => {
 
 router.put('/partidos/:id/reagendar', async (req, res) => {
   const { nueva_fecha_hora } = req.body;
+  const { id } = req.params;
   try {
-    await db.query(`UPDATE public.partidos SET fecha_hora = $1, estado = 'Agendado' WHERE id = $2`, [nueva_fecha_hora, req.params.id]);
+    const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [id]);
+    const pInfo = partidoInfo.rows[0];
+
+    if (await validarConflictos(nueva_fecha_hora, pInfo.equipo_local_id, pInfo.equipo_visita_id, pInfo.arbitro_id, pInfo.anotador_id, id)) {
+      return res.status(400).json({ error: `Conflicto: No se puede reagendar. Equipos u oficiales ocupados en ese bloque horario.` });
+    }
+
+    await db.query(`UPDATE public.partidos SET fecha_hora = $1, estado = 'Agendado' WHERE id = $2`, [nueva_fecha_hora, id]);
     res.json({ mensaje: 'Partido reagendado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al reagendar.' }); }
 });
 
-// NUEVO: RUTA PARA FORZAR EL GANADOR DESDE EL ADMIN DASHBOARD (Requiere validación Bcrypt)
+router.put('/partidos/:id/editar-oficiales', async (req, res) => {
+  const { id } = req.params;
+  const { fecha_hora, arbitro_id, anotador_id, sede_id } = req.body;
+  try {
+    const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [id]);
+    const pInfo = partidoInfo.rows[0];
+
+    if (await validarConflictos(fecha_hora, pInfo.equipo_local_id, pInfo.equipo_visita_id, arbitro_id, anotador_id, id)) {
+      return res.status(400).json({ error: `Conflicto: Entidades ocupadas en esa nueva fecha/hora.` });
+    }
+
+    await db.query(`UPDATE public.partidos SET fecha_hora = COALESCE($1, fecha_hora), arbitro_id = $2, anotador_id = $3, sede_id = COALESCE($4, sede_id) WHERE id = $5`, [fecha_hora, arbitro_id || null, anotador_id || null, sede_id, id]);
+    res.json({ mensaje: 'Partido modificado exitosamente.' });
+  } catch (error) { res.status(500).json({ error: 'Error al modificar partido.' }); }
+});
+
+router.put('/partidos/:id/cancelar', async (req, res) => {
+  try {
+    await db.query(`UPDATE public.partidos SET estado = 'Cancelado' WHERE id = $1`, [req.params.id]);
+    res.json({ mensaje: 'Partido cancelado exitosamente.' });
+  } catch (error) { res.status(500).json({ error: 'Error al cancelar partido.' }); }
+})
+
 router.post('/partidos/:id/forzar-ganador', async (req, res) => {
   const { id: partidoId } = req.params;
   const { ganador_id, motivo, admin_password } = req.body;

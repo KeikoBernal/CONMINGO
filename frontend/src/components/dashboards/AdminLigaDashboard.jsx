@@ -60,6 +60,13 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   // Formularios
   const [formSede, setFormSede] = useState({ nombre: '', direccion: '' });
   const [formEquipo, setFormEquipo] = useState({ nombre: '', categoria: 'Adulto 22+', tipo_genero: 'Mixto', logo_url: '' });
+  
+  const [busquedaSedes, setBusquedaSedes] = useState('');
+  const [busquedaEquipos, setBusquedaEquipos] = useState('');
+  const [busquedaJugadores, setBusquedaJugadores] = useState('');
+  const [busquedaCredenciales, setBusquedaCredenciales] = useState('');
+  const [modalEditarPartido, setModalEditarPartido] = useState({ visible: false, partido: null, fecha_hora: '', arbitro_id: '', anotador_id: '', sede_id: '' });
+  
   const [formJugador, setFormJugador] = useState({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false });
   const [formCredencial, setFormCredencial] = useState({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' });
   
@@ -83,6 +90,43 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       if (response.status === 401) setMensaje('⚠️ Tu sesión ha expirado.');
       return response;
     } catch (err) { return { ok: false, status: 500, json: async () => ({ error: 'Error de conexión.' }) }; }
+  };
+
+// NUEVA FUNCIÓN PARA CONVERTIR ARCHIVOS A BASE64
+  const toBase64 = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+
+  // NUEVA FUNCIÓN PARA SUBIR LOGO DE LA ORGANIZACIÓN
+  const subirLogoOrganizacion = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const base64 = await toBase64(file);
+    const res = await fetchConToken('/mi-organizacion/logo', { method: 'PUT', body: JSON.stringify({ logo_url: base64 }) });
+    if (res.ok) alert('Logo actualizado correctamente'); else alert('Error subiendo logo');
+  };
+
+  // NUEVA FUNCIÓN PARA SUBIDA MASIVA DE FOTOS POR LOTE (NOMBRE = CÉDULA)
+  const manejarBatchUploadJugadores = async (e) => {
+    const files = e.target.files;
+    if (files.length === 0) return;
+    let batch = [];
+    setMensaje(`Procesando ${files.length} fotos...`);
+    for (let file of files) {
+      const cedula = file.name.split('.')[0]; 
+      const base64 = await toBase64(file);
+      batch.push({ cedula, foto_url: base64 });
+    }
+    const res = await fetchConToken('/jugadores/batch-fotos', { method: 'POST', body: JSON.stringify({ batch, equipo_id: equipoSeleccionado.id }) });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.mensaje); setMensaje('');
+      const resEq = await fetchConToken(`/equipos/${equipoSeleccionado.id}/jugadores`);
+      if (resEq.ok) setJugadores(await resEq.json());
+    } else { alert(data.error); setMensaje(''); }
   };
 
   const cargarDatos = async () => {
@@ -342,6 +386,26 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
     }
   };
 
+// NUEVA FUNCIÓN PARA GUARDAR LA EDICIÓN DE OFICIALES/FECHA DE UN PARTIDO
+  const confirmarEditarPartido = async (e) => {
+    e.preventDefault();
+    const res = await fetchConToken(`/partidos/${modalEditarPartido.partido.id}/editar-oficiales`, { 
+      method: 'PUT', 
+      body: JSON.stringify({ 
+        fecha_hora: modalEditarPartido.fecha_hora, 
+        arbitro_id: modalEditarPartido.arbitro_id, 
+        anotador_id: modalEditarPartido.anotador_id, 
+        sede_id: modalEditarPartido.sede_id 
+      }) 
+    });
+    const data = await res.json();
+    if(res.ok) { 
+      alert(data.mensaje); 
+      setModalEditarPartido({ visible: false, partido: null, fecha_hora: '', arbitro_id: '', anotador_id: '', sede_id: '' }); 
+      cargarDatos(); 
+    } else { alert(data.error); }
+  };
+
   const abrirModalForzarGanador = (partido) => {
     setModalForzar({ 
       visible: true, 
@@ -429,6 +493,27 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
         </div>
       )}
 
+      {modalEditarPartido.visible && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: '8px', maxWidth: '450px', width: '90%' }}>
+            <h3 style={{ marginTop: 0 }}>✏️ Editar Partido Programado</h3>
+            <p style={{ fontSize: '0.9em', color: '#4A5568' }}>{modalEditarPartido.partido.local_nombre} vs {modalEditarPartido.partido.visita_nombre}</p>
+            
+            <form onSubmit={confirmarEditarPartido} style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+              <input type="datetime-local" min={ahoraIsoLocal} value={modalEditarPartido.fecha_hora} onChange={e => setModalEditarPartido({...modalEditarPartido, fecha_hora: e.target.value})} required style={{ padding: '8px' }} />
+              <select value={modalEditarPartido.sede_id} onChange={e => setModalEditarPartido({...modalEditarPartido, sede_id: e.target.value})} required style={{ padding: '8px' }}><option value="">-- Sede --</option>{recursosTorneo.sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}</select>
+              <select value={modalEditarPartido.arbitro_id} onChange={e => setModalEditarPartido({...modalEditarPartido, arbitro_id: e.target.value})} style={{ padding: '8px' }}><option value="">-- Árbitro --</option>{recursosTorneo.arbitros.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
+              <select value={modalEditarPartido.anotador_id} onChange={e => setModalEditarPartido({...modalEditarPartido, anotador_id: e.target.value})} style={{ padding: '8px' }}><option value="">-- Anotador --</option>{recursosTorneo.anotadores.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
+              
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button type="submit" style={{ flex: 1, background: '#3182CE', color: 'white', padding: '10px' }}>Guardar Cambios</button>
+                <button type="button" onClick={() => setModalEditarPartido({ visible: false })} style={{ flex: 1, padding: '10px' }}>Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {debeCambiarPass && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 }}>
           <div style={{ background: '#fff', padding: '30px', borderRadius: '8px', maxWidth: '400px', width: '90%' }}>
@@ -472,8 +557,15 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
         </div>
       )}
 
+      {/* HEADER PRINCIPAL */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-        <h2>🏆 Panel de Administrador de Liga</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <h2>🏆 Panel de Administrador de Liga</h2>
+          <label style={{ cursor: 'pointer', background: '#E2E8F0', padding: '5px 10px', borderRadius: '4px', fontSize: '0.85em', fontWeight: 'bold' }}>
+            🖼️ Subir Logo
+            <input type="file" accept="image/*" onChange={subirLogoOrganizacion} style={{ display: 'none' }} />
+          </label>
+        </div>
         <button onClick={cerrarSesion}>Cerrar Sesión</button>
       </div>
 
@@ -500,7 +592,10 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
             </div>
           </form>
 
-          <h3>Listado de Sedes</h3>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3>Listado de Sedes</h3>
+            <input type="text" placeholder="🔍 Buscar sede..." value={busquedaSedes} onChange={e => setBusquedaSedes(e.target.value)} style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc' }}/>
+          </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
             <thead>
               <tr style={{ background: '#eee' }}>
@@ -510,7 +605,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
               </tr>
             </thead>
             <tbody>
-              {sedes.map(s => (
+              {sedes.filter(s => s.nombre.toLowerCase().includes(busquedaSedes.toLowerCase())).map(s => (
                 <tr key={s.id}>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}><strong>{s.nombre}</strong></td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{s.direccion || 'Sin dirección'}</td>
@@ -597,23 +692,26 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
               <option value="Femenino">Femenino</option>
               <option value="Masculino">Masculino</option>
             </select>
-            <button type="submit" style={{ gridColumn: 'span 3' }}>Guardar Equipo</button>
-          </form>
+          <button type="submit" style={{ gridColumn: 'span 3' }}>Guardar Equipo</button>
+        </form>
 
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
           <h3>Listado de Equipos</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
-            <thead>
-              <tr style={{ background: '#eee' }}>
-                <th style={{ padding: '8px' }}>Equipo</th>
-                <th style={{ padding: '8px' }}>Categoría / Género</th>
-                <th style={{ padding: '8px' }}>Delegado Actual</th>
-                <th style={{ padding: '8px' }}>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {equipos.map(e => (
-                <tr key={e.id}>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}><strong>{e.nombre}</strong></td>
+          <input type="text" placeholder="🔍 Buscar equipo..." value={busquedaEquipos} onChange={e => setBusquedaEquipos(e.target.value)} style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc' }}/>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
+          <thead>
+            <tr style={{ background: '#eee' }}>
+              <th style={{ padding: '8px' }}>Equipo</th>
+              <th style={{ padding: '8px' }}>Categoría / Género</th>
+              <th style={{ padding: '8px' }}>Delegado Actual</th>
+              <th style={{ padding: '8px' }}>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {equipos.filter(e => e.nombre.toLowerCase().includes(busquedaEquipos.toLowerCase())).map(e => (
+              <tr key={e.id}>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}><strong>{e.nombre}</strong></td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{e.categoria} - {e.tipo_genero}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>
                     <select value={e.delegado_id_usuario || ''} onChange={ev => reasignarDelegado(e.id, ev.target.value)}>
@@ -633,7 +731,14 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
 
           {equipoSeleccionado && (
             <div style={{ marginTop: '30px', border: '1px solid #2B6CB0', padding: '15px', borderRadius: '6px', background: '#F7FAFC' }}>
-              <h4>{jugadorEditandoId ? '✏️ Modificar Jugador' : `Nómina de: ${equipoSeleccionado.nombre}`}</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4>{jugadorEditandoId ? '✏️ Modificar Jugador' : `Nómina de: ${equipoSeleccionado.nombre}`}</h4>
+                <label style={{ background: '#38A169', color: 'white', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                  📁 Subida Masiva de Fotos (Lote)
+                  <input type="file" multiple accept="image/*" onChange={manejarBatchUploadJugadores} style={{ display: 'none' }} />
+                </label>
+              </div>
+              <p style={{ fontSize: '0.75em', color: '#666', marginTop: 2 }}>*Nombra tus archivos con la cédula del jugador (Ej: 12345678.jpg)</p>
               <form onSubmit={guardarJugador} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '15px', marginBottom: '15px' }}>
                 <input type="text" placeholder="Cédula (5-8 dígitos)" pattern="\d{5,8}" value={formJugador.cedula} onChange={e => setFormJugador({...formJugador, cedula: e.target.value})} required />
                 <input type="text" placeholder="Nombre" value={formJugador.nombre} onChange={e => setFormJugador({...formJugador, nombre: e.target.value})} required />
@@ -721,10 +826,13 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
               <input type="text" placeholder="Apellido" value={formCredencial.apellido} onChange={e => setFormCredencial({...formCredencial, apellido: e.target.value})} required />
               <input type="email" placeholder="Correo Electrónico" value={formCredencial.email} onChange={e => setFormCredencial({...formCredencial, email: e.target.value})} required />
 
-              <button type="submit">Generar / Asociar Credencial</button>
+          <button type="submit">Generar / Asociar Credencial</button>
             </form>
 
-          <h3>Listado de Usuarios Operativos Registrados en la Liga</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3>Listado de Usuarios Operativos Registrados en la Liga</h3>
+            <input type="text" placeholder="🔍 Buscar credencial..." value={busquedaCredenciales} onChange={e => setBusquedaCredenciales(e.target.value)} style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc' }}/>
+          </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
             <thead>
               <tr style={{ background: '#eee' }}>
@@ -736,7 +844,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
               </tr>
             </thead>
             <tbody>
-              {usuariosOperativos.map(u => (
+              {usuariosOperativos.filter(u => `${u.nombre} ${u.apellido} ${u.cedula} ${u.email}`.toLowerCase().includes(busquedaCredenciales.toLowerCase())).map(u => (
                 <tr key={u.id}>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}><strong>{u.nombre} {u.apellido}</strong></td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{u.rol}</td>
@@ -788,10 +896,39 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
             <button onClick={() => setSubPestanaTorneo('historial')} style={{ fontWeight: subPestanaTorneo === 'historial' ? 'bold' : 'normal' }}>📜 Historial</button>
           </div>
 
-          {/* VISTA 1: TORNEOS ACTIVOS / PRÓXIMOS */}
+          {/* VISTA 1: TORNEOS ACTIVOS / PRÓXIMOS Y PARTIDOS SUSPENDIDOS */}
           {subPestanaTorneo === 'lista' && (
             <div>
-              <h3>📋 Torneos Activos, Próximos y Partidos Agendados</h3>
+              <div style={{ marginBottom: '25px', background: '#FFF5F5', border: '1px solid #FEB2B2', padding: '15px', borderRadius: '6px' }}>
+                <h3 style={{ color: '#C53030', marginTop: 0 }}>🚨 Partidos Suspendidos (Requieren Acción)</h3>
+                {torneosList.flatMap(t => t.partidos || []).filter(p => p.estado === 'Suspendido').length === 0 ? (
+                  <p style={{ color: '#666', fontSize: '0.9em', margin: 0 }}>No hay partidos suspendidos en este momento.</p>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85em', background: '#FFF', marginTop: '10px' }}>
+                    <thead>
+                      <tr style={{ background: '#FED7D7', color: '#C53030' }}>
+                        <th style={{ padding: '6px' }}>Fecha Original</th>
+                        <th style={{ padding: '6px' }}>Encuentro</th>
+                        <th style={{ padding: '6px' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {torneosList.flatMap(t => (t.partidos || []).map(p => ({ ...p, torneo_nombre: t.nombre }))).filter(p => p.estado === 'Suspendido').map(p => (
+                        <tr key={p.id}>
+                          <td style={{ border: '1px solid #ddd', padding: '6px' }}>{new Date(p.fecha_hora).toLocaleString('es-VE')} ({p.torneo_nombre})</td>
+                          <td style={{ border: '1px solid #ddd', padding: '6px' }}>{p.local_nombre || 'Por definir'} vs {p.visita_nombre || 'Por definir'}</td>
+                          <td style={{ border: '1px solid #ddd', padding: '6px', display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                            <button onClick={() => setModalReagendar({ visible: true, partido: p, nuevaFecha: p.fecha_hora.slice(0, 16) })} style={{ background: '#3182CE', color: '#FFF', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>📅 Reagendar</button>
+                            <button onClick={async () => { if(window.confirm('¿Cancelar definitivamente este partido?')) { await fetchConToken(`/partidos/${p.id}/cancelar`, { method: 'PUT' }); cargarDatos(); } }} style={{ background: '#E53E3E', color: '#FFF', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>❌ Cancelar</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <h3>📋 Torneos Activos y Próximos</h3>
               {torneosList.filter(t => t.fecha_fin >= hoyStr && t.reglas?.estado !== 'Suspendido').length === 0 ? (
                 <p style={{ color: '#666', padding: '15px' }}>No hay torneos activos o próximos.</p>
               ) : (
@@ -804,7 +941,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                       </div>
                     </div>
 
-                    <h5 style={{ margin: '10px 0 5px 0', color: '#2B6CB0' }}>Partidos Agendados:</h5>
+                  <h5 style={{ margin: '10px 0 5px 0', color: '#2B6CB0' }}>Partidos Agendados:</h5>
                     {t.partidos && t.partidos.length > 0 ? (
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85em', background: '#FFF' }}>
                         <thead>
@@ -813,17 +950,19 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                             <th style={{ padding: '6px' }}>Encuentro</th>
                             <th style={{ padding: '6px' }}>Fecha y Hora</th>
                             <th style={{ padding: '6px' }}>Sede</th>
-                            <th style={{ padding: '6px' }}>Estado</th>
+                            <th style={{ padding: '6px' }}>Acciones</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {t.partidos.map(p => (
+                          {t.partidos.filter(p => p.estado === 'Agendado' || p.estado === 'En Curso').map(p => (
                             <tr key={p.id}>
                               <td style={{ border: '1px solid #ddd', padding: '6px' }}><strong>{p.fase}</strong></td>
                               <td style={{ border: '1px solid #ddd', padding: '6px' }}>{p.local_nombre || 'Por definir'} vs {p.visita_nombre || 'Por definir'}</td>
                               <td style={{ border: '1px solid #ddd', padding: '6px' }}>{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
                               <td style={{ border: '1px solid #ddd', padding: '6px' }}>{p.sede_nombre || 'Sede principal'}</td>
-                              <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{p.estado}</td>
+                              <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
+                                <button onClick={() => setModalEditarPartido({ visible: true, partido: p, fecha_hora: p.fecha_hora.slice(0, 16), arbitro_id: p.arbitro_id || '', anotador_id: p.anotador_id || '', sede_id: p.sede_id || '' })} style={{ padding: '3px 8px', fontSize: '0.9em' }}>✏️ Editar Oficiales/Fecha</button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>

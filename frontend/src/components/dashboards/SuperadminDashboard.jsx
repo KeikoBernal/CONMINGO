@@ -42,18 +42,35 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [token, setToken] = useState(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => { setToken(session?.access_token); });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setToken(session?.access_token);
+    });
   }, []);
 
   const fetchConToken = async (endpoint, options = {}) => {
-    return await fetch(`${API_URL}/superadmin${endpoint}`, {
-      ...options,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers },
-    });
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        return { ok: false, status: 401, json: async () => ({ error: 'Sesión no válida' }) };
+      }
+      
+      const response = await fetch(`${API_URL}/superadmin${endpoint}`, {
+        ...options,
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${session.access_token}`, 
+          ...options.headers 
+        },
+      });
+      
+      if (response.status === 401) setMensaje('⚠️ Tu sesión ha expirado.');
+      return response;
+    } catch (err) {
+      return { ok: false, status: 500, json: async () => ({ error: 'Error de conexión.' }) };
+    }
   };
 
   const cargarDatosPestana = async () => {
-    if (!token) return;
     setMensaje('');
     try {
       if (pestana === 'metricas') {
@@ -78,7 +95,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     } catch (err) { setMensaje('Error conectando con el servidor.'); }
   };
 
-  useEffect(() => { cargarDatosPestana(); }, [pestana, filtroRol, filtroUsuarioId, busquedaBitacora, token]);
+  useEffect(() => { cargarDatosPestana(); }, [pestana, filtroRol, filtroUsuarioId, busquedaBitacora]);
 
   useEffect(() => {
     if (formUser.rol.toLowerCase() === 'delegado de equipo' && formUser.organizacion_id && token) {
@@ -91,10 +108,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   }, [formUser.organizacion_id, formUser.rol, token]);
 
-
-  // ==========================================
-  // 1. RESPALDO GLOBAL DEL SISTEMA (SQL / JSON)
-  // ==========================================
   const exportarRespaldoBD = async (formato) => {
     setMensaje('Generando volcado de base de datos...');
     try {
@@ -112,7 +125,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       else if (formato === 'sql') {
         let sqlContent = `-- VOLCADO DE BASE DE DATOS CONMINGO\n-- Fecha: ${timestamp}\n\n`;
         
-        // Iterar sobre cada tabla recibida desde el backend
         Object.keys(data).forEach(tabla => {
           const filas = data[tabla];
           if (filas.length > 0) {
@@ -140,9 +152,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  // ==========================================
-  // 2. GENERADOR DINÁMICO DE REPORTES (EXCEL, CSV, PDF)
-  // ==========================================
   const generarReporte = (datos, titulo, formato, pdfColumnas) => {
     if (!datos || datos.length === 0) {
       setMensaje('⚠️ No hay datos para exportar en esta vista.');
@@ -165,7 +174,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       const a = document.createElement('a'); a.href = url; a.download = `${nombreArchivo}.csv`; a.click();
     } 
     else if (formato === 'pdf') {
-      const doc = new jsPDF('landscape'); // Horizontal
+      const doc = new jsPDF('landscape'); 
       doc.setFontSize(16);
       doc.text(`Reporte de ${titulo} - Sistema CONMINGO`, 14, 20);
       doc.setFontSize(10);
@@ -186,7 +195,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  // Funciones específicas para enviar los datos correctos según la pestaña activa
   const exportarReporteActual = (formato) => {
     if (pestana === 'ligas') {
       const configPDF = [
@@ -218,15 +226,18 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-
   const partidosAgendadosFiltrados = () => {
     if (!metricas?.partidos_agendados) return [];
     let base = metricas.partidos_agendados;
-    if (filtroLigaPartidos !== 'todas') base = base.filter(p => p.organizacion_id === filtroLigaPartidos);
+    
+    if (filtroLigaPartidos !== 'todas') {
+      base = base.filter(p => String(p.organizacion_id) === String(filtroLigaPartidos));
+    }
+    
     if (filtroPeriodo === 'todos') return base;
     const ahora = new Date();
     return base.filter((p) => {
-      const fechaP = new Date(p.fecha_partido);
+      const fechaP = new Date(p.fecha_hora); 
       if (filtroPeriodo === 'hoy') return fechaP.toDateString() === ahora.toDateString();
       if (filtroPeriodo === 'semana') {
         const unaSemana = new Date(); unaSemana.setDate(ahora.getDate() + 7);
@@ -369,7 +380,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const formatearFecha = (fechaIso) => {
     if (!fechaIso) return 'N/A';
     const fecha = new Date(fechaIso);
-    return fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute:'2-digit' });
   };
 
   const renderTablaUsuarios = (arregloUsuarios) => (
@@ -411,7 +422,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   <div style={{ fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto', padding: '10px' }}>
     <SistemaMensajeria usuario={usuario} token={token} />
       
-      {/* CABECERA: SISTEMA DE RESPALDO GLOBAL */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <h2>🛡️ Panel de Superadmin</h2>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -452,7 +462,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         </div>
       )}
 
-      {/* MÉTRICAS */}
       {pestana === 'metricas' && metricas && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -493,15 +502,15 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   <tr style={{ background: '#FED7D7' }}>
                     <th style={{ padding: '8px' }}>ID</th>
                     <th style={{ padding: '8px' }}>Liga</th>
-                    <th style={{ padding: '8px' }}>Fecha</th>
+                    <th style={{ padding: '8px' }}>Fecha y Hora</th>
                   </tr>
                 </thead>
                 <tbody>
                   {metricas.partidos_activos.map((p) => (
                     <tr key={p.id}>
                       <td style={{ borderBottom: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>#{p.id}</td>
-                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px' }}>{p.liga_nombre || 'General'}</td>
-                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>{formatearFecha(p.fecha_partido)}</td>
+                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px' }}>{p.liga_nombre || 'General / Suelto'}</td>
+                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>{formatearFecha(p.fecha_hora)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -514,7 +523,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
               <h3>📅 Partidos Agendados</h3>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <select value={filtroLigaPartidos} onChange={(e) => setFiltroLigaPartidos(e.target.value)} style={{ padding: '6px', borderRadius: '4px' }}>
-                  <option value="todas">Todas las Ligas</option>
+                  <option value="todas">Todas las Ligas / Generales</option>
                   {ligas.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
                 </select>
                 <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value)} style={{ padding: '6px', borderRadius: '4px' }}>
@@ -538,15 +547,15 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   <tr style={{ background: '#EDF2F7' }}>
                     <th style={{ padding: '8px' }}>ID</th>
                     <th style={{ padding: '8px' }}>Liga</th>
-                    <th style={{ padding: '8px' }}>Fecha</th>
+                    <th style={{ padding: '8px' }}>Fecha y Hora</th>
                   </tr>
                 </thead>
                 <tbody>
                   {partidosAgendadosFiltrados().map((p) => (
                     <tr key={p.id}>
                       <td style={{ borderBottom: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>#{p.id}</td>
-                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px' }}>{p.liga_nombre || 'General'}</td>
-                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>{formatearFecha(p.fecha_partido)}</td>
+                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px' }}>{p.liga_nombre || 'General / Suelto'}</td>
+                      <td style={{ borderBottom: '1px solid #ddd', padding: '8px', textAlign: 'center' }}>{formatearFecha(p.fecha_hora)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -556,7 +565,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         </div>
       )}
 
-      {/* LIGAS */}
       {pestana === 'ligas' && (
         <div>
           {ligaDetalle ? (
@@ -617,7 +625,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         </div>
       )}
 
-      {/* USUARIOS */}
       {pestana === 'usuarios' && (
         <div>
           <h3>{userEditando ? '✏️ Editar Usuario' : '👤 Crear Usuario Manual'}</h3>
@@ -658,7 +665,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   </select>
                 </div>
               )}
-
               <button type="submit" style={{ gridColumn: 'span 2' }}>Crear Usuario</button>
             </form>
           )}
@@ -681,7 +687,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         </div>
       )}
 
-      {/* BITÁCORA */}
       {pestana === 'bitacora' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>

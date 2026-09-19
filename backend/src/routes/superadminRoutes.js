@@ -47,8 +47,23 @@ router.get('/metricas', async (req, res) => {
     const totalJugadores = await db.query('SELECT COUNT(*) FROM public.jugadores');
     const usuariosPorRol = await db.query('SELECT rol, COUNT(*) as cantidad FROM public.usuarios GROUP BY rol');
 
-    const partidosActivos = await db.query(`SELECT p.id, p.fecha_partido, p.estado, o.nombre as liga_nombre, p.organizacion_id FROM public.partidos p LEFT JOIN public.organizaciones o ON p.organizacion_id = o.id WHERE p.estado IN ('en_curso', 'activo', 'en vivo') ORDER BY p.fecha_partido DESC`).catch(() => ({ rows: [] }));
-    const partidosAgendados = await db.query(`SELECT p.id, p.fecha_partido, p.estado, o.nombre as liga_nombre, p.organizacion_id FROM public.partidos p LEFT JOIN public.organizaciones o ON p.organizacion_id = o.id WHERE p.estado = 'agendado' ORDER BY p.fecha_partido ASC`).catch(() => ({ rows: [] }));
+    const partidosActivos = await db.query(`
+      SELECT p.id, p.fecha_hora, p.estado, o.nombre as liga_nombre, t.organizacion_id 
+      FROM public.partidos p 
+      LEFT JOIN public.torneos t ON p.torneo_id = t.id 
+      LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id 
+      WHERE LOWER(TRIM(p.estado)) IN ('en_curso', 'activo', 'en vivo', 'en curso') 
+      ORDER BY p.fecha_hora DESC
+    `).catch((e) => { console.error('Error en partidosActivos:', e); return { rows: [] }; });
+
+    const partidosAgendados = await db.query(`
+      SELECT p.id, p.fecha_hora, p.estado, o.nombre as liga_nombre, t.organizacion_id 
+      FROM public.partidos p 
+      LEFT JOIN public.torneos t ON p.torneo_id = t.id 
+      LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id 
+      WHERE p.estado IS NULL OR LOWER(TRIM(p.estado)) IN ('agendado', 'pendiente')
+      ORDER BY p.fecha_hora ASC
+    `).catch((e) => { console.error('Error en partidosAgendados:', e); return { rows: [] }; });
 
     res.json({
       total_ligas: parseInt(totalLigas.rows[0].count), ligas_activas: parseInt(ligasActivas.rows[0].count), total_usuarios: parseInt(totalUsuarios.rows[0].count),
