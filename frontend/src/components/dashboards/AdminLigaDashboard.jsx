@@ -796,13 +796,13 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
         </div>
       )}
 
-{/* CREDENCIALES */}
+    {/* CREDENCIALES */}
       {pestana === 'credenciales' && (
         <div>
           <h3>👤 Crear Credencial y Gestión de Usuarios Operativos</h3>
           <form onSubmit={guardarCredencial} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '500px', marginBottom: '30px' }}>
             
-            {/* 1. CÉDULA PRIMERO CON VALIDACIÓN NUMÉRICA Y VERIFICACIÓN EN VIVO */}
+            {/* CÉDULA PRIMERO CON VALIDACIÓN NUMÉRICA Y VERIFICACIÓN EN VIVO */}
             <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Cédula de Identidad:</label>
             <input 
               type="text" 
@@ -830,7 +830,7 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
               <option value="delegado de equipo">Delegado de Equipo</option>
             </select>
 
-            {/* 2. SELECTOR DE EQUIPO CONDICIONAL SI ES DELEGADO */}
+            {/* SELECTOR DE EQUIPO CONDICIONAL SI ES DELEGADO */}
             {formCredencial.rol === 'delegado de equipo' && (
               <>
                 <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Asignar al Equipo:</label>
@@ -878,8 +878,17 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{u.email}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px', display: 'flex', gap: '5px' }}>
                     <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} style={{ background: '#3182CE', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer' }}>Reset Clave</button>
-                    {/* 3. BOTÓN DE REMOVER / ELIMINAR VINCULADO AL BACKEND */}
-                    <button onClick={() => removerCredencial(u.id, `${u.nombre} ${u.apellido}`)} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer' }}>Remover / Eliminar</button>
+                    <button onClick={async () => {
+                      if (!window.confirm(`¿Estás seguro de remover el acceso a la liga para ${u.nombre} ${u.apellido}?`)) return;
+                      const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' });
+                      const data = await res.json();
+                      if (res.ok) {
+                        alert(data.mensaje);
+                      } else {
+                        alert(data.error); // Muestra la validación si es el único delegado
+                      }
+                      cargarDatos();
+                    }} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer' }}>Remover / Eliminar</button>
                   </td>
                 </tr>
               ))}

@@ -425,23 +425,54 @@ router.post('/crear-credencial', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error registrando credencial.' }); }
 });
 
-// Eliminar un oficial de liga
+// Eliminar o revocar credencial de un oficial de liga con validación de delegado único
 router.delete('/remover-credencial/:id', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    const usuarioId = req.params.id;
     
-    await db.query('DELETE FROM public.usuario_organizaciones WHERE usuario_id = $1 AND organizacion_id = $2', [req.params.id, orgId]);
-    
-    const ligasRestantes = await db.query('SELECT count(*) FROM public.usuario_organizaciones WHERE usuario_id = $1', [req.params.id]);
-    
-    if (parseInt(ligasRestantes.rows[0].count) === 0) {
-      await db.query('DELETE FROM public.usuarios WHERE id = $1', [req.params.id]);
-      await supabaseAdmin.auth.admin.deleteUser(req.params.id);
-      return res.json({ mensaje: 'Credencial eliminada permanentemente (no pertenecía a ninguna otra liga).' });
+    // Validar si el usuario es delegado de algún equipo en esta organización
+    const equiposDelDelegado = await db.query(
+      'SELECT id, nombre FROM public.equipos WHERE delegado_id = $1 AND organizacion_id = $2',
+      [usuarioId, orgId]
+    );
+
+    if (equiposDelDelegado.rows.length > 0) {
+      // Verificar si hay otros usuarios operativos con rol de delegado en la organización
+      const otrosDelegados = await db.query(
+        `SELECT u.id FROM public.usuarios u
+         JOIN public.usuario_organizaciones uo ON u.id = uo.usuario_id
+         WHERE uo.organizacion_id = $1 AND LOWER(uo.rol) = 'delegado de equipo' AND u.id != $2`,
+        [orgId, usuarioId]
+      );
+
+      if (otrosDelegados.rows.length === 0) {
+        return res.status(400).json({ 
+          error: `⚠️ Acción denegada: No se puede eliminar la credencial de este delegado porque está asignado al equipo "${equiposDelDelegado.rows.length === 1 ? equiposDelDelegado.rows[0].nombre : 'varios equipos'}" y no hay ningún otro delegado registrado en la organización.` 
+        });
+      } else {
+        // Si hay otros delegados, desvinculamos al usuario de los equipos de esta liga
+        await db.query('UPDATE public.equipos SET delegado_id = NULL WHERE delegado_id = $1 AND organizacion_id = $2', [usuarioId, orgId]);
+      }
     }
     
-    res.json({ mensaje: 'Acceso revocado para tu liga. (El usuario sigue existiendo en sus otras ligas).' });
-  } catch (error) { res.status(500).json({ error: 'Error al remover credencial.' }); }
+    // Remover la relación con la organización actual
+    await db.query('DELETE FROM public.usuario_organizaciones WHERE usuario_id = $1 AND organizacion_id = $2', [usuarioId, orgId]);
+    
+    // Verificar si el usuario ya no pertenece a ninguna otra liga en el sistema
+    const ligasRestantes = await db.query('SELECT count(*) FROM public.usuario_organizaciones WHERE usuario_id = $1', [usuarioId]);
+    
+    if (parseInt(ligasRestantes.rows[0].count) === 0) {
+      await db.query('DELETE FROM public.usuarios WHERE id = $1', [usuarioId]);
+      await supabaseAdmin.auth.admin.deleteUser(usuarioId);
+      return res.json({ mensaje: 'Credencial eliminada permanentemente (el usuario no pertenecía a ninguna otra liga).' });
+    }
+    
+    res.json({ mensaje: 'Acceso revocado para tu liga con éxito. (El usuario conserva sus credenciales en sus otras ligas).' });
+  } catch (error) { 
+    console.error('Error al remover credencial:', error);
+    res.status(500).json({ error: 'Error al remover credencial.' }); 
+  }
 });
 
 router.post('/usuarios/:id/reset-password', async (req, res) => {
