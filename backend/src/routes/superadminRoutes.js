@@ -331,4 +331,31 @@ router.get('/bitacora', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error al consultar auditoría.' }); }
 });
 
+// ==========================================
+// RESPALDO GLOBAL DE LA BASE DE DATOS
+// ==========================================
+router.get('/respaldo-completo', async (req, res) => {
+  try {
+    const ligas = await db.query('SELECT id, nombre, responsable_nombre, responsable_email, estado_activa, creado_en FROM public.organizaciones');
+    const usuarios = await db.query('SELECT id, nombre, apellido, cedula, email, rol FROM public.usuarios');
+    const equipos = await db.query('SELECT id, nombre, categoria, tipo_genero FROM public.equipos');
+    const torneos = await db.query('SELECT id, nombre, fecha_inicio, fecha_fin, estado FROM public.torneos');
+    const partidos = await db.query('SELECT id, fecha_hora, estado, equipo_local_id, equipo_visita_id FROM public.partidos');
+
+    // Registramos en la bitácora que el Superadmin descargó la base de datos
+    await registrarAuditoria(req.usuario.id, 'RESPALDO_GLOBAL', 'multiples_tablas', null, { formato: 'Descarga completa' }, req.ip);
+
+    res.json({
+      ligas: ligas.rows,
+      usuarios: usuarios.rows,
+      equipos: equipos.rows,
+      torneos: torneos.rows,
+      partidos: partidos.rows
+    });
+  } catch (error) {
+    console.error('Error generando respaldo:', error);
+    res.status(500).json({ error: 'Error interno generando el respaldo de la base de datos.' });
+  }
+});
+
 module.exports = router;

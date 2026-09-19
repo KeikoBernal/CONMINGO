@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import SistemaMensajeria from './SistemaMensajeria';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -36,15 +39,21 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [filtroRol, setFiltroRol] = useState('');
   const [filtroUsuarioId, setFiltroUsuarioId] = useState('');
 
+  const [token, setToken] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => { setToken(session?.access_token); });
+  }, []);
+
   const fetchConToken = async (endpoint, options = {}) => {
-    const { data: { session } } = await supabase.auth.getSession();
     return await fetch(`${API_URL}/superadmin${endpoint}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}`, ...options.headers },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers },
     });
   };
 
   const cargarDatosPestana = async () => {
+    if (!token) return;
     setMensaje('');
     try {
       if (pestana === 'metricas') {
@@ -69,16 +78,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     } catch (err) { setMensaje('Error conectando con el servidor.'); }
   };
 
-  const [token, setToken] = useState(null);
+  useEffect(() => { cargarDatosPestana(); }, [pestana, filtroRol, filtroUsuarioId, busquedaBitacora, token]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => { setToken(session?.access_token); });
-  }, []);
-
-  useEffect(() => { cargarDatosPestana(); }, [pestana, filtroRol, filtroUsuarioId, busquedaBitacora]);
-
-  useEffect(() => {
-    if (formUser.rol.toLowerCase() === 'delegado de equipo' && formUser.organizacion_id) {
+    if (formUser.rol.toLowerCase() === 'delegado de equipo' && formUser.organizacion_id && token) {
       fetchConToken(`/equipos?liga_id=${formUser.organizacion_id}`)
         .then(res => res.json())
         .then(data => setEquiposLiga(data || []));
@@ -86,7 +89,135 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       setEquiposLiga([]);
       setFormUser(prev => ({ ...prev, equipo_id: '' }));
     }
-  }, [formUser.organizacion_id, formUser.rol]);
+  }, [formUser.organizacion_id, formUser.rol, token]);
+
+
+  // ==========================================
+  // 1. RESPALDO GLOBAL DEL SISTEMA (SQL / JSON)
+  // ==========================================
+  const exportarRespaldoBD = async (formato) => {
+    setMensaje('Generando volcado de base de datos...');
+    try {
+      const res = await fetchConToken('/respaldo-completo');
+      if (!res.ok) throw new Error('Error de conexión');
+      const data = await res.json();
+      const timestamp = new Date().toISOString().split('T')[0];
+      const nombreArchivo = `Backup_CONMINGO_${timestamp}`;
+
+      if (formato === 'json') {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `${nombreArchivo}.json`; a.click();
+      } 
+      else if (formato === 'sql') {
+        let sqlContent = `-- VOLCADO DE BASE DE DATOS CONMINGO\n-- Fecha: ${timestamp}\n\n`;
+        
+        // Iterar sobre cada tabla recibida desde el backend
+        Object.keys(data).forEach(tabla => {
+          const filas = data[tabla];
+          if (filas.length > 0) {
+            sqlContent += `-- Tabla: ${tabla}\n`;
+            const columnas = Object.keys(filas[0]).join(', ');
+            filas.forEach(fila => {
+              const valores = Object.values(fila).map(val => {
+                if (val === null || val === undefined) return 'NULL';
+                if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+                return val;
+              }).join(', ');
+              sqlContent += `INSERT INTO public.${tabla} (${columnas}) VALUES (${valores});\n`;
+            });
+            sqlContent += '\n';
+          }
+        });
+
+        const blob = new Blob([sqlContent], { type: 'text/sql' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `${nombreArchivo}.sql`; a.click();
+      }
+      setMensaje(`✅ Respaldo ${formato.toUpperCase()} generado correctamente.`);
+    } catch (error) {
+      setMensaje('⚠️ Error al generar el respaldo de la base de datos.');
+    }
+  };
+
+  // ==========================================
+  // 2. GENERADOR DINÁMICO DE REPORTES (EXCEL, CSV, PDF)
+  // ==========================================
+  const generarReporte = (datos, titulo, formato, pdfColumnas) => {
+    if (!datos || datos.length === 0) {
+      setMensaje('⚠️ No hay datos para exportar en esta vista.');
+      return;
+    }
+    const timestamp = new Date().toISOString().split('T')[0];
+    const nombreArchivo = `Reporte_${titulo}_${timestamp}`;
+
+    if (formato === 'excel') {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(datos);
+      XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+      XLSX.writeFile(wb, `${nombreArchivo}.xlsx`);
+    } 
+    else if (formato === 'csv') {
+      const ws = XLSX.utils.json_to_sheet(datos);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `${nombreArchivo}.csv`; a.click();
+    } 
+    else if (formato === 'pdf') {
+      const doc = new jsPDF('landscape'); // Horizontal
+      doc.setFontSize(16);
+      doc.text(`Reporte de ${titulo} - Sistema CONMINGO`, 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Fecha de generación: ${new Date().toLocaleString()}`, 14, 28);
+
+      const filasPDF = datos.map(item => pdfColumnas.map(col => item[col.key] || 'N/A'));
+      const cabecerasPDF = pdfColumnas.map(col => col.label);
+
+      autoTable(doc, {
+        startY: 35,
+        head: [cabecerasPDF],
+        body: filasPDF,
+        theme: 'grid',
+        headStyles: { fillColor: [43, 108, 176] },
+        styles: { fontSize: 8 }
+      });
+      doc.save(`${nombreArchivo}.pdf`);
+    }
+  };
+
+  // Funciones específicas para enviar los datos correctos según la pestaña activa
+  const exportarReporteActual = (formato) => {
+    if (pestana === 'ligas') {
+      const configPDF = [
+        { label: 'Nombre Liga', key: 'nombre' }, { label: 'Administrador', key: 'responsable_nombre' },
+        { label: 'Teléfono', key: 'responsable_telefono' }, { label: 'Correo', key: 'responsable_email' }
+      ];
+      generarReporte(ligas, 'Ligas_Organizaciones', formato, configPDF);
+    } 
+    else if (pestana === 'usuarios') {
+      const configPDF = [
+        { label: 'Nombre', key: 'nombre' }, { label: 'Apellido', key: 'apellido' },
+        { label: 'Cédula', key: 'cedula' }, { label: 'Rol', key: 'rol' }, { label: 'Correo', key: 'email' }
+      ];
+      generarReporte(usuariosList, 'Usuarios_Sistema', formato, configPDF);
+    }
+    else if (pestana === 'bitacora') {
+      const datosBitacora = bitacora.map(b => ({
+        Fecha: new Date(b.fecha).toLocaleString(), Usuario: b.usuario_email, Rol: b.usuario_rol, 
+        Accion: b.accion, Tabla: b.tabla
+      }));
+      const configPDF = [
+        { label: 'Fecha', key: 'Fecha' }, { label: 'Usuario', key: 'Usuario' },
+        { label: 'Rol', key: 'Rol' }, { label: 'Acción', key: 'Accion' }, { label: 'Tabla', key: 'Tabla' }
+      ];
+      generarReporte(datosBitacora, 'Auditoria_Bitacora', formato, configPDF);
+    }
+    else if (pestana === 'metricas') {
+      setMensaje('⚠️ En Métricas, usa la exportación individual de la tabla que desees.');
+    }
+  };
+
 
   const partidosAgendadosFiltrados = () => {
     if (!metricas?.partidos_agendados) return [];
@@ -184,45 +315,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  const exportarRespaldoLiga = async (formato) => {
-    try {
-      const res = await fetchConToken(`/ligas/${itemEliminar.id}/detalle`);
-      if (!res.ok) throw new Error('No se pudo obtener la información.');
-      const data = await res.json();
-      
-      if (formato === 'json') {
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `Respaldo_${data.liga.nombre}.json`; a.click();
-      } 
-      else if (formato === 'pdf') {
-        const ventana = window.open('', '_blank');
-        const html = `
-          <html><head><title>Respaldo ${data.liga.nombre}</title>
-          <style>body{font-family:sans-serif; padding:30px;} h2{color:#2B6CB0; border-bottom:1px solid #ccc; padding-bottom:5px; margin-top:30px;} table{width:100%;border-collapse:collapse;margin-top:10px; font-size: 14px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#EBF8FF;}</style>
-          </head><body>
-          <h1 style="color:#C53030;">Respaldo Oficial: ${data.liga.nombre}</h1>
-          <p><strong>Administrador Responsable:</strong> ${data.liga.responsable_nombre} (${data.liga.responsable_email})</p>
-          <p><strong>Teléfono:</strong> ${data.liga.responsable_telefono || 'N/A'}</p>
-          <h2>👥 Usuarios Registrados (${data.usuarios.length})</h2>
-          <table><tr><th>Nombre Completo</th><th>Cédula</th><th>Email</th><th>Rol del Sistema</th></tr>
-          ${data.usuarios.map(u => `<tr><td>${u.nombre} ${u.apellido}</td><td>${u.cedula || '-'}</td><td>${u.email}</td><td>${u.rol}</td></tr>`).join('')}
-          </table>
-          <h2>🛡️ Equipos Registrados (${data.equipos.length})</h2>
-          <table><tr><th>Nombre del Equipo</th><th>Categoría</th><th>Género</th></tr>
-          ${data.equipos.map(e => `<tr><td>${e.nombre}</td><td>${e.categoria}</td><td>${e.tipo_genero}</td></tr>`).join('')}
-          </table>
-          <script>window.print();</script>
-          </body></html>
-        `;
-        ventana.document.write(html);
-        ventana.document.close();
-      }
-    } catch (e) {
-      setMensaje("Error generando el respaldo.");
-    }
-  };
-
   const ejecutarCerrarSesion = async () => {
     try { await fetchConToken('/log-evento', { method: 'POST', body: JSON.stringify({ accion: 'CERRAR_SESION', tabla: 'auth' }) }); } catch (e) {}
     cerrarSesion();
@@ -277,11 +369,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const formatearFecha = (fechaIso) => {
     if (!fechaIso) return 'N/A';
     const fecha = new Date(fechaIso);
-    return fecha.toLocaleDateString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    return fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const renderTablaUsuarios = (arregloUsuarios) => (
@@ -322,18 +410,23 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   return (
   <div style={{ fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto', padding: '10px' }}>
     <SistemaMensajeria usuario={usuario} token={token} />
+      
+      {/* CABECERA: SISTEMA DE RESPALDO GLOBAL */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <h2>🛡️ Panel de Superadmin</h2>
-        <button onClick={ejecutarCerrarSesion} style={{ background: '#2D3748', color: '#FFF', padding: '8px 16px', borderRadius: '4px' }}>Cerrar Sesión</button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '5px', background: '#E2E8F0', padding: '6px 12px', borderRadius: '6px', alignItems: 'center', border: '1px solid #CBD5E0' }}>
+            <span style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#2D3748', marginRight: '5px' }}>⚙️ Respaldo Total BD:</span>
+            <button onClick={() => exportarRespaldoBD('sql')} style={{ background: '#4A5568', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>SQL</button>
+            <button onClick={() => exportarRespaldoBD('json')} style={{ background: '#2B6CB0', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>JSON</button>
+          </div>
+          <button onClick={ejecutarCerrarSesion} style={{ background: '#E53E3E', color: '#FFF', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>Cerrar Sesión</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '2px solid #ddd', paddingBottom: '8px' }}>
         {['metricas', 'ligas', 'usuarios', 'bitacora'].map((p) => (
-          <button
-            key={p}
-            onClick={() => { setPestana(p); setLigaDetalle(null); }}
-            style={{ padding: '8px 14px', cursor: 'pointer', fontWeight: pestana === p ? 'bold' : 'normal', borderBottom: pestana === p ? '3px solid #2B6CB0' : 'none', background: pestana === p ? '#EBF8FF' : 'transparent' }}
-          >
+          <button key={p} onClick={() => { setPestana(p); setLigaDetalle(null); }} style={{ padding: '8px 14px', cursor: 'pointer', fontWeight: pestana === p ? 'bold' : 'normal', borderBottom: pestana === p ? '3px solid #2B6CB0' : 'none', background: pestana === p ? '#EBF8FF' : 'transparent' }}>
             {p.toUpperCase()}
           </button>
         ))}
@@ -348,17 +441,6 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', maxWidth: '400px', width: '90%', color: '#333' }}>
             <h3 style={{ marginTop: 0, color: '#C53030' }}>⚠️ Confirmar Eliminación</h3>
             <p>Estás a punto de eliminar {itemEliminar.tipo === 'liga' ? 'la liga (y en cascada todos sus usuarios, equipos y partidos)' : 'al usuario'}: <strong>{itemEliminar.nombre}</strong>.</p>
-            
-            {itemEliminar.tipo === 'liga' && (
-              <div style={{ background: '#EBF8FF', border: '1px solid #90CDF4', padding: '12px', borderRadius: '6px', marginBottom: '15px' }}>
-                <p style={{ margin: '0 0 10px 0', fontSize: '0.85em', color: '#2C5282' }}><strong>Paso Sugerido:</strong> Guarda la data de esta liga antes de destruirla permanentemente.</p>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button type="button" onClick={() => exportarRespaldoLiga('json')} style={{ flex: 1, background: '#3182CE', color: '#fff', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}>⬇️ Exportar JSON</button>
-                  <button type="button" onClick={() => exportarRespaldoLiga('pdf')} style={{ flex: 1, background: '#2B6CB0', color: '#fff', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}>⬇️ Exportar PDF</button>
-                </div>
-              </div>
-            )}
-
             <form onSubmit={ejecutarEliminacion} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '15px' }}>
               <input type="password" placeholder="Contraseña Superadmin" value={claveConfirmacion} onChange={(e) => setClaveConfirmacion(e.target.value)} required autoFocus style={{ padding: '8px' }} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -370,10 +452,12 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         </div>
       )}
 
-      {/* MÉTRICAS (Con las tablas de Partidos en Vivo y Agendados restauradas) */}
+      {/* MÉTRICAS */}
       {pestana === 'metricas' && metricas && (
         <div>
-          <h3>📊 Resumen Global</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3>📊 Resumen Global</h3>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '25px' }}>
             <div style={{ border: '1px solid #E2E8F0', padding: '15px', borderRadius: '8px', textAlign: 'center', background: '#FFF' }}>
               <h4 style={{ margin: '0 0 10px 0', color: '#4A5568' }}>Ligas</h4>
@@ -395,7 +479,14 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           </div>
 
           <div style={{ marginBottom: '30px' }}>
-            <h3 style={{ color: '#E53E3E' }}>🔴 Partidos en Vivo</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ color: '#E53E3E' }}>🔴 Partidos en Vivo</h3>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <span style={{ fontSize: '0.8em', color: '#666', alignSelf: 'center' }}>Exportar listado:</span>
+                <button onClick={() => generarReporte(metricas.partidos_activos, 'Partidos_En_Vivo', 'excel', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} style={{ padding: '4px 8px', fontSize: '0.8em' }}>Excel</button>
+                <button onClick={() => generarReporte(metricas.partidos_activos, 'Partidos_En_Vivo', 'pdf', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} style={{ padding: '4px 8px', fontSize: '0.8em' }}>PDF</button>
+              </div>
+            </div>
             {metricas.partidos_activos.length === 0 ? <p style={{ fontStyle: 'italic', color: '#718096' }}>No hay partidos en vivo.</p> : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
                 <thead>
@@ -421,7 +512,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <h3>📅 Partidos Agendados</h3>
-              <div style={{ display: 'flex', gap: '15px' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <select value={filtroLigaPartidos} onChange={(e) => setFiltroLigaPartidos(e.target.value)} style={{ padding: '6px', borderRadius: '4px' }}>
                   <option value="todas">Todas las Ligas</option>
                   {ligas.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
@@ -432,6 +523,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   <option value="semana">Esta Semana</option>
                   <option value="mes">Este Mes</option>
                 </select>
+                <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
+                  <button onClick={() => generarReporte(partidosAgendadosFiltrados(), 'Partidos_Agendados', 'excel', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} style={{ padding: '4px 8px', fontSize: '0.8em', background: '#38A169', color: '#fff', border: 'none', borderRadius: '3px' }}>Excel</button>
+                  <button onClick={() => generarReporte(partidosAgendadosFiltrados(), 'Partidos_Agendados', 'pdf', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} style={{ padding: '4px 8px', fontSize: '0.8em', background: '#E53E3E', color: '#fff', border: 'none', borderRadius: '3px' }}>PDF</button>
+                </div>
               </div>
             </div>
 
@@ -489,6 +584,16 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   {ligaEditando && <button type="button" onClick={() => setLigaEditando(null)}>Cancelar</button>}
                 </div>
               </form>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h3 style={{ margin: 0 }}>Listado de Ligas</h3>
+                <div style={{ display: 'flex', gap: '5px' }}>
+                  <span style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#4A5568', alignSelf: 'center', marginRight: '5px' }}>📄 Reporte:</span>
+                  <button onClick={() => exportarReporteActual('excel')} style={{ background: '#38A169', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>Excel</button>
+                  <button onClick={() => exportarReporteActual('csv')} style={{ background: '#D69E2E', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>CSV</button>
+                  <button onClick={() => exportarReporteActual('pdf')} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>PDF</button>
+                </div>
+              </div>
 
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
                 <thead><tr style={{ background: '#eee' }}><th>Nombre</th><th>Admin</th><th>Estado</th><th>Acciones</th></tr></thead>
@@ -561,7 +666,15 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           <div style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', padding: '15px', borderRadius: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
               <h3 style={{ margin: 0 }}>Navegación de Usuarios</h3>
-              <input type="text" placeholder="🔍 Buscar directo..." value={busquedaUsuario} onChange={(e) => setBusquedaUsuario(e.target.value)} style={{ padding: '8px 12px', width: '300px' }} />
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                <input type="text" placeholder="🔍 Buscar directo..." value={busquedaUsuario} onChange={(e) => setBusquedaUsuario(e.target.value)} style={{ padding: '8px 12px', width: '200px' }} />
+                <div style={{ display: 'flex', gap: '5px', background: '#E2E8F0', padding: '4px', borderRadius: '4px' }}>
+                  <span style={{ fontSize: '0.8em', alignSelf: 'center', margin: '0 5px' }}>Exportar:</span>
+                  <button onClick={() => exportarReporteActual('excel')} style={{ background: '#38A169', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '3px', cursor: 'pointer', fontSize: '0.8em' }}>Excel</button>
+                  <button onClick={() => exportarReporteActual('csv')} style={{ background: '#D69E2E', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '3px', cursor: 'pointer', fontSize: '0.8em' }}>CSV</button>
+                  <button onClick={() => exportarReporteActual('pdf')} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '3px', cursor: 'pointer', fontSize: '0.8em' }}>PDF</button>
+                </div>
+              </div>
             </div>
             {renderListadoUsuarios()}
           </div>
@@ -571,7 +684,13 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       {/* BITÁCORA */}
       {pestana === 'bitacora' && (
         <div>
-          <h3>🔍 Bitácora de Auditoría</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0 }}>🔍 Bitácora de Auditoría</h3>
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <button onClick={() => exportarReporteActual('excel')} style={{ background: '#38A169', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>Exportar Excel</button>
+              <button onClick={() => exportarReporteActual('pdf')} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>Exportar PDF</button>
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '15px' }}>
             <input type="text" placeholder="Buscar..." value={busquedaBitacora} onChange={(e) => setBusquedaBitacora(e.target.value)} />
             <select value={filtroRol} onChange={(e) => setFiltroRol(e.target.value)}><option value="">Todos los Roles</option><option value="Superadmin">Superadmin</option><option value="administrador de liga">Admin de Liga</option><option value="arbitro">Árbitro</option></select>
