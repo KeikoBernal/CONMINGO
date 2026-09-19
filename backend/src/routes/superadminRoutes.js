@@ -336,11 +336,15 @@ router.get('/bitacora', async (req, res) => {
 // ==========================================
 router.get('/respaldo-completo', async (req, res) => {
   try {
-    const ligas = await db.query('SELECT id, nombre, responsable_nombre, responsable_email, estado_activa, creado_en FROM public.organizaciones');
-    const usuarios = await db.query('SELECT id, nombre, apellido, cedula, email, rol FROM public.usuarios');
-    const equipos = await db.query('SELECT id, nombre, categoria, tipo_genero FROM public.equipos');
-    const torneos = await db.query('SELECT id, nombre, fecha_inicio, fecha_fin, estado FROM public.torneos');
-    const partidos = await db.query('SELECT id, fecha_hora, estado, equipo_local_id, equipo_visita_id FROM public.partidos');
+    // Usamos SELECT * para evitar errores de columnas faltantes, garantizando un volcado real.
+    const ligas = await db.query('SELECT * FROM public.organizaciones');
+    
+    // Para los usuarios, excluimos explícitamente el password_hash por seguridad.
+    const usuarios = await db.query('SELECT id, email, rol, nombre, apellido, cedula, organizacion_id, creado_en FROM public.usuarios');
+    
+    const equipos = await db.query('SELECT * FROM public.equipos');
+    const torneos = await db.query('SELECT * FROM public.torneos');
+    const partidos = await db.query('SELECT * FROM public.partidos');
 
     // Registramos en la bitácora que el Superadmin descargó la base de datos
     await registrarAuditoria(req.usuario.id, 'RESPALDO_GLOBAL', 'multiples_tablas', null, { formato: 'Descarga completa' }, req.ip);
