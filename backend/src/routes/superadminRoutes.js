@@ -336,11 +336,11 @@ router.get('/bitacora', async (req, res) => {
 // ==========================================
 router.get('/respaldo-completo', async (req, res) => {
   try {
-    // Usamos SELECT * para evitar errores de columnas faltantes, garantizando un volcado real.
     const ligas = await db.query('SELECT * FROM public.organizaciones');
     
-    // Para los usuarios, excluimos explícitamente el password_hash por seguridad.
-    const usuarios = await db.query('SELECT id, email, rol, nombre, apellido, cedula, organizacion_id, creado_en FROM public.usuarios');
+    // CORRECCIÓN: Eliminamos "creado_en" porque tu tabla de usuarios no posee esa columna.
+    // Solo omitimos password_hash por seguridad.
+    const usuarios = await db.query('SELECT id, organizacion_id, rol, email, nombre, apellido, cedula, debe_cambiar_password FROM public.usuarios');
     
     const equipos = await db.query('SELECT * FROM public.equipos');
     const torneos = await db.query('SELECT * FROM public.torneos');

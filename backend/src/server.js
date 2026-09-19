@@ -11,6 +11,8 @@ const db = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+app.set('trust proxy', 1);
+
 // ==========================================
 // MIDDLEWARES DE SEGURIDAD Y RATE LIMITING
 // ==========================================
