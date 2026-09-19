@@ -828,13 +828,43 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
               <option value="delegado de equipo">Delegado de Equipo</option>
             </select>
 
-            {/* SELECTOR DE EQUIPO CONDICIONAL SI ES DELEGADO */}
+          {/* SELECTOR DE EQUIPO CONDICIONAL SI ES DELEGADO */}
             {formCredencial.rol === 'delegado de equipo' && (
               <>
                 <label style={{ fontSize: '0.9em', fontWeight: 'bold' }}>Asignar al Equipo:</label>
-                <select value={formCredencial.equipo_id} onChange={e => setFormCredencial({...formCredencial, equipo_id: e.target.value})} required style={{ padding: '8px' }}>
+                <select 
+                  value={formCredencial.equipo_id} 
+                  onChange={e => {
+                    const equipoId = e.target.value;
+                    const equipoSeleccionadoObj = equipos.find(eq => String(eq.id) === String(equipoId));
+                    
+                    if (equipoSeleccionadoObj && equipoSeleccionadoObj.capitan_cedula) {
+                      // Autocompletar con los datos del capitán del equipo seleccionado
+                      setFormCredencial(prev => ({
+                        ...prev,
+                        equipo_id: equipoId,
+                        cedula: equipoSeleccionadoObj.capitan_cedula || '',
+                        nombre: equipoSeleccionadoObj.capitan_nombre || '',
+                        apellido: equipoSeleccionadoObj.capitan_apellido || '',
+                        email: equipoSeleccionadoObj.capitan_correo || ''
+                      }));
+                    } else {
+                      // Si no tiene capitán asignado, solo actualiza el ID del equipo
+                      setFormCredencial(prev => ({
+                        ...prev,
+                        equipo_id: equipoId
+                      }));
+                    }
+                  }} 
+                  required 
+                  style={{ padding: '8px' }}
+                >
                   <option value="">-- Seleccionar Equipo --</option>
-                  {equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}
+                  {equipos.map(eq => (
+                    <option key={eq.id} value={eq.id}>
+                      {eq.nombre} {eq.capitan_nombre ? `(Cap: ${eq.capitan_nombre} ${eq.capitan_apellido})` : '(Sin capitán asignado)'}
+                    </option>
+                  ))}
                 </select>
               </>
             )}
