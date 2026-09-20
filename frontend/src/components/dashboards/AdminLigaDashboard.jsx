@@ -443,6 +443,102 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
     }
   };
 
+// ==========================================
+  // FUNCIONES DE EXPORTACIÓN Y REPORTES
+  // ==========================================
+  const exportarPlanillaFormato = async (partidoId, formato) => {
+    try {
+      setMensaje(`Generando archivo ${formato.toUpperCase()} de la planilla...`);
+      const resPart = await fetchConToken(`/publico/partidos/${partidoId}`);
+      const partidoData = await resPart.json();
+      const resNom = await fetchConToken(`/publico/partidos/${partidoId}/nomina`);
+      const nominaData = await resNom.json();
+
+      const nombreArchivo = `Planilla_${partidoData.local_nombre}_vs_${partidoData.visita_nombre}`.replace(/\s+/g, '_');
+
+      if (formato === 'json') {
+        const blob = new Blob([JSON.stringify({ partido: partidoData, nomina: nominaData }, null, 2)], { type: 'application/json' });
+        descargarBlob(blob, `${nombreArchivo}.json`);
+      } else if (formato === 'csv') {
+        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${partidoData.fecha_hora}\n\nCedula,Nombre,Apellido,Dorsal,Equipo\n`;
+        nominaData.forEach(j => {
+          csv += `${j.cedula},"${j.nombre}","${j.apellido}",${j.numero_dorsal},"${j.equipo_nombre || 'N/A'}"\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        descargarBlob(blob, `${nombreArchivo}.csv`);
+      } else if (formato === 'excel') {
+        let html = `<table border="1"><tr><th>Encuentro</th><th>${partidoData.local_nombre} vs ${partidoData.visita_nombre}</th></tr>`;
+        html += `<tr><th>Fecha</th><th>${partidoData.fecha_hora}</th></tr></table><br/>`;
+        html += `<table border="1"><tr><th>Cédula</th><th>Nombre</th><th>Apellido</th><th>Dorsal</th></tr>`;
+        nominaData.forEach(j => {
+          html += `<tr><td>${j.cedula}</td><td>${j.nombre}</td><td>${j.apellido}</td><td>${j.numero_dorsal}</td></tr>`;
+        });
+        html += `</table>`;
+        const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+        descargarBlob(blob, `${nombreArchivo}.xls`);
+      }
+      setMensaje('');
+    } catch (e) {
+      setMensaje('❌ Error al exportar la planilla.');
+    }
+  };
+
+  const exportarReporteEstadisticas = (formato) => {
+    if (!estadisticas) return alert('No hay datos estadísticos cargados.');
+    const nombreArchivo = `Reporte_Estadisticas_Liga_${temporadaFiltro}`;
+
+    if (formato === 'json') {
+      const blob = new Blob([JSON.stringify(estadisticas, null, 2)], { type: 'application/json' });
+      descargarBlob(blob, `${nombreArchivo}.json`);
+    } else if (formato === 'csv') {
+      let csv = `Metrica,Valor\nPartidos Jugados,${estadisticas.partidos_jugados}\nTorneos Totales,${estadisticas.total_torneos}\nEquipos Inscritos,${estadisticas.total_equipos}\nJugadores Activos,${estadisticas.total_jugadores}\nTarjetas Acumuladas,${estadisticas.total_tarjetas}\n\nJugador,Equipo,Jugadas Efectivas\n`;
+      estadisticas.mejores_jugadores.forEach(j => {
+        csv += `"${j.nombre} ${j.apellido}","${j.equipo}",${j.efectivas}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      descargarBlob(blob, `${nombreArchivo}.csv`);
+    } else if (formato === 'excel') {
+      let html = `<table border="1"><tr><th>Métrica</th><th>Valor</th></tr>`;
+      html += `<tr><td>Partidos Jugados</td><td>${estadisticas.partidos_jugados}</td></tr>`;
+      html += `<tr><td>Torneos Totales</td><td>${estadisticas.total_torneos}</td></tr>`;
+      html += `<tr><td>Equipos Inscritos</td><td>${estadisticas.total_equipos}</td></tr>`;
+      html += `<tr><td>Jugadores Activos</td><td>${estadisticas.total_jugadores}</td></tr>`;
+      html += `<tr><td>Tarjetas Acumuladas</td><td>${estadisticas.total_tarjetas}</td></tr></table><br/>`;
+      html += `<table border="1"><tr><th>Jugador</th><th>Equipo</th><th>Efectivas</th></tr>`;
+      estadisticas.mejores_jugadores.forEach(j => {
+        html += `<tr><td>${j.nombre} ${j.apellido}</td><td>${j.equipo}</td><td>${j.efectivas}</td></tr>`;
+      });
+      html += `</table>`;
+      const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+      descargarBlob(blob, `${nombreArchivo}.xls`);
+    }
+  };
+
+  const descargarBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ==========================================
+  // FUNCIÓN PARA ELIMINAR EQUIPO
+  // ==========================================
+  const eliminarEquipo = async (id, nombre) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente el equipo "${nombre}" y borrar toda su nómina de jugadores? Esta acción no se puede deshacer.`)) return;
+    const res = await fetchConToken(`/equipos/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.mensaje);
+      if (equipoSeleccionado?.id === id) setEquipoSeleccionado(null);
+      cargarDatos();
+    } else {
+      alert(data.error);
+    }
+  };
+
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto', padding: '10px' }}>
       <SistemaMensajeria usuario={usuario} token={token} />
@@ -709,10 +805,10 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
               <th style={{ padding: '8px' }}>Acción</th>
             </tr>
           </thead>
-          <tbody>
-            {equipos.filter(e => e.nombre.toLowerCase().includes(busquedaEquipos.toLowerCase())).map(e => (
-              <tr key={e.id}>
-                <td style={{ border: '1px solid #ddd', padding: '8px' }}><strong>{e.nombre}</strong></td>
+            <tbody>
+              {equipos.filter(e => e.nombre.toLowerCase().includes(busquedaEquipos.toLowerCase())).map(e => (
+                <tr key={e.id}>
+                  <td style={{ border: '1px solid #ddd', padding: '8px' }}><strong>{e.nombre}</strong></td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{e.categoria} - {e.tipo_genero}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>
                     <select value={e.delegado_id_usuario || ''} onChange={ev => reasignarDelegado(e.id, ev.target.value)}>
@@ -722,8 +818,9 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
                       ))}
                     </select>
                   </td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                    <button onClick={() => seleccionarEquipoModal(e)}>👥 Nómina</button>
+                  <td style={{ border: '1px solid #ddd', padding: '8px', display: 'flex', gap: '5px' }}>
+                    <button onClick={() => seleccionarEquipoModal(e)} style={{ background: '#3182CE', color: '#FFF', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer' }}>👥 Nómina</button>
+                    <button onClick={() => eliminarEquipo(e.id, e.nombre)} style={{ background: '#E53E3E', color: '#FFF', border: 'none', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer' }}>🗑️ Eliminar</button>
                   </td>
                 </tr>
               ))}
