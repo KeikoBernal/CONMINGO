@@ -289,13 +289,13 @@ const cambiarEstadoJugador = async (id, estadoActual) => {
       body: JSON.stringify({ estado: 'Inactivo', nuevo_capitan_id: modalCapitan.nuevoCapitanId, equipo_id: modalCapitan.equipoId }) 
     });
     
+    const data = await res.json();
     if (res.ok) {
-      alert('Capitán reemplazado y credenciales de delegado actualizadas exitosamente en el sistema.');
+      alert(data.mensaje || 'Capitán reemplazado y credenciales de delegado actualizadas con éxito.');
       setModalCapitan({ visible: false, viejoId: null, equipoId: null, candidatos: [], nuevoCapitanId: '' });
       seleccionarEquipoModal(equipoSeleccionado);
       cargarDatos();
     } else {
-      const data = await res.json();
       alert(data.error || 'Error al reemplazar capitán.');
     }
   };

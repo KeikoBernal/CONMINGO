@@ -256,13 +256,14 @@ router.post('/jugadores', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Activo') RETURNING *`,
       [equipo_id, cedula.trim(), formatearTexto(nombre), formatearTexto(apellido), fecha_nacimiento, correo.trim(), telefono.trim(), dorsalNum, foto_url || null]
     );
+    let mensajeDelegado = '';
     if (es_capitan) {
       const jugadorId = resDb.rows[0].id;
       await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [jugadorId, equipo_id]);
-      await gestionarDelegadoPorCapitan(equipo_id, jugadorId, orgId);
+      mensajeDelegado = await gestionarDelegadoPorCapitan(equipo_id, jugadorId, orgId);
     }
-    res.status(201).json({ mensaje: 'Jugador registrado.', jugador: resDb.rows[0] });
-  } catch (error) { res.status(500).json({ error: 'Error al registrar el jugador. Cédula duplicada.' }); }
+    res.status(201).json({ mensaje: `Jugador registrado.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
+  } catch (error) { res.status(500).json({ error: 'Error al registrar el jugador.' }); }
 });
 
 router.post('/jugadores/batch-fotos', async (req, res) => {
@@ -322,18 +323,15 @@ router.put('/jugadores/:id', async (req, res) => {
       ]
     );
 
+    let mensajeDelegado = '';
     if (es_capitan) {
       await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [id, equipoId]);
-      await gestionarDelegadoPorCapitan(equipoId, id, orgId);
+      mensajeDelegado = await gestionarDelegadoPorCapitan(equipoId, id, orgId);
     } else {
       await db.query(`UPDATE public.equipos SET capitan_id = NULL WHERE id = $1 AND capitan_id = $2`, [equipoId, id]);
     }
-
-    res.json({ mensaje: 'Jugador y capitanía actualizados con éxito.', jugador: resDb.rows[0] });
-  } catch (error) { 
-    console.error('Error actualizando jugador:', error);
-    res.status(500).json({ error: 'Error actualizando jugador.' }); 
-  }
+    res.json({ mensaje: `Jugador y capitanía actualizados con éxito.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
+  } catch (error) { res.status(500).json({ error: 'Error actualizando jugador.' }); }
 });
 
 router.put('/jugadores/:id/estado', async (req, res) => {
@@ -342,12 +340,13 @@ router.put('/jugadores/:id/estado', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const resDb = await db.query(`UPDATE public.jugadores SET estado = $1 WHERE id = $2 RETURNING *`, [estado, req.params.id]);
     
+    let mensajeDelegado = '';
     if (nuevo_capitan_id && equipo_id) {
       await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [nuevo_capitan_id, equipo_id]);
-      await gestionarDelegadoPorCapitan(equipo_id, nuevo_capitan_id, orgId);
+      mensajeDelegado = await gestionarDelegadoPorCapitan(equipo_id, nuevo_capitan_id, orgId);
     }
     
-    res.json({ mensaje: `Jugador ${estado.toLowerCase()} con éxito.`, jugador: resDb.rows[0] });
+    res.json({ mensaje: `Jugador ${estado.toLowerCase()} con éxito.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al cambiar estado del jugador.' }); }
 });
 
@@ -519,28 +518,27 @@ router.post('/plantillas-reglas', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error guardando reglas.' }); }
 });
 
-// Función auxiliar para gestionar o crear automáticamente las credenciales de delegado al asignar un capitán
+// Función auxiliar modificada para retornar el mensaje de credenciales
 const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
   try {
     const jugRes = await db.query('SELECT cedula, nombre, apellido, correo FROM public.jugadores WHERE id = $1', [jugadorId]);
-    if (jugRes.rows.length === 0) return;
+    if (jugRes.rows.length === 0) return null;
     const { cedula, nombre, apellido, correo } = jugRes.rows[0];
-    if (!cedula) return;
+    if (!cedula) return null;
 
-    // Verificar si ya existe un usuario con esta cédula en el sistema
     const userRes = await db.query('SELECT id FROM public.usuarios WHERE cedula = $1', [cedula.trim()]);
     let usuarioId;
+    let mensajeResultado = '';
 
     if (userRes.rows.length > 0) {
       usuarioId = userRes.rows[0].id;
-      // Asociar a la organización con rol de delegado de equipo
       await db.query(
         `INSERT INTO public.usuario_organizaciones (usuario_id, organizacion_id, rol) VALUES ($1, $2, 'delegado de equipo')
          ON CONFLICT (usuario_id, organizacion_id) DO UPDATE SET rol = 'delegado de equipo'`,
         [usuarioId, orgId]
       );
+      mensajeResultado = ` El capitán ${nombre} ya poseía cuenta; se le asoció como delegado de equipo en la liga.`;
     } else {
-      // Crear credenciales nuevas si el jugador no tenía cuenta de usuario
       const emailReal = (correo || `${cedula.trim()}@liga.local`).toLowerCase();
       const passwordInicial = `${nombre.split(' ')[0]}${cedula.trim().substring(0, 5)}!`;
       const hashedPwd = await bcrypt.hash(passwordInicial, 10);
@@ -554,9 +552,10 @@ const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
         const existingEmail = await db.query('SELECT id FROM public.usuarios WHERE email = $1', [emailReal]);
         if (existingEmail.rows.length > 0) {
           usuarioId = existingEmail.rows[0].id;
+          mensajeResultado = ` El capitán fue asociado como delegado (el correo ya estaba registrado).`;
         } else {
           console.error('Error creando usuario en Auth para capitán:', authError);
-          return;
+          return null;
         }
       } else {
         usuarioId = authUser.user.id;
@@ -574,14 +573,17 @@ const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
            ON CONFLICT (usuario_id, organizacion_id) DO UPDATE SET rol = 'delegado de equipo'`,
           [usuarioId, orgId]
         );
+        mensajeResultado = ` 🔑 Credencial de delegado creada automáticamente. Contraseña inicial temporal: ${passwordInicial}`;
       }
     }
 
     if (usuarioId) {
       await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2`, [usuarioId, equipoId]);
     }
+    return mensajeResultado;
   } catch (err) {
     console.error('Error en gestionarDelegadoPorCapitan:', err);
+    return null;
   }
 };
 
