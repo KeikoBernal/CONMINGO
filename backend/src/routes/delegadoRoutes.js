@@ -198,7 +198,7 @@ router.get('/mi-equipo', async (req, res) => {
     const equipo = equipoRes.rows[0];
 
     const jugadoresRes = await db.query(`
-      SELECT id, numero_dorsal, nombre, apellido, cedula, estado, 
+      SELECT id, numero_dorsal, nombre, apellido, cedula, estado, foto_url,
              (id = (SELECT capitan_id FROM public.equipos WHERE id = $1)) as es_capitan
       FROM public.jugadores 
       WHERE equipo_id = $1 

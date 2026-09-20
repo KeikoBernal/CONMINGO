@@ -143,68 +143,104 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+// ==========================================
+  // NUEVAS FUNCIONES DE EXPORTACIÓN (EXCEL, CSV, JSON)
   // ==========================================
-  // EXPORTACIÓN DE SCOUTING A PDF
-  // ==========================================
-  const generarReportePDF = () => {
-    if (!miEquipo) return alert('Datos del equipo no disponibles.');
-    
-    const doc = new jsPDF('landscape');
-    
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`REPORTE DE SCOUTING Y RENDIMIENTO`, 14, 15);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Equipo: ${miEquipo.nombre} | Categoría: ${miEquipo.categoria} - ${miEquipo.tipo_genero}`, 14, 22);
-    doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString('es-VE')}`, 14, 28);
+  
+  const descargarBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Métricas de Rendimiento Grupal`, 14, 40);
-
+  const exportarScouting = (formato) => {
+    if (!miEquipo || !estadisticas) return alert('Datos no disponibles.');
+    const nombreArchivo = `Scouting_${miEquipo.nombre.replace(/\s+/g, '_')}`;
     const grupal = estadisticas.grupal || {};
-    autoTable(doc, {
-      startY: 45,
-      head: [['Prom. Pts/Bolo', 'Diferencial Pts', 'Retención Punto', 'Tiempo Prom/Bolo', 'Desviación Estándar']],
-      body: [[
-        grupal.promedio_puntos_bolo || '0.0',
-        grupal.diferencial_puntos > 0 ? `+${grupal.diferencial_puntos}` : (grupal.diferencial_puntos || '0'),
-        `${grupal.porcentaje_retencion || 0}%`,
-        `${grupal.tiempo_promedio_bolo || 0} min`,
-        grupal.desviacion_estandar || '0.0'
-      ]],
-      theme: 'grid',
-      headStyles: { fillColor: [43, 108, 176] },
-      styles: { halign: 'center', fontSize: 10 }
-    });
 
-    let finalY = doc.lastAutoTable.finalY + 15;
-    doc.text(`Scouting de Jugadores (Métricas Individuales)`, 14, finalY);
+    if (formato === 'json') {
+      const blob = new Blob([JSON.stringify({ equipo: miEquipo, estadisticas }, null, 2)], { type: 'application/json' });
+      descargarBlob(blob, `${nombreArchivo}.json`);
+    } else if (formato === 'csv') {
+      let csv = `Métricas de Rendimiento Grupal\nMetrica,Valor\n`;
+      csv += `Prom. Pts/Bolo,${grupal.promedio_puntos_bolo || '0.0'}\n`;
+      csv += `Diferencial Pts,${grupal.diferencial_puntos || 0}\n`;
+      csv += `Retencion Punto (%),${grupal.porcentaje_retencion || 0}\n`;
+      csv += `Tiempo Prom/Bolo (min),${grupal.tiempo_promedio_bolo || 0}\n`;
+      csv += `Desviacion Estandar,${grupal.desviacion_estandar || '0.0'}\n\n`;
 
-    const headInd = [['N°', 'Jugador', 'Efectividad Arrime', 'Efectividad Boche', 'Tasa de Error', 'Pts/Juego', 'Clutch %', 'Perfil Táctico']];
-    const bodyInd = estadisticas.individual.map(j => [
-      j.dorsal,
-      `${j.apellido} ${j.nombre}`.toUpperCase(),
-      `${j.efectividad_arrime || 0}%`,
-      `${j.efectividad_boche || 0}%`,
-      `${j.tasa_error || 0}%`,
-      j.pts_promedio || '0.0',
-      `${j.clutch || 0}%`,
-      j.perfil_tactico || 'Equilibrado'
-    ]);
+      csv += `Scouting de Jugadores\nDorsal,Jugador,Efectividad Arrime,Efectividad Boche,Tasa de Error,Pts/Juego,Clutch %,Perfil Tactico\n`;
+      estadisticas.individual.forEach(j => {
+        csv += `${j.dorsal},"${j.apellido} ${j.nombre}","${j.efectividad_arrime || 0}%","${j.efectividad_boche || 0}%","${j.tasa_error || 0}%",${j.pts_promedio || '0.0'},"${j.clutch || 0}%","${j.perfil_tactico || 'Equilibrado'}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      descargarBlob(blob, `${nombreArchivo}.csv`);
+    } else if (formato === 'excel') {
+      let html = `<h3>Métricas de Rendimiento Grupal</h3><table border="1"><tr><th>Métrica</th><th>Valor</th></tr>`;
+      html += `<tr><td>Prom. Pts/Bolo</td><td>${grupal.promedio_puntos_bolo || '0.0'}</td></tr>`;
+      html += `<tr><td>Diferencial Pts</td><td>${grupal.diferencial_puntos || 0}</td></tr>`;
+      html += `<tr><td>Retención Punto (%)</td><td>${grupal.porcentaje_retencion || 0}%</td></tr>`;
+      html += `<tr><td>Tiempo Prom/Bolo</td><td>${grupal.tiempo_promedio_bolo || 0} min</td></tr>`;
+      html += `<tr><td>Desviación Estándar</td><td>±${grupal.desviacion_estandar || '0.0'}</td></tr></table><br/>`;
 
-    autoTable(doc, {
-      startY: finalY + 5,
-      head: headInd,
-      body: bodyInd,
-      theme: 'striped',
-      headStyles: { fillColor: [45, 55, 72] },
-      styles: { fontSize: 9, halign: 'center' },
-      columnStyles: { 1: { halign: 'left' } }
-    });
+      html += `<h3>Scouting de Jugadores</h3><table border="1"><tr><th>Dorsal</th><th>Jugador</th><th>Efectividad Arrime</th><th>Efectividad Boche</th><th>Tasa Error</th><th>Pts/Juego</th><th>Clutch %</th><th>Perfil Táctico</th></tr>`;
+      estadisticas.individual.forEach(j => {
+        html += `<tr><td>${j.dorsal}</td><td>${j.apellido} ${j.nombre}</td><td>${j.efectividad_arrime || 0}%</td><td>${j.efectividad_boche || 0}%</td><td>${j.tasa_error || 0}%</td><td>${j.pts_promedio || '0.0'}</td><td>${j.clutch || 0}%</td><td>${j.perfil_tactico || 'Equilibrado'}</td></tr>`;
+      });
+      html += `</table>`;
+      const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+      descargarBlob(blob, `${nombreArchivo}.xls`);
+    }
+  };
 
-    doc.save(`Scouting_${miEquipo.nombre.replace(/\s+/g, '_')}.pdf`);
+  const exportarPlanilla = async (partidoId, formato) => {
+    try {
+      setMensaje(`Generando archivo ${formato.toUpperCase()} de la planilla...`);
+      
+      if (formato === 'pdf') {
+        window.open(`/?vista=puntajes&partido_id=${partidoId}`, '_blank');
+        setMensaje('');
+        return;
+      }
+
+      // Reutiliza la ruta que ya tienes validada para cargar los datos
+      const res = await fetchConToken(`/partidos/${partidoId}/planilla`);
+      if (!res.ok) throw new Error('Error al obtener datos');
+      
+      const data = await res.json();
+      const partidoData = data.partido;
+      const nominaData = data.nomina;
+
+      const nombreArchivo = `Planilla_${partidoData.local_nombre}_vs_${partidoData.visita_nombre}`.replace(/\s+/g, '_');
+
+      if (formato === 'json') {
+        const blob = new Blob([JSON.stringify({ partido: partidoData, nomina: nominaData }, null, 2)], { type: 'application/json' });
+        descargarBlob(blob, `${nombreArchivo}.json`);
+      } else if (formato === 'csv') {
+        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${new Date(partidoData.fecha_hora).toLocaleString('es-VE')}\n\nCedula,Nombre,Apellido,Dorsal,Equipo\n`;
+        nominaData.forEach(j => {
+          csv += `${j.cedula},"${j.nombre}","${j.apellido}",${j.numero_dorsal},"${j.equipo_nombre}"\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        descargarBlob(blob, `${nombreArchivo}.csv`);
+      } else if (formato === 'excel') {
+        let html = `<table border="1"><tr><th>Encuentro</th><th>${partidoData.local_nombre} vs ${partidoData.visita_nombre}</th></tr>`;
+        html += `<tr><th>Fecha</th><th>${new Date(partidoData.fecha_hora).toLocaleString('es-VE')}</th></tr></table><br/>`;
+        html += `<table border="1"><tr><th>Cédula</th><th>Nombre</th><th>Apellido</th><th>Dorsal</th><th>Equipo</th></tr>`;
+        nominaData.forEach(j => {
+          html += `<tr><td>${j.cedula}</td><td>${j.nombre}</td><td>${j.apellido}</td><td>${j.numero_dorsal}</td><td>${j.equipo_nombre}</td></tr>`;
+        });
+        html += `</table>`;
+        const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+        descargarBlob(blob, `${nombreArchivo}.xls`);
+      }
+      setMensaje('');
+    } catch (e) {
+      setMensaje('❌ Error al exportar la planilla.');
+    }
   };
 
   return (
@@ -249,6 +285,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
             <thead>
               <tr style={{ background: '#EDF2F7', textAlign: 'left' }}>
                 <th style={{ padding: '12px' }}>Dorsal</th>
+                <th style={{ padding: '12px', textAlign: 'center' }}>Foto</th>
                 <th style={{ padding: '12px' }}>Jugador</th>
                 <th style={{ padding: '12px' }}>Cédula</th>
                 <th style={{ padding: '12px' }}>Rol</th>
@@ -257,11 +294,24 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
             </thead>
             <tbody>
               {jugadores.length === 0 ? (
-                <tr><td colSpan={5} style={{ textAlign: 'center', padding: '20px', color: '#718096' }}>No hay jugadores registrados en tu equipo.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#718096' }}>No hay jugadores registrados en tu equipo.</td></tr>
               ) : (
                 jugadores.map(j => (
-                  <tr key={j.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
+                  <tr key={j.id} style={{ borderBottom: '1px solid #E2E8F0', verticalAlign: 'middle' }}>
                     <td style={{ padding: '12px' }}><strong>#{j.numero_dorsal}</strong></td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                      {j.foto_url ? (
+                        <img 
+                          src={j.foto_url} 
+                          alt={`Foto de ${j.nombre}`} 
+                          style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #CBD5E0' }} 
+                        />
+                      ) : (
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', fontSize: '1.2em' }}>
+                          👤
+                        </div>
+                      )}
+                    </td>
                     <td style={{ padding: '12px' }}>{j.nombre} {j.apellido} {j.es_capitan && '⭐ (Capitán)'}</td>
                     <td style={{ padding: '12px' }}>{j.cedula}</td>
                     <td style={{ padding: '12px', color: '#4A5568' }}>{j.posicion || 'Atleta'}</td>
@@ -278,14 +328,23 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
         </div>
       )}
 
-      {/* VISTA 2: CALENDARIO Y PLANILLAS DE PUNTAJES */}
+    {/* VISTA 2: CALENDARIO Y PLANILLAS DE PUNTAJES */}
       {pestana === 'calendario' && (
         <div>
           {partidoPlanillaId && datosPlanillaPartido ? (
             <div>
-              <button onClick={cerrarPlanilla} style={{ marginBottom: '15px', padding: '8px 15px', background: '#E2E8F0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                ⬅️ Volver al Calendario
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+                <button onClick={cerrarPlanilla} style={{ padding: '8px 15px', background: '#E2E8F0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  ⬅️ Volver al Calendario
+                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <span style={{ fontSize: '0.9em', alignSelf: 'center', fontWeight: 'bold' }}>📥 Descargar Planilla:</span>
+                  <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'pdf')} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>PDF</button>
+                  <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'excel')} style={{ background: '#276749', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Excel</button>
+                  <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'csv')} style={{ background: '#D69E2E', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>CSV</button>
+                  <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'json')} style={{ background: '#4A5568', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>JSON</button>
+                </div>
+              </div>
               <PlanillaUniversal
                 rol="espectador"
                 estadoPartido={datosPlanillaPartido.estado}
@@ -317,20 +376,28 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                   <p style={{ color: '#718096' }}>Tu equipo no tiene partidos programados.</p>
                 ) : (
                   partidos.map(p => (
-                    <div key={p.id} style={{ border: '1px solid #CBD5E0', borderRadius: '8px', padding: '15px', borderLeft: p.estado === 'Finalizado' ? '4px solid #38A169' : '4px solid #3182CE' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '0.8em', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>{p.fase}</span>
-                        <span style={{ fontSize: '0.8em', background: '#EDF2F7', padding: '2px 6px', borderRadius: '4px' }}>{p.estado}</span>
+                    <div key={p.id} style={{ border: '1px solid #CBD5E0', borderRadius: '8px', padding: '15px', borderLeft: p.estado === 'Finalizado' ? '4px solid #38A169' : '4px solid #3182CE', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '0.8em', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>{p.fase}</span>
+                          <span style={{ fontSize: '0.8em', background: '#EDF2F7', padding: '2px 6px', borderRadius: '4px' }}>{p.estado}</span>
+                        </div>
+                        <h4 style={{ margin: '0 0 5px 0' }}>{p.local_nombre} <span style={{ color: '#A0AEC0' }}>vs</span> {p.visita_nombre}</h4>
+                        <p style={{ margin: 0, fontSize: '0.9em', color: '#4A5568' }}>📅 {new Date(p.fecha_hora).toLocaleString('es-VE')}</p>
+                        <p style={{ margin: '5px 0 10px 0', fontSize: '0.9em', color: '#4A5568' }}>🏟️ {p.sede_nombre}</p>
                       </div>
-                      <h4 style={{ margin: '0 0 5px 0' }}>{p.local_nombre} <span style={{ color: '#A0AEC0' }}>vs</span> {p.visita_nombre}</h4>
-                      <p style={{ margin: 0, fontSize: '0.9em', color: '#4A5568' }}>📅 {new Date(p.fecha_hora).toLocaleString('es-VE')}</p>
-                      <p style={{ margin: '5px 0 10px 0', fontSize: '0.9em', color: '#4A5568' }}>🏟️ {p.sede_nombre}</p>
-                      <button 
-                        onClick={() => cargarPlanillaPartido(p.id)} 
-                        style={{ width: '100%', padding: '8px', background: '#3182CE', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85em' }}
-                      >
-                        📄 Ver Planilla y Puntajes
-                      </button>
+                      
+                      <div style={{ marginTop: 'auto' }}>
+                        <button onClick={() => cargarPlanillaPartido(p.id)} style={{ width: '100%', padding: '8px', background: '#3182CE', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85em', marginBottom: '8px' }}>
+                          📄 Ver Planilla Detallada
+                        </button>
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                          <button onClick={() => exportarPlanilla(p.id, 'pdf')} style={{ flex: 1, background: '#E53E3E', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', fontSize: '0.8em', cursor: 'pointer', fontWeight: 'bold' }}>PDF</button>
+                          <button onClick={() => exportarPlanilla(p.id, 'excel')} style={{ flex: 1, background: '#276749', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', fontSize: '0.8em', cursor: 'pointer', fontWeight: 'bold' }}>Excel</button>
+                          <button onClick={() => exportarPlanilla(p.id, 'csv')} style={{ flex: 1, background: '#D69E2E', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', fontSize: '0.8em', cursor: 'pointer', fontWeight: 'bold' }}>CSV</button>
+                          <button onClick={() => exportarPlanilla(p.id, 'json')} style={{ flex: 1, background: '#4A5568', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', fontSize: '0.8em', cursor: 'pointer', fontWeight: 'bold' }}>JSON</button>
+                        </div>
+                      </div>
                     </div>
                   ))
                 )}
@@ -340,14 +407,19 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
         </div>
       )}
 
-      {/* VISTA 3: ESTADÍSTICAS Y SCOUTING */}
+{/* VISTA 3: ESTADÍSTICAS Y SCOUTING */}
       {pestana === 'estadisticas' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
             <h2 style={{ margin: 0, color: '#2D3748' }}>📊 Centro de Scouting Avanzado</h2>
-            <button onClick={generarReportePDF} style={{ background: '#38A169', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              🖨️ Descargar Reporte PDF
-            </button>
+            
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span style={{ fontSize: '0.9em', alignSelf: 'center', fontWeight: 'bold' }}>📥 Exportar Scouting:</span>
+              <button onClick={() => generarReportePDF()} style={{ background: '#E53E3E', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>PDF</button>
+              <button onClick={() => exportarScouting('excel')} style={{ background: '#276749', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Excel</button>
+              <button onClick={() => exportarScouting('csv')} style={{ background: '#D69E2E', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>CSV</button>
+              <button onClick={() => exportarScouting('json')} style={{ background: '#4A5568', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>JSON</button>
+            </div>
           </div>
 
           <h3 style={{ borderBottom: '2px solid #E2E8F0', paddingBottom: '10px' }}>Rendimiento Grupal</h3>
