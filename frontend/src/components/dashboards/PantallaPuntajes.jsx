@@ -38,7 +38,10 @@ export default function PantallaPuntajes() {
 
   const cargarPartidoEspecifico = (id) => {
     setCargando(true);
-    socketRef.current = io(SOCKET_URL);
+    socketRef.current = io(SOCKET_URL, {
+      transports: ['websocket'],
+      upgrade: false
+    });
     socketRef.current.emit('unirse_partido', id);
     
     socketRef.current.on('actualizar_planilla', (data) => {
@@ -66,41 +69,83 @@ export default function PantallaPuntajes() {
       }).catch(() => setCargando(false));
   };
 
-  if (cargando) return <div style={{ padding: '40px', textAlign: 'center', color: '#FFF', background: '#1A202C', minHeight: '100vh' }}><h3>🔄 Sintonizando en vivo...</h3></div>;
+  if (cargando) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-brand-brown text-brand-gold font-sans">
+        <div className="flex flex-col items-center gap-4 animate-pulse">
+          <svg className="w-12 h-12 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          <h3 className="text-xl font-bold tracking-widest uppercase">Sintonizando en vivo...</h3>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '20px', background: '#1A202C', color: '#FFF', minHeight: '100vh', fontFamily: 'sans-serif' }}>
-      <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>📺 Pantalla Oficial de Resultados en Vivo</h2>
-
+    <div className="min-h-screen bg-brand-brown text-brand-cream font-sans p-4 md:p-8">
       {!partidoSeleccionado ? (
-        <div>
-          <h3>Partidos Activos:</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            {partidosEnVivo.length === 0 ? <p>No hay partidos activos en este momento.</p> : partidosEnVivo.map(p => (
-              <button key={p.id} onClick={() => window.location.href=`/?vista=puntajes&partido_id=${p.id}`} style={{ padding: '20px', background: '#2D3748', color: '#FFF', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left' }}>
-                <strong>{p.local_nombre} vs {p.visita_nombre}</strong><br/><small style={{ color: '#CBD5E0' }}>Sede: {p.sede_nombre}</small>
-              </button>
-            ))}
+        <div className="max-w-6xl mx-auto animate-fade-in">
+          <div className="flex items-center justify-center gap-3 mb-10 border-b border-brand-gold/20 pb-6">
+            <svg className="w-8 h-8 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+            <h2 className="text-2xl md:text-4xl font-black text-brand-gold uppercase tracking-wider text-center">
+              Transmisión de Resultados en Vivo
+            </h2>
           </div>
+
+          <h3 className="text-lg font-bold text-brand-cream/70 uppercase tracking-widest mb-6">Partidos Activos</h3>
+          
+          {partidosEnVivo.length === 0 ? (
+            <div className="bg-brand-cream/5 border border-brand-gold/20 rounded-xl p-12 text-center text-brand-cream/50">
+              <p className="text-lg">No hay partidos activos en este momento.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {partidosEnVivo.map(p => (
+                <button 
+                  key={p.id} 
+                  onClick={() => window.location.href=`/?vista=puntajes&partido_id=${p.id}`} 
+                  className="bg-brand-cream text-brand-brown p-6 rounded-xl border-2 border-brand-gold/30 hover:border-brand-gold hover:shadow-[0_0_20px_rgba(212,175,55,0.3)] transition-all text-left group relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 bg-brand-rust text-white text-[0.65rem] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                    En Vivo
+                  </div>
+                  <div className="text-xl font-black mb-3 leading-tight pr-8">
+                    {p.local_nombre} <span className="text-brand-rust mx-1 text-base">vs</span> {p.visita_nombre}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-brand-brown/70 font-medium border-t border-brand-gold/20 pt-3">
+                    <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Sede: {p.sede_nombre}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
-        <div style={{ background: '#FFF', color: '#000', borderRadius: '8px', overflow: 'hidden' }}>
-          {/* Se llama al componente PlanillaUniversal pasandole el rol='espectador' para deshabilitar clicks */}
-          <PlanillaUniversal 
-            rol="espectador"
-            estadoPartido={partidoSeleccionado.estado}
-            partidoId={partidoSeleccionado.id}
-            datosPartido={{
-              arbitro: partidoSeleccionado.arbitro_nombre, anotador: partidoSeleccionado.anotador_nombre,
-              capitanLocal: partidoSeleccionado.capitan_local_nombre, capitanVisita: partidoSeleccionado.capitan_visita_nombre,
-              localNombre: partidoSeleccionado.local_nombre, visitaNombre: partidoSeleccionado.visita_nombre,
-              horaInicio: partidoSeleccionado.hora_inicio, horaFinal: partidoSeleccionado.hora_final,
-              fecha: partidoSeleccionado.fecha_hora ? new Date(partidoSeleccionado.fecha_hora).toLocaleDateString('es-VE') : ''
-            }}
-            jugadoresLocal={jugadoresLocal} jugadoresVisita={jugadoresVisita}
-            efectividadJugadores={efectividadJugadores} manualStats={manualStats}
-            puntosPorManoLocal={puntosPorManoLocal} puntosPorManoVisita={puntosPorManoVisita}
-          />
+        <div className="max-w-350 mx-auto animate-fade-in">
+          <div className="mb-4">
+            <button onClick={() => window.location.href='/?vista=puntajes'} className="text-brand-gold hover:text-white font-bold flex items-center gap-2 transition-colors text-sm uppercase tracking-wider">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+              Volver a la cartelera
+            </button>
+          </div>
+          <div className="bg-brand-cream text-brand-brown rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.5)] border border-brand-gold/20">
+            <PlanillaUniversal 
+              rol="espectador"
+              estadoPartido={partidoSeleccionado.estado}
+              partidoId={partidoSeleccionado.id}
+              datosPartido={{
+                arbitro: partidoSeleccionado.arbitro_nombre, anotador: partidoSeleccionado.anotador_nombre,
+                capitanLocal: partidoSeleccionado.capitan_local_nombre, capitanVisita: partidoSeleccionado.capitan_visita_nombre,
+                localNombre: partidoSeleccionado.local_nombre, visitaNombre: partidoSeleccionado.visita_nombre,
+                horaInicio: partidoSeleccionado.hora_inicio, horaFinal: partidoSeleccionado.hora_final,
+                fecha: partidoSeleccionado.fecha_hora ? new Date(partidoSeleccionado.fecha_hora).toLocaleDateString('es-VE') : ''
+              }}
+              jugadoresLocal={jugadoresLocal} jugadoresVisita={jugadoresVisita}
+              efectividadJugadores={efectividadJugadores} manualStats={manualStats}
+              puntosPorManoLocal={puntosPorManoLocal} puntosPorManoVisita={puntosPorManoVisita}
+            />
+          </div>
         </div>
       )}
     </div>

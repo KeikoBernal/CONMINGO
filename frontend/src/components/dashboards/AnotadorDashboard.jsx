@@ -8,6 +8,10 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 
 export default function AnotadorDashboard({ usuario, cerrarSesion }) {
+  // PESTAÑAS DEL PANEL LATERAL: 'hoy' | 'proximos' | 'historial'
+  const [pestana, setPestana] = useState(localStorage.getItem('anotadorPestana') || 'hoy');
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
   const [partidos, setPartidos] = useState([]);
   const [partidoActivo, setPartidoActivo] = useState(null);
   const [jugadoresLocal, setJugadoresLocal] = useState([]);
@@ -34,6 +38,16 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const [destinatarioMsg, setDestinatarioMsg] = useState('rol_arbitro');
   const socketRef = useRef(null);
 
+  const [token, setToken] = useState(null);
+
+  // --- ESTADOS MULTILIGA ---
+  const [ligas, setLigas] = useState([]);
+  const [ligaFiltro, setLigaFiltro] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('anotadorPestana', pestana);
+  }, [pestana]);
+
   const fetchConToken = async (endpoint, options = {}) => {
     const { data: { session } } = await supabase.auth.getSession();
     return await fetch(`${API_URL}/operativo${endpoint}`, {
@@ -41,25 +55,18 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     });
   };
 
-  const [token, setToken] = useState(null);
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setToken(session?.access_token);
     });
   }, []);
 
-  // --- NUEVOS ESTADOS MULTILIGA ---
-  const [ligas, setLigas] = useState([]);
-  const [ligaFiltro, setLigaFiltro] = useState('');
-
-const cargarDatosOficial = async () => {
+  const cargarDatosOficial = async () => {
     const res = await fetchConToken('/mis-partidos');
     if (res.ok) {
       const partidosData = await res.json();
       setPartidos(partidosData);
 
-      // --- NUEVO: RESTAURAR PARTIDO AL REFRESCAR LA PÁGINA ---
       const savedPartidoId = localStorage.getItem('partidoActivoId');
       if (savedPartidoId) {
         const partidoToRestore = partidosData.find(p => p.id === parseInt(savedPartidoId) && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
@@ -79,9 +86,7 @@ const cargarDatosOficial = async () => {
     }
   };
 
-  // --- REEMPLAZO DEL useEffect: Inicializamos Socket PRIMERO ---
   useEffect(() => { 
-
     socketRef.current = io(SOCKET_URL, {
       transports: ['websocket'],
       upgrade: false
@@ -110,9 +115,9 @@ const cargarDatosOficial = async () => {
 
   const formatoT = (t) => `${Math.floor(t / 60).toString().padStart(2, '0')}:${(t % 60).toString().padStart(2, '0')}`;
 
-const seleccionarPartido = async (partido) => {
+  const seleccionarPartido = async (partido) => {
     setPartidoActivo(partido);
-    localStorage.setItem('partidoActivoId', partido.id); // NUEVO: GUARDAR ESTADO AL ENTRAR
+    localStorage.setItem('partidoActivoId', partido.id);
 
     socketRef.current.emit('unirse_partido', partido.id);
     socketRef.current.emit('presencia_oficial', { partidoId: partido.id, rol: 'anotador', estado: true });
@@ -130,7 +135,7 @@ const seleccionarPartido = async (partido) => {
       if (data.estadoPartido) {
         if (data.estadoPartido === 'Suspendido') {
           alert('🛑 El árbitro ha suspendido el partido. Los resultados hasta este momento se han guardado automáticamente. Serás redirigido al menú principal.');
-          localStorage.removeItem('partidoActivoId'); // NUEVO: LIMPIAR SI LO SUSPENDEN REMOTAMENTE
+          localStorage.removeItem('partidoActivoId');
           setPartidoActivo(null);
         } else {
           setPartidoActivo(prev => prev ? ({ ...prev, estado: data.estadoPartido }) : null);
@@ -167,7 +172,6 @@ const seleccionarPartido = async (partido) => {
     setNuevoMensaje('');
   };
 
-  // 1. SINCRONIZACIÓN DEL CRONÓMETRO AL INICIAR
   const handleIniciarPartido = async () => {
     const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/iniciar`, { method: 'PUT', body: JSON.stringify({ hora_inicio: hora }) });
@@ -179,7 +183,6 @@ const seleccionarPartido = async (partido) => {
     }
   };
 
-  // 2. SINCRONIZACIÓN DEL CRONÓMETRO AL FINALIZAR
   const finalizarPartido = async () => {
     if (!window.confirm('¿Cerrar acta y registrar hora final?')) return;
     const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -190,18 +193,16 @@ const seleccionarPartido = async (partido) => {
       socketRef.current?.emit('partido_finalizado', { partidoId: partidoActivo.id, hora_final: hora });
       socketRef.current?.emit('sync_cronometro', { partido_id: partidoActivo.id, tiempoTurno, cronometroTurnoActivo: false, tiempoGlobal, cronometroGlobalActivo: false });
       localStorage.removeItem(`backup_partido_${partidoActivo.id}`); 
-      localStorage.removeItem('partidoActivoId'); // NUEVO: LIMPIAR AL FINALIZAR
+      localStorage.removeItem('partidoActivoId');
     }
   };
 
-  // 3. SINCRONIZACIÓN AL PRESIONAR INICIAR/PAUSAR
   const toggleTurno = () => {
     const nuevoEstado = !cronometroTurnoActivo;
     setCronometroTurnoActivo(nuevoEstado);
     socketRef.current?.emit('sync_cronometro', { partido_id: partidoActivo.id, tiempoTurno, cronometroTurnoActivo: nuevoEstado, tiempoGlobal, cronometroGlobalActivo });
   };
 
-  // 4. SINCRONIZACIÓN AL PRESIONAR RESET
   const resetTurno = () => {
     setTiempoTurno(0); setCronometroTurnoActivo(false);
     socketRef.current?.emit('sync_cronometro', { partido_id: partidoActivo.id, tiempoTurno: 0, cronometroTurnoActivo: false, tiempoGlobal, cronometroGlobalActivo });
@@ -230,177 +231,371 @@ const seleccionarPartido = async (partido) => {
     socketRef.current?.emit('actualizar_stats_manuales', { partido_id: partidoActivo.id, manualStats: nuevosStats });
   };
 
-  // Aplicamos el filtro a la variable partidosFiltrados ANTES de dividirlos por fechas
   const partidosFiltrados = partidos.filter(p => !ligaFiltro || p.organizacion_id === ligaFiltro);
-
   const hoyFecha = new Date().toLocaleDateString('es-VE');
+  
   const partidosHoy = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFecha && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
   const partidosAgendados = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') !== hoyFecha && p.estado !== 'Finalizado');
   const partidosFinalizados = partidosFiltrados.filter(p => p.estado === 'Finalizado' || p.estado === 'Suspendido');
 
+  // Íconos para la barra lateral
+  const NavIcon = ({ id }) => {
+    switch (id) {
+      case 'hoy':
+        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
+      case 'proximos':
+        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+      case 'historial':
+        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '15px', fontFamily: 'sans-serif' }}>
+    <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       
-      {/* Pasamos ligaFiltro al sistema de mensajería para aislar los chats por organización */}
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
       
+      {/* MODAL REGISTRO JUGADAS (MESA DE ANOTACIÓN) */}
       {modalRegistro && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1500 }}>
-          <div style={{ background: '#FFF', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '350px', textAlign: 'center' }}>
-            <h2 style={{ margin: '0 0 20px 0' }}>Mano #{modalRegistro.mIdx + 1}</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <button onClick={() => registrarLanzamiento('A')} style={{ padding: '20px', background: '#3182CE', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.5em', fontWeight: 'bold' }}>A</button>
-              <button onClick={() => registrarLanzamiento('a')} style={{ padding: '20px', background: '#E53E3E', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.5em', fontWeight: 'bold' }}>a (Nulo)</button>
-              <button onClick={() => registrarLanzamiento('B')} style={{ padding: '20px', background: '#38A169', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.5em', fontWeight: 'bold' }}>B</button>
-              <button onClick={() => registrarLanzamiento('b')} style={{ padding: '20px', background: '#E53E3E', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.5em', fontWeight: 'bold' }}>b (Nulo)</button>
-              <button onClick={() => registrarLanzamiento('N')} style={{ gridColumn: 'span 2', padding: '15px', background: '#718096', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.3em', fontWeight: 'bold' }}>N (Nulo General)</button>
-              <button onClick={() => registrarLanzamiento('')} style={{ gridColumn: 'span 2', padding: '15px', background: '#E2E8F0', color: '#4A5568', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>Borrar Celda</button>
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl animate-slide-up text-center border border-brand-gold/30">
+            <h2 className="text-xl font-black text-brand-brown mb-5">Registro Mano #{modalRegistro.mIdx + 1}</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => registrarLanzamiento('A')} className="py-4 bg-brand-blue text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-blue-600 transition-colors">A</button>
+              <button onClick={() => registrarLanzamiento('a')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">a <span className="text-sm block font-medium">Nulo</span></button>
+              <button onClick={() => registrarLanzamiento('B')} className="py-4 bg-green-600 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-green-700 transition-colors">B</button>
+              <button onClick={() => registrarLanzamiento('b')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">b <span className="text-sm block font-medium">Nulo</span></button>
+              <button onClick={() => registrarLanzamiento('N')} className="col-span-2 py-3 bg-gray-500 text-white rounded-lg text-xl font-bold shadow-sm hover:bg-gray-600 transition-colors">N <span className="text-sm font-medium ml-2">(Nulo General)</span></button>
+              <button onClick={() => registrarLanzamiento('')} className="col-span-2 py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors mt-2">Borrar Celda</button>
             </div>
-            <button onClick={() => setModalRegistro(null)} style={{ marginTop: '20px', width: '100%', padding: '10px', background: 'transparent', border: 'none' }}>Cancelar</button>
+            <button onClick={() => setModalRegistro(null)} className="mt-5 w-full py-3 bg-transparent text-brand-brown font-bold hover:bg-brand-cream rounded-lg transition-colors">Cancelar</button>
           </div>
         </div>
       )}
 
+      {/* MODAL STATS MANUALES */}
       {modalStatPanel && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1600 }}>
-          <div style={{ background: '#FFF', padding: '30px', borderRadius: '12px', textAlign: 'center', width: '90%', maxWidth: '300px' }}>
-            <h3 style={{ margin: '0 0 10px 0', color: '#4A5568' }}>Ajustar {modalStatPanel.tipo}</h3>
-            <div style={{ fontSize: '4em', margin: '20px 0', fontWeight: '900', color: '#2D3748' }}>{manualStats[modalStatPanel.jId]?.[modalStatPanel.tipo] || 0}</div>
-            <div style={{ display: 'flex', gap: '20px' }}>
-              <button onClick={() => modificarStatManual(modalStatPanel.jId, modalStatPanel.tipo, -1)} style={{ flex: 1, padding: '20px', fontSize: '2em', background: '#E53E3E', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold' }}>-</button>
-              <button onClick={() => modificarStatManual(modalStatPanel.jId, modalStatPanel.tipo, 1)} style={{ flex: 1, padding: '20px', fontSize: '2em', background: '#38A169', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold' }}>+</button>
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1600 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-xs shadow-2xl animate-slide-up text-center border border-brand-gold/30">
+            <h3 className="text-lg font-bold text-brand-brown/70 mb-2">Ajustar {modalStatPanel.tipo}</h3>
+            <div className="text-6xl font-black text-brand-brown my-6">{manualStats[modalStatPanel.jId]?.[modalStatPanel.tipo] || 0}</div>
+            <div className="flex gap-4">
+              <button onClick={() => modificarStatManual(modalStatPanel.jId, modalStatPanel.tipo, -1)} className="flex-1 py-4 text-3xl bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-colors shadow-sm">-</button>
+              <button onClick={() => modificarStatManual(modalStatPanel.jId, modalStatPanel.tipo, 1)} className="flex-1 py-4 text-3xl bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors shadow-sm">+</button>
             </div>
-            <button onClick={() => setModalStatPanel(null)} style={{ marginTop: '25px', width: '100%', padding: '12px', background: '#E2E8F0', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>Cerrar Panel</button>
+            <button onClick={() => setModalStatPanel(null)} className="mt-6 w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cerrar Panel</button>
           </div>
         </div>
       )}
 
+      {/* MODAL ASIGNAR TANTOS */}
       {modalTantos && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1500 }}>
-          <div style={{ background: '#FFF', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '350px', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>Asignar Tantos - Mano #{modalTantos.manoIdx + 1}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '15px' }}>
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl animate-slide-up text-center border border-brand-gold/30">
+            <h3 className="text-xl font-black text-brand-brown mb-5">Asignar Tantos - Mano #{modalTantos.manoIdx + 1}</h3>
+            <div className="grid grid-cols-3 gap-3 mb-5">
               {[0, 1, 2, 3, 4, 5, 6].map(p => (
-                <button key={p} onClick={() => registrarTantosMano(p)} style={{ padding: '20px', background: p === 0 ? '#CBD5E0' : '#3182CE', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.4em', fontWeight: 'bold' }}>{p}</button>
+                <button 
+                  key={p} 
+                  onClick={() => registrarTantosMano(p)} 
+                  className={`py-4 text-white rounded-lg text-2xl font-bold shadow-sm transition-colors ${p === 0 ? 'bg-gray-400 hover:bg-gray-500' : 'bg-brand-blue hover:bg-blue-600'}`}
+                >
+                  {p}
+                </button>
               ))}
             </div>
-            <button onClick={() => setModalTantos(null)} style={{ width: '100%', padding: '10px', background: '#E2E8F0', border: 'none', borderRadius: '4px' }}>Cancelar</button>
+            <button onClick={() => setModalTantos(null)} className="w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', borderBottom: '2px solid #E2E8F0', paddingBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
-        <h1 style={{ margin: 0, color: '#2D3748' }}>📝 Panel Oficial de Anotación</h1>
-        
-        {/* SELECTOR MULTILIGA */}
-        {ligas.length > 0 && (
-          <select 
-            value={ligaFiltro} 
-            onChange={(e) => setLigaFiltro(e.target.value)}
-            style={{ padding: '8px', fontSize: '1em', borderRadius: '4px', border: '1px solid #CBD5E0', background: '#FFF' }}
-          >
-            {ligas.map(l => <option key={l.id} value={l.id}>Liga: {l.nombre}</option>)}
-          </select>
-        )}
-
-        <button onClick={cerrarSesion} style={{ padding: '8px 16px', background: '#E2E8F0', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Cerrar Sesión</button>
-      </div>
-
-      {!partidoActivo ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
-          <div>
-            <h3 style={{ color: '#3182CE', borderBottom: '2px solid #3182CE', paddingBottom: '5px' }}>📅 Partidos de Hoy</h3>
-            {partidosHoy.length === 0 ? <p style={{ color: '#A0AEC0' }}>No hay partidos agendados para hoy.</p> : partidosHoy.map(p => (
-              <div key={p.id} style={{ background: '#FFF', border: '1px solid #CBD5E0', borderRadius: '8px', padding: '15px', marginBottom: '10px' }}>
-                <div style={{ fontSize: '1.1em', fontWeight: 'bold', marginBottom: '10px' }}>{p.local_nombre} vs {p.visita_nombre}</div>
-                <div style={{ fontSize: '0.85em', color: '#718096', marginBottom: '15px' }}>⌚ {new Date(p.fecha_hora).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})} | 🏟️ {p.sede_nombre}</div>
-                <button onClick={() => seleccionarPartido(p)} style={{ width: '100%', padding: '10px', background: '#3182CE', color: '#FFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Entrar al Partido</button>
-              </div>
-            ))}
-          </div>
-          <div>
-            <h3 style={{ color: '#D69E2E', borderBottom: '2px solid #D69E2E', paddingBottom: '5px' }}>🗓️ Próximos Partidos</h3>
-            {partidosAgendados.map(p => (
-              <div key={p.id} style={{ background: '#FFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '15px', marginBottom: '10px' }}>
-                <div style={{ fontWeight: 'bold' }}>{p.local_nombre} vs {p.visita_nombre}</div>
-                <div style={{ fontSize: '0.8em', color: '#718096' }}>{new Date(p.fecha_hora).toLocaleDateString('es-VE')}</div>
-              </div>
-            ))}
-          </div>
-          <div>
-            <h3 style={{ color: '#4A5568', borderBottom: '2px solid #4A5568', paddingBottom: '5px' }}>📁 Historial</h3>
-            {partidosFinalizados.map(p => (
-              <div key={p.id} style={{ background: '#EDF2F7', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '15px', marginBottom: '10px', opacity: 0.9 }}>
-                <div style={{ fontWeight: 'bold' }}>{p.local_nombre} vs {p.visita_nombre}</div>
-                <div style={{ fontSize: '0.8em', color: '#718096', marginBottom: '10px' }}>{p.estado} - {p.hora_final || 'Sin Finalizar'}</div>
-                <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} style={{ width: '100%', padding: '8px', background: '#38A169', color: '#FFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85em' }}>📄 Ver Acta / Descargar PDF</button>
-              </div>
-            ))}
+      {/* SIDEBAR LATERAL DEL ANOTADOR */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-brand-brown text-brand-cream shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:shrink-0`}>
+        <div className="p-6 border-b border-brand-gold/20 shrink-0 bg-brand-brown/50">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-brand-cream/10 border border-brand-gold/50 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            </div>
+            <div className="overflow-hidden">
+              <h1 className="text-base font-bold text-brand-cream truncate">Anotador Oficial</h1>
+              <p className="text-xs text-brand-gold font-semibold uppercase tracking-wider mt-0.5">Mesa Técnica</p>
+            </div>
           </div>
         </div>
-      ) : (
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+
+        <div className="flex-1 overflow-y-auto py-6 hide-scrollbar flex flex-col gap-6">
+          <div>
+            <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Navegación</div>
+            <nav className="space-y-1">
+              {[
+                { id: 'hoy', label: 'Partidos de Hoy', badge: partidosHoy.length },
+                { id: 'proximos', label: 'Próximos Partidos', badge: partidosAgendados.length },
+                { id: 'historial', label: 'Historial Reciente', badge: partidosFinalizados.length }
+              ].map(item => {
+                const isActive = pestana === item.id;
+                return (
+                  <button 
+                    key={item.id} 
+                    onClick={() => { setPestana(item.id); setMenuAbierto(false); }} 
+                    className={`w-full px-6 py-3 text-sm font-medium transition-colors flex items-center justify-between ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <NavIcon id={item.id} />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge > 0 && (
+                      <span className="bg-brand-gold/20 text-brand-gold text-xs font-bold px-2 py-0.5 rounded-full">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-brand-gold/20 shrink-0">
+          <button onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-brand-rust text-brand-cream rounded transition-colors text-sm font-semibold">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            Cerrar Sesión
+          </button>
+        </div>
+      </aside>
+
+      {menuAbierto && (
+        <div className="fixed inset-0 bg-brand-brown/50 z-30 md:hidden" onClick={() => setMenuAbierto(false)}></div>
+      )}
+
+      {/* CONTENEDOR PRINCIPAL */}
+      <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto">
+        
+        {/* HEADER SUPERIOR */}
+        <header className="h-16 sm:h-20 bg-white border-b border-brand-gold/20 flex items-center justify-between px-6 shadow-sm shrink-0">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setMenuAbierto(true)} className="md:hidden p-2 text-brand-brown hover:bg-brand-cream rounded-md">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+            <h2 className="text-xl sm:text-2xl font-bold text-brand-brown capitalize">
+              {partidoActivo ? `Planilla Oficial: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : 'Historial Reciente')}
+            </h2>
+          </div>
           
-          <div style={{ flex: 1, overflowX: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <button onClick={() => { 
-                localStorage.removeItem('partidoActivoId'); 
-                setPartidoActivo(null); 
-                socketRef.current?.emit('presencia_oficial', { partidoId: partidoActivo.id, rol: 'anotador', estado: false }); 
-              }} style={{ padding: '8px 15px', background: '#E2E8F0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>⬅️ Volver
-              </button>              
-              <div style={{ display: 'flex', gap: '15px' }}>
-                {partidoActivo.estado === 'Finalizado' && (
-                  <button onClick={() => window.open(`/?vista=puntajes&partido_id=${partidoActivo.id}`, '_blank')} style={{ padding: '8px 15px', background: '#D69E2E', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📄 Descargar Acta (PDF)</button>
+          <div className="flex items-center gap-3">
+            {ligas.length > 0 && (
+              <select 
+                value={ligaFiltro} 
+                onChange={(e) => setLigaFiltro(e.target.value)}
+                className="p-2 bg-brand-cream/30 border border-brand-gold/40 rounded-lg text-sm font-bold text-brand-brown focus:ring-2 focus:ring-brand-rust outline-none shadow-sm cursor-pointer"
+              >
+                {ligas.map(l => <option key={l.id} value={l.id}>Liga: {l.nombre}</option>)}
+              </select>
+            )}
+          </div>
+        </header>
+
+        {/* CONTENIDO DE LAS PESTAÑAS O PARTIDO ACTIVO */}
+        <div className="p-4 md:p-6 flex-1">
+          {!partidoActivo ? (
+            <div className="max-w-5xl mx-auto">
+              
+              {/* PESTAÑA: PARTIDOS DE HOY */}
+              {pestana === 'hoy' && (
+                <div className="space-y-4 animate-fade-in">
+                  <h3 className="text-lg font-bold text-brand-blue border-b-2 border-brand-blue/30 pb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Encuentros Programados para Hoy
+                  </h3>
+                  {partidosHoy.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
+                      <p className="text-brand-brown/50 text-sm">No hay partidos agendados para el día de hoy.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {partidosHoy.map(p => (
+                        <div key={p.id} className="bg-white border-l-4 border-brand-blue border-y border-r border-y-brand-gold/20 border-r-brand-gold/20 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                          <div className="absolute top-0 right-0 bg-brand-blue/10 text-brand-blue text-[0.65rem] font-bold px-2 py-1 rounded-bl-lg uppercase tracking-wider">Hoy</div>
+                          <div className="text-lg font-black text-brand-brown mb-3 leading-tight pr-8">{p.local_nombre} <span className="text-brand-rust mx-1 text-sm">vs</span> {p.visita_nombre}</div>
+                          
+                          <div className="space-y-1.5 mb-5">
+                            <div className="flex items-center gap-2 text-sm text-brand-brown/70 font-medium">
+                              <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              {new Date(p.fecha_hora).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-brand-brown/70 font-medium">
+                              <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                              {p.sede_nombre}
+                            </div>
+                          </div>
+
+                          <button onClick={() => seleccionarPartido(p)} className="w-full bg-brand-blue text-white py-2.5 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors flex justify-center items-center gap-2 shadow-sm">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            Abrir Planilla de Anotación
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PESTAÑA: PRÓXIMOS PARTIDOS */}
+              {pestana === 'proximos' && (
+                <div className="space-y-4 animate-fade-in">
+                  <h3 className="text-lg font-bold text-brand-gold border-b-2 border-brand-gold/30 pb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Próximos Partidos Agendados
+                  </h3>
+                  {partidosAgendados.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
+                      <p className="text-brand-brown/50 text-sm">No hay próximos partidos en el calendario.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {partidosAgendados.map(p => (
+                        <div key={p.id} className="bg-white border-l-4 border-brand-gold border-y border-r border-y-brand-gold/20 border-r-brand-gold/20 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
+                          <div className="font-bold text-brand-brown mb-1.5 leading-tight">{p.local_nombre} <span className="text-brand-rust mx-1 text-xs">vs</span> {p.visita_nombre}</div>
+                          <div className="flex items-center gap-2 text-xs font-semibold text-brand-brown/60">
+                            <svg className="w-3.5 h-3.5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            {new Date(p.fecha_hora).toLocaleDateString('es-VE', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PESTAÑA: HISTORIAL RECIENTE */}
+              {pestana === 'historial' && (
+                <div className="space-y-4 animate-fade-in">
+                  <h3 className="text-lg font-bold text-brand-brown/70 border-b-2 border-brand-brown/20 pb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Historial Reciente y Archivo
+                  </h3>
+                  {partidosFinalizados.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
+                      <p className="text-brand-brown/50 text-sm">No hay registros en el historial.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {partidosFinalizados.map(p => (
+                        <div key={p.id} className="bg-white border border-brand-gold/30 rounded-xl p-4 shadow-sm">
+                          <div className="font-bold text-brand-brown mb-1 leading-tight">{p.local_nombre} <span className="text-brand-rust mx-1 text-xs">vs</span> {p.visita_nombre}</div>
+                          <div className="flex items-center gap-2 text-xs font-semibold text-brand-brown/60 mb-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[0.65rem] uppercase tracking-wider text-white ${p.estado === 'Finalizado' ? 'bg-brand-blue' : 'bg-red-500'}`}>
+                              {p.estado}
+                            </span>
+                            • {p.hora_final ? p.hora_final : 'Sin hora'}
+                          </div>
+                          <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="w-full bg-brand-cream/50 text-brand-blue py-2 rounded border border-brand-blue/30 text-xs font-bold hover:bg-brand-blue hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                            Ver Acta / Descargar PDF
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+          ) : (
+            // VISTA DEL PARTIDO ACTIVO (Planilla y Panel de Cancha)
+            <div className="flex flex-col lg:flex-row gap-6 animate-fade-in items-start">
+              
+              {/* PLANILLA */}
+              <div className="flex-1 w-full min-w-0 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-brand-gold/20 overflow-x-auto">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-brand-gold/20 pb-4">
+                  <button onClick={() => { 
+                    localStorage.removeItem('partidoActivoId'); 
+                    setPartidoActivo(null); 
+                    socketRef.current?.emit('presencia_oficial', { partidoId: partidoActivo.id, rol: 'anotador', estado: false }); 
+                    }} className="bg-brand-cream text-brand-brown px-4 py-2 rounded-lg font-bold hover:bg-brand-gold hover:text-white transition-colors border border-brand-gold/30 shadow-sm flex items-center gap-2 text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    Volver al Panel
+                  </button>              
+                  <div className="flex flex-wrap items-center gap-3">
+                    {partidoActivo.estado === 'Finalizado' && (
+                      <button onClick={() => window.open(`/?vista=puntajes&partido_id=${partidoActivo.id}`, '_blank')} className="bg-brand-gold text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-sm flex items-center gap-2 text-sm">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        Descargar Acta (PDF)
+                      </button>
+                    )}
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-sm ${arbitroConectado ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                      <div className="relative flex h-3 w-3">
+                        {arbitroConectado && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                        <span className={`relative inline-flex rounded-full h-3 w-3 ${arbitroConectado ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                      </div>
+                      <span className="font-bold text-xs uppercase tracking-wider">Árbitro {arbitroConectado ? 'En Línea' : 'Ausente'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="acta-planilla-pdf">
+                  <PlanillaUniversal
+                    rol={partidoActivo.estado === 'Finalizado' ? 'espectador' : 'anotador'}
+                    estadoPartido={partidoActivo.estado}
+                    partidoId={partidoActivo.id}
+                    datosPartido={{ arbitro: partidoActivo.arbitro_nombre, anotador: partidoActivo.anotador_nombre, capitanLocal: partidoActivo.capitan_local_nombre, capitanVisita: partidoActivo.capitan_visita_nombre, localNombre: partidoActivo.local_nombre, visitaNombre: partidoActivo.visita_nombre, horaInicio: partidoActivo.hora_inicio, horaFinal: partidoActivo.hora_final }}
+                    jugadoresLocal={jugadoresLocal} jugadoresVisita={jugadoresVisita}
+                    efectividadJugadores={efectividadJugadores}
+                    manualStats={manualStats}
+                    puntosPorManoLocal={puntosPorManoLocal} puntosPorManoVisita={puntosPorManoVisita}
+                    alHacerClicCelda={(jId, mIdx) => setModalRegistro({ jId, mIdx })}
+                    alHacerClicPuntuacion={(esLocal, manoIdx) => setModalTantos({ esLocal, manoIdx })}
+                    alSeleccionarStatCell={(jId, tipo) => setModalStatPanel({ jId, tipo })}
+                  />
+                </div>
+              </div>
+
+              {/* BARRA LATERAL DERECHA: HERRAMIENTAS DE MESA */}
+              <div className="w-full lg:w-80 flex flex-col gap-5 shrink-0 lg:sticky lg:top-6">
+                
+                {partidoActivo.estado === 'Agendado' && (
+                  <button onClick={handleIniciarPartido} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                    INICIAR PARTIDO
+                  </button>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: arbitroConectado ? '#38A169' : '#E53E3E' }}></div>
-                  <span style={{ fontWeight: 'bold', color: '#4A5568' }}>Árbitro {arbitroConectado ? 'Conectado' : 'Ausente'}</span>
+                {partidoActivo.estado === 'En Curso' && (
+                  <button onClick={finalizarPartido} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
+                    FINALIZAR ACTA
+                  </button>
+                )}
+
+                {/* CRONÓMETRO MESA TÉCNICA */}
+                <div className="bg-brand-brown text-white p-6 rounded-xl border border-brand-gold/20 shadow-lg text-center relative overflow-hidden">
+                  <h4 className="text-sm font-bold text-brand-cream/70 uppercase tracking-wider mb-2 flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Tiempo Lanzamiento
+                  </h4>
+                  <div className={`text-6xl font-black font-mono tracking-tighter my-2 ${tiempoTurno > 50 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
+                    {formatoT(tiempoTurno)}
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button onClick={toggleTurno} className={`flex-1 py-2 rounded-lg font-bold shadow-sm transition-colors ${cronometroTurnoActivo ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-brand-blue hover:bg-blue-600 text-white'}`}>
+                      {cronometroTurnoActivo ? 'Pausar' : 'Iniciar'}
+                    </button>
+                    <button onClick={resetTurno} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold shadow-sm transition-colors">
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm text-center">
+                  <div className="text-xs font-bold text-brand-brown/70 uppercase tracking-wider mb-2">Tiempo Total del Partido</div>
+                  <div className="text-3xl font-black font-mono text-brand-brown">{formatoT(tiempoGlobal)}</div>
                 </div>
               </div>
             </div>
-
-            <div id="acta-planilla-pdf">
-              <PlanillaUniversal
-                rol={partidoActivo.estado === 'Finalizado' ? 'espectador' : 'anotador'}
-                estadoPartido={partidoActivo.estado}
-                partidoId={partidoActivo.id}
-                datosPartido={{ arbitro: partidoActivo.arbitro_nombre, anotador: partidoActivo.anotador_nombre, capitanLocal: partidoActivo.capitan_local_nombre, capitanVisita: partidoActivo.capitan_visita_nombre, localNombre: partidoActivo.local_nombre, visitaNombre: partidoActivo.visita_nombre, horaInicio: partidoActivo.hora_inicio, horaFinal: partidoActivo.hora_final }}
-                jugadoresLocal={jugadoresLocal} jugadoresVisita={jugadoresVisita}
-                efectividadJugadores={efectividadJugadores}
-                manualStats={manualStats}
-                puntosPorManoLocal={puntosPorManoLocal} puntosPorManoVisita={puntosPorManoVisita}
-                alHacerClicCelda={(jId, mIdx) => setModalRegistro({ jId, mIdx })}
-                alHacerClicPuntuacion={(esLocal, manoIdx) => setModalTantos({ esLocal, manoIdx })}
-                alSeleccionarStatCell={(jId, tipo) => setModalStatPanel({ jId, tipo })}
-              />
-            </div>
-          </div>
-
-          <div style={{ width: '300px', position: 'sticky', top: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {partidoActivo.estado === 'Agendado' && (
-              <button onClick={handleIniciarPartido} style={{ width: '100%', padding: '15px', background: '#38A169', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.1em', fontWeight: 'bold', cursor: 'pointer' }}>▶️ INICIAR PARTIDO</button>
-            )}
-            {partidoActivo.estado === 'En Curso' && (
-              <button onClick={finalizarPartido} style={{ width: '100%', padding: '15px', background: '#E53E3E', color: '#FFF', border: 'none', borderRadius: '8px', fontSize: '1.1em', fontWeight: 'bold', cursor: 'pointer' }}>🏁 FINALIZAR ACTA</button>
-            )}
-
-            <div style={{ background: '#2D3748', color: '#FFF', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
-              <h4 style={{ margin: '0 0 10px 0', color: '#A0AEC0' }}>⏱️ TIEMPO DE LANZAMIENTO</h4>
-              <div style={{ fontSize: '3em', fontWeight: '900', fontFamily: 'monospace', color: tiempoTurno > 50 ? '#FC8181' : '#FFF' }}>{formatoT(tiempoTurno)}</div>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button onClick={toggleTurno} style={{ flex: 1, padding: '10px', background: '#4A5568', color: '#FFF', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>{cronometroTurnoActivo ? 'Pausar' : 'Iniciar'}</button>
-                <button onClick={resetTurno} style={{ padding: '10px', background: '#E53E3E', color: '#FFF', border: 'none', borderRadius: '6px' }}>Reset</button>
-              </div>
-            </div>
-
-            <div style={{ background: '#FFF', padding: '15px', borderRadius: '8px', border: '1px solid #E2E8F0', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.9em', color: '#718096', marginBottom: '5px' }}>Tiempo Total del Partido</div>
-              <div style={{ fontSize: '2em', fontWeight: 'bold', fontFamily: 'monospace' }}>{formatoT(tiempoGlobal)}</div>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </main>
     </div>
   );
 }

@@ -87,8 +87,6 @@ const suspenderPartidosPasados = async (orgId) => {
 
 router.use(verificarToken, autorizarRoles('Administrador de Liga', 'Superadmin'));
 
-
-
 router.put('/mi-organizacion/logo', async (req, res) => {
   const { logo_url } = req.body;
   try {
@@ -96,6 +94,21 @@ router.put('/mi-organizacion/logo', async (req, res) => {
     await db.query(`UPDATE public.organizaciones SET logo_url = $1 WHERE id = $2`, [logo_url, orgId]);
     res.json({ mensaje: 'Logo de la organización actualizado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar el logo.' }); }
+});
+
+router.get('/mi-organizacion', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const resultado = await db.query('SELECT nombre, logo_url FROM public.organizaciones WHERE id = $1', [orgId]);
+    
+    if (resultado.rows.length > 0) {
+      res.json(resultado.rows[0]);
+    } else {
+      res.status(404).json({ error: 'Organización no encontrada' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener la organización' });
+  }
 });
 
 router.post('/cambiar-password-obligatorio', async (req, res) => {

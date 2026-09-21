@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 
-export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { // <-- RECIBIR EL PROP AQUÍ
+export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
   const [abierto, setAbierto] = useState(false);
   const [vista, setVista] = useState('bandeja'); 
   
@@ -31,16 +31,13 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
   useEffect(() => { chatActivoRef.current = chatActivo; }, [chatActivo]);
   useEffect(() => { vistaRef.current = vista; }, [vista]);
 
-  // 1. EFECTO PARA CARGAR DATOS E INICIALIZAR EL SOCKET (SIN RECONECTAR)
   useEffect(() => {
     if (!usuario || !token) return;
 
     cargarBandeja();
     cargarContactos();
 
-    // Solo inicializamos el socket una vez
     if (!socketRef.current) {
-      // AQUÍ FORZAMOS WEBSOCKETS NATIVOS
       socketRef.current = io(SOCKET_URL, {
         transports: ['websocket'],
         upgrade: false
@@ -61,11 +58,8 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
         }
       });
     }
-
-    // Nota: Ya no retornamos el disconnect() aquí para que cambiar de liga no mate el socket.
   }, [usuario, token, ligaActivaId]);
 
-  // 2. EFECTO INDEPENDIENTE PARA LIMPIAR EL SOCKET SOLO AL DESMONTAR EL COMPONENTE
   useEffect(() => {
     return () => {
       if (socketRef.current) {
@@ -79,7 +73,6 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [mensajes, vista]);
 
-  // PASAR EL PARÁMETRO EN LOS FETCH
   const cargarBandeja = async () => {
     try {
       const queryParams = ligaActivaId ? `?liga_id=${ligaActivaId}` : '';
@@ -147,10 +140,12 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
     return rol + 's';
   };
 
+  const getInitials = (n, a) => {
+    return `${(n || '').charAt(0)}${(a || '').charAt(0)}`.toUpperCase() || 'U';
+  };
+
   const mensajesNoLeidos = bandeja.filter(b => b.remitente_id !== usuario.id && !b.hora_lectura).length;
   
-  // FILTROS Y VARIABLES CALCULADAS
-  // CORRECCIÓN: Ahora leemos las ligas disponibles de los contactos, no de los mensajes
   const ligasDisponibles = soySuperadmin ? [...new Set(contactos.map(c => c.organizacion_nombre).filter(Boolean))] : [];
   
   const bandejaFiltrada = soySuperadmin && filtroLigaBandeja !== 'Todas' 
@@ -172,123 +167,226 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) { //
   };
 
   return (
-    <div style={{ position: 'fixed', bottom: '30px', right: '30px', zIndex: 2000, fontFamily: 'sans-serif' }}>
-      <div style={{ position: 'relative' }}>
-        <button onClick={() => { setAbierto(!abierto); if (!abierto) { setVista('bandeja'); cargarBandeja(); } }} style={{ background: '#2B6CB0', color: 'white', border: 'none', borderRadius: '50%', width: '60px', height: '60px', fontSize: '1.8em', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.2)' }}>💬</button>
-        {mensajesNoLeidos > 0 && !abierto && (<span style={{ position: 'absolute', top: '-5px', right: '-5px', background: '#E53E3E', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85em', fontWeight: 'bold', border: '2px solid white' }}>{mensajesNoLeidos > 9 ? '9+' : mensajesNoLeidos}</span>)}
+    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-2000 font-sans">
+      
+      {/* BOTÓN FLOTANTE */}
+      <div className="relative">
+        <button 
+          onClick={() => { setAbierto(!abierto); if (!abierto) { setVista('bandeja'); cargarBandeja(); } }} 
+          className="bg-brand-rust text-white border-none rounded-full w-14 h-14 shadow-xl hover:bg-brand-brown hover:scale-105 transition-all flex items-center justify-center ring-4 ring-white/50"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+        </button>
+        {mensajesNoLeidos > 0 && !abierto && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold border-2 border-white shadow-sm">
+            {mensajesNoLeidos > 9 ? '9+' : mensajesNoLeidos}
+          </span>
+        )}
       </div>
 
+      {/* VENTANA DEL CHAT (Completamente Responsiva) */}
       {abierto && (
-        <div style={{ position: 'absolute', bottom: '80px', right: '0', width: '350px', height: '520px', background: '#FFF', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="absolute bottom-16 sm:bottom-20 right-0 w-[calc(100vw-2rem)] sm:w-[24rem] h-137.5 max-h-[calc(100vh-8rem)] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden border border-brand-gold/40 animate-fade-in origin-bottom-right">
           
-          <div style={{ background: '#2D3748', color: '#FFF', padding: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {vista !== 'bandeja' && (<button onClick={retrocederVista} style={{ background: 'transparent', border: 'none', color: '#FFF', cursor: 'pointer', fontSize: '1.2em' }}>⬅️</button>)}
-            <div style={{ fontWeight: 'bold', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {/* HEADER DEL MODAL */}
+          <div className="bg-brand-brown text-brand-cream p-4 flex items-center gap-3 shrink-0 shadow-md relative z-10 border-b border-brand-gold/30">
+            {vista !== 'bandeja' && (
+              <button onClick={retrocederVista} className="text-brand-cream hover:text-brand-gold transition-colors shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+            )}
+            <div className="font-bold flex-1 truncate text-sm sm:text-base">
               {vista === 'bandeja' ? 'Bandeja de Entrada' : 
                vista === 'ligas' ? 'Seleccionar Liga' :
                vista === 'roles' ? (soySuperadmin ? ligaSeleccionada : 'Nuevo Mensaje') :
-               vista === 'usuarios' ? `Seleccionar ${formatearPlurales(rolSeleccionado)}` :
+               vista === 'usuarios' ? `Para: ${formatearPlurales(rolSeleccionado)}` :
                `${chatActivo?.nombre} ${chatActivo?.apellido}`}
             </div>
-            <span onClick={() => setAbierto(false)} style={{ cursor: 'pointer', padding: '0 5px' }}>✖</span>
+            <button onClick={() => setAbierto(false)} className="text-brand-cream/70 hover:text-white transition-colors shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
           </div>
 
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F7FAFC', minHeight: 0, position: 'relative' }}>
+          {/* CONTENIDO VARIABLE */}
+          <div className="flex-1 flex flex-col bg-brand-cream/20 min-h-0 relative">
             
+            {/* VISTA: BANDEJA */}
             {vista === 'bandeja' && (
               <>
                 {soySuperadmin && (
-                  <div style={{ padding: '8px 15px', background: '#EDF2F7', borderBottom: '1px solid #CBD5E0' }}>
-                    <select value={filtroLigaBandeja} onChange={(e) => setFiltroLigaBandeja(e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #CBD5E0', fontSize: '0.85em' }}>
+                  <div className="p-3 bg-brand-cream border-b border-brand-gold/30 shrink-0 shadow-sm">
+                    <select value={filtroLigaBandeja} onChange={(e) => setFiltroLigaBandeja(e.target.value)} className="w-full p-2.5 rounded-lg border border-brand-gold/40 text-sm text-brand-brown font-semibold focus:ring-2 focus:ring-brand-rust outline-none cursor-pointer bg-white">
                       <option value="Todas">Todas las Ligas</option>
-                      {/* CORRECCIÓN: Iteramos sobre ligasDisponibles */}
                       {ligasDisponibles.map(l => <option key={l} value={l}>{l}</option>)}
                     </select>
                   </div>
                 )}
 
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                  {bandejaFiltrada.length === 0 ? <p style={{ textAlign: 'center', color: '#A0AEC0', marginTop: '50%' }}>Sin conversaciones.</p> : bandejaFiltrada.map(b => {
+                <div className="flex-1 overflow-y-auto hide-scrollbar">
+                  {bandejaFiltrada.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-brand-brown/40 p-6 text-center">
+                      <div className="w-16 h-16 bg-brand-gold/10 rounded-full flex items-center justify-center mb-3">
+                        <svg className="w-8 h-8 text-brand-gold/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                      </div>
+                      <p className="font-semibold text-sm text-brand-brown/60">Bandeja vacía</p>
+                      <p className="text-xs mt-1">Tus conversaciones recientes aparecerán aquí.</p>
+                    </div>
+                  ) : bandejaFiltrada.map(b => {
                       const soyRemitente = b.remitente_id === usuario.id;
                       const noLeido = !soyRemitente && !b.hora_lectura;
+                      
                       return (
-                        <div key={b.id} onClick={() => seleccionarContacto(b)} style={{ padding: '12px 15px', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', display: 'flex', flexDirection: 'column', background: noLeido ? '#EBF8FF' : '#FFF' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong style={{ color: '#2D3748', fontSize: '0.95em' }}>{b.nombre} {b.apellido}</strong>
-                            <span style={{ fontSize: '0.7em', color: noLeido ? '#2B6CB0' : '#A0AEC0', fontWeight: noLeido ? 'bold' : 'normal' }}>{new Date(b.hora_envio).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})}</span>
+                        <div key={b.id} onClick={() => seleccionarContacto(b)} className={`p-4 border-b border-brand-gold/20 cursor-pointer flex gap-3 transition-colors ${noLeido ? 'bg-brand-rust/5 border-l-4 border-l-brand-rust' : 'bg-white hover:bg-brand-cream/40 border-l-4 border-l-transparent'}`}>
+                          
+                          {/* Avatar Circle */}
+                          <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-bold text-white shadow-sm text-sm ${noLeido ? 'bg-brand-rust' : 'bg-brand-blue'}`}>
+                            {getInitials(b.nombre, b.apellido)}
                           </div>
-                          {soySuperadmin && <div style={{ fontSize: '0.75em', color: '#718096', margin: '2px 0' }}>{b.organizacion_nombre} | {b.rol}</div>}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px' }}>
-                            <span style={{ fontSize: '0.85em', color: noLeido ? '#2B6CB0' : '#718096', fontWeight: noLeido ? 'bold' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{soyRemitente ? 'Tú: ' : ''}{b.ultimo_mensaje}</span>
-                            {noLeido && <span style={{ width: '8px', height: '8px', background: '#3182CE', borderRadius: '50%', marginLeft: 'auto', flexShrink: 0 }}></span>}
+
+                          <div className="flex-1 min-w-0 flex flex-col justify-center">
+                            <div className="flex justify-between items-center mb-0.5">
+                              <strong className="text-brand-brown font-bold text-[0.9rem] truncate pr-2">{b.nombre} {b.apellido}</strong>
+                              <span className={`text-[0.65rem] shrink-0 ${noLeido ? 'text-brand-rust font-bold' : 'text-brand-brown/50 font-medium'}`}>
+                                {new Date(b.hora_envio).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})}
+                              </span>
+                            </div>
+                            
+                            {soySuperadmin && <div className="text-[0.65rem] text-brand-gold font-bold uppercase tracking-wider mb-1 truncate">{b.organizacion_nombre} • {b.rol}</div>}
+                            
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`text-xs truncate ${noLeido ? 'text-brand-brown font-semibold' : 'text-brand-brown/60'}`}>
+                                {soyRemitente ? 'Tú: ' : ''}{b.ultimo_mensaje}
+                              </span>
+                              {noLeido && <span className="w-2.5 h-2.5 bg-brand-rust rounded-full shrink-0 shadow-sm"></span>}
+                            </div>
                           </div>
                         </div>
                       );
                     })}
                 </div>
-                <button onClick={iniciarNuevoMensaje} style={{ position: 'absolute', bottom: '15px', right: '15px', background: '#38A169', color: 'white', border: 'none', borderRadius: '50%', width: '50px', height: '50px', fontSize: '1.8em', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                
+                <button onClick={iniciarNuevoMensaje} className="absolute bottom-5 right-5 bg-brand-blue hover:bg-brand-brown text-white rounded-full w-12 h-12 shadow-lg hover:scale-105 transition-all flex items-center justify-center ring-2 ring-white/50">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                </button>
               </>
             )}
 
+            {/* VISTA: LIGAS (Solo Superadmin) */}
             {vista === 'ligas' && soySuperadmin && (
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                <div style={{ padding: '10px 15px', background: '#EDF2F7', fontSize: '0.85em', color: '#4A5568', fontWeight: 'bold' }}>¿A qué liga deseas escribir?</div>
+              <div className="flex-1 overflow-y-auto hide-scrollbar">
+                <div className="px-4 py-3 bg-brand-cream text-xs font-bold text-brand-blue uppercase tracking-wider border-b border-brand-gold/30">Ligas Disponibles</div>
                 {ligasDisponibles.map(l => (
-                  <div key={l} onClick={() => { setLigaSeleccionada(l); setVista('roles'); }} style={{ padding: '15px', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', background: '#FFF', display: 'flex', justifyContent: 'space-between' }}>
-                    <strong style={{ color: '#2D3748' }}>{l}</strong><span style={{ color: '#A0AEC0' }}>➡️</span>
+                  <div key={l} onClick={() => { setLigaSeleccionada(l); setVista('roles'); }} className="p-4 bg-white border-b border-brand-gold/20 hover:bg-brand-cream/40 cursor-pointer flex justify-between items-center transition-colors group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded bg-brand-gold/20 flex items-center justify-center text-brand-gold group-hover:bg-brand-gold group-hover:text-white transition-colors">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                      </div>
+                      <strong className="text-brand-brown text-sm">{l}</strong>
+                    </div>
+                    <svg className="w-4 h-4 text-brand-gold/50 group-hover:text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
                   </div>
                 ))}
               </div>
             )}
 
+            {/* VISTA: ROLES */}
             {vista === 'roles' && (
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                <div style={{ padding: '10px 15px', background: '#EDF2F7', fontSize: '0.85em', color: '#4A5568', fontWeight: 'bold' }}>Elige a quién escribir:</div>
+              <div className="flex-1 overflow-y-auto hide-scrollbar">
+                <div className="px-4 py-3 bg-brand-cream text-xs font-bold text-brand-blue uppercase tracking-wider border-b border-brand-gold/30">Grupos Operativos</div>
                 {rolesDisponibles.map(r => (
-                  <div key={r} onClick={() => { setRolSeleccionado(r); setVista('usuarios'); }} style={{ padding: '15px', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', background: '#FFF', display: 'flex', justifyContent: 'space-between' }}>
-                    <strong style={{ color: '#2D3748' }}>{formatearPlurales(r)}</strong><span style={{ color: '#A0AEC0' }}>➡️</span>
+                  <div key={r} onClick={() => { setRolSeleccionado(r); setVista('usuarios'); }} className="p-4 bg-white border-b border-brand-gold/20 hover:bg-brand-cream/40 cursor-pointer flex justify-between items-center transition-colors group">
+                     <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue group-hover:bg-brand-blue group-hover:text-white transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                      </div>
+                      <strong className="text-brand-brown text-sm capitalize">{formatearPlurales(r)}</strong>
+                    </div>
+                    <svg className="w-4 h-4 text-brand-gold/50 group-hover:text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
                   </div>
                 ))}
               </div>
             )}
 
+            {/* VISTA: USUARIOS */}
             {vista === 'usuarios' && (
-              <div style={{ flex: 1, overflowY: 'auto' }}>
+              <div className="flex-1 overflow-y-auto hide-scrollbar">
                 {!soySuperadmin && (
-                  <div onClick={() => seleccionarContacto({ id: `grupo_${rolSeleccionado}`, nombre: '📢 Todos los', apellido: formatearPlurales(rolSeleccionado), rol: 'Difusión', rolTarget: rolSeleccionado, isMasivo: true })} style={{ padding: '15px', borderBottom: '2px solid #E2E8F0', cursor: 'pointer', background: '#EBF8FF', color: '#2B6CB0', fontWeight: 'bold' }}>📢 Enviar mensaje a todos</div>
+                  <div onClick={() => seleccionarContacto({ id: `grupo_${rolSeleccionado}`, nombre: '📢 Todos los', apellido: formatearPlurales(rolSeleccionado), rol: 'Difusión', rolTarget: rolSeleccionado, isMasivo: true })} className="p-4 border-b-2 border-brand-rust/20 cursor-pointer bg-brand-rust/5 hover:bg-brand-rust/10 text-brand-rust transition-colors flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-brand-rust flex items-center justify-center text-white shadow-sm shrink-0">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
+                    </div>
+                    <div>
+                      <strong className="block text-[0.9rem]">Mensaje de Difusión</strong>
+                      <span className="text-xs opacity-80">Enviar a todos los {formatearPlurales(rolSeleccionado).toLowerCase()}</span>
+                    </div>
+                  </div>
                 )}
                 {usuariosDelRol.map(c => (
-                  <div key={c.id} onClick={() => seleccionarContacto(c)} style={{ padding: '12px 15px', borderBottom: '1px solid #E2E8F0', cursor: 'pointer', background: '#FFF' }}>
-                    <strong style={{ color: '#2D3748', display: 'block' }}>{c.nombre} {c.apellido}</strong>
-                    <span style={{ fontSize: '0.8em', color: '#718096' }}>{c.rol}</span>
+                  <div key={c.id} onClick={() => seleccionarContacto(c)} className="p-4 bg-white border-b border-brand-gold/20 hover:bg-brand-cream/40 cursor-pointer flex items-center gap-3 transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-brand-blue flex items-center justify-center text-white text-sm font-bold shadow-sm shrink-0">
+                      {getInitials(c.nombre, c.apellido)}
+                    </div>
+                    <div>
+                      <strong className="text-brand-brown block text-[0.9rem]">{c.nombre} {c.apellido}</strong>
+                      <span className="text-xs text-brand-gold font-bold uppercase tracking-wide">{c.rol}</span>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
+            {/* VISTA: CHAT ACTIVO */}
             {vista === 'chat' && chatActivo && (
               <>
-                <div ref={scrollRef} style={{ flex: 1, padding: '15px', overflowY: 'auto', background: '#E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {chatActivo.isMasivo && (<div style={{ background: '#FEFCBF', color: '#975A16', padding: '10px', borderRadius: '8px', fontSize: '0.85em', textAlign: 'center', marginBottom: '10px' }}>📢 Mensaje de difusión masiva.</div>)}
-                  {mensajes.length === 0 && !chatActivo.isMasivo ? <p style={{ textAlign: 'center', color: '#718096', fontSize: '0.9em' }}>Inicia la conversación...</p> : null}
+                <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto hide-scrollbar flex flex-col gap-3">
+                  
+                  {chatActivo.isMasivo && (
+                    <div className="bg-brand-gold/20 text-brand-brown p-3 rounded-lg text-xs text-center mb-2 font-bold border border-brand-gold/40 shadow-sm mx-4">
+                      📢 Modo Difusión: Este mensaje llegará a todos los usuarios del grupo.
+                    </div>
+                  )}
+                  
+                  {mensajes.length === 0 && !chatActivo.isMasivo ? (
+                    <div className="flex flex-col items-center justify-center h-full text-brand-brown/40">
+                      <p className="font-medium text-sm bg-white px-4 py-2 rounded-full shadow-sm border border-brand-gold/20">Aún no hay mensajes. ¡Escribe el primero!</p>
+                    </div>
+                  ) : null}
+                  
                   {mensajes.map(m => {
                     const mio = m.remitente_id === usuario.id;
                     return (
-                      <div key={m.id} style={{ alignSelf: mio ? 'flex-end' : 'flex-start', background: mio ? '#C6F6D5' : '#FFF', padding: '10px 14px', borderRadius: '12px', maxWidth: '85%', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                        <div style={{ fontSize: '0.95em', color: '#1A202C' }}>{m.mensaje}</div>
-                        <div style={{ fontSize: '0.7em', color: '#A0AEC0', textAlign: 'right', marginTop: '4px' }}>
+                      <div key={m.id} className={`max-w-[85%] p-3 shadow-sm ${mio ? 'self-end bg-brand-blue text-white rounded-2xl rounded-tr-none' : 'self-start bg-white border border-brand-gold/40 text-brand-brown rounded-2xl rounded-tl-none'}`}>
+                        <div className="text-[0.9rem] leading-relaxed wrap-break-word">{m.mensaje}</div>
+                        <div className={`text-[0.65rem] text-right mt-1.5 font-medium flex items-center justify-end gap-1 ${mio ? 'text-white/80' : 'text-brand-brown/50'}`}>
                           {new Date(m.hora_envio).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})}
-                          {mio && m.hora_lectura && !chatActivo.isMasivo && <span style={{ color: '#3182CE', marginLeft: '5px' }}>✓✓</span>}
+                          {mio && m.hora_lectura && !chatActivo.isMasivo && <span className="text-white">✓✓</span>}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <form onSubmit={enviarMensaje} style={{ background: '#FFF', padding: '10px', borderTop: '1px solid #CBD5E0', display: 'flex', flexDirection: 'column', gap: '5px', flexShrink: 0 }}>
-                  <textarea value={nuevoMensaje} onChange={e => setNuevoMensaje(e.target.value)} placeholder={chatActivo.isMasivo ? "Anuncio oficial..." : "Escribe un mensaje..."} maxLength={200} style={{ width: '100%', resize: 'none', padding: '10px', border: '1px solid #E2E8F0', borderRadius: '6px', outline: 'none', fontFamily: 'inherit' }} rows={2}/>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.75em', color: nuevoMensaje.length >= 200 ? '#E53E3E' : '#A0AEC0' }}>{nuevoMensaje.length}/200</span>
-                    <button type="submit" disabled={!nuevoMensaje.trim()} style={{ padding: '8px 20px', background: nuevoMensaje.trim() ? '#3182CE' : '#CBD5E0', color: '#FFF', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: nuevoMensaje.trim() ? 'pointer' : 'not-allowed' }}>Enviar</button>
+                
+                {/* ZONA DE INPUT */}
+                <form onSubmit={enviarMensaje} className="bg-white p-3 border-t border-brand-gold/40 flex flex-col gap-2 shrink-0 z-10 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
+                  <textarea 
+                    value={nuevoMensaje} 
+                    onChange={e => setNuevoMensaje(e.target.value)} 
+                    placeholder={chatActivo.isMasivo ? "Escribe el anuncio oficial..." : "Escribe un mensaje..."} 
+                    maxLength={200} 
+                    className="w-full resize-none p-3 bg-brand-cream/20 border border-brand-gold/50 rounded-lg text-sm focus:ring-2 focus:ring-brand-rust focus:border-brand-rust outline-none text-brand-brown font-medium transition-shadow" 
+                    rows={2}
+                  />
+                  <div className="flex justify-between items-center px-1">
+                    <span className={`text-[0.7rem] font-bold ${nuevoMensaje.length >= 200 ? 'text-red-500' : 'text-brand-brown/50'}`}>
+                      {nuevoMensaje.length}/200
+                    </span>
+                    <button 
+                      type="submit" 
+                      disabled={!nuevoMensaje.trim()} 
+                      className="px-5 py-2 rounded-lg text-sm font-bold transition-all shadow-sm bg-brand-rust text-white hover:bg-brand-brown disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-rust"
+                    >
+                      Enviar
+                    </button>
                   </div>
                 </form>
               </>
