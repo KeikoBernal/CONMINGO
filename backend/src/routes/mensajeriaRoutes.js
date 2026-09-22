@@ -102,9 +102,14 @@ router.get('/conversacion/:contacto_id', async (req, res) => {
     const miId = req.usuario.id;
     const contactoId = req.params.contacto_id;
 
+    // INSERCIÓN: Saneamiento de parámetros (Validación formato UUID estricto)
+    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(contactoId)) {
+      return res.status(400).json({ error: 'Formato de ID de contacto inválido o corrupto.' });
+    }
+
     // Marcar como leídos los mensajes que recibí de este contacto al abrir el chat
     await db.query(
-      `UPDATE public.notificaciones SET hora_lectura = NOW() 
+      `UPDATE public.notificaciones SET hora_lectura = NOW()
        WHERE destinatario_id = $1 AND remitente_id = $2 AND hora_lectura IS NULL`,
       [miId, contactoId]
     );
@@ -161,7 +166,7 @@ router.post('/enviar', async (req, res) => {
 
       const resultados = await Promise.all(promises);
       
-      // Retornar los IDs de los destinatarios para que el frontend dispare las notificaciones por Socket
+// Retornar los IDs de los destinatarios para que el frontend dispare las notificaciones por Socket
       res.status(201).json({ 
         esMasivo: true, 
         total_enviados: resultados.length, 
@@ -169,7 +174,20 @@ router.post('/enviar', async (req, res) => {
       });
 
     } else {
-      // LÓGICA DE ENVÍO INDIVIDUAL (1 a 1)
+      
+    // LÓGICA DE ENVÍO INDIVIDUAL (1 a 1)
+      
+      const queryDest = miRol === 'Superadmin' 
+        ? `SELECT id FROM public.usuarios WHERE id = $1`
+        : `SELECT id FROM public.usuarios WHERE id = $1 AND organizacion_id = $2`;
+      
+      const paramsDest = miRol === 'Superadmin' ? [destinatario_id] : [destinatario_id, organizacion_id];
+      const checkDest = await db.query(queryDest, paramsDest);
+      
+      if (checkDest.rows.length === 0) {
+        return res.status(403).json({ error: 'El destinatario no existe o no pertenece a tu liga operativa (Acción bloqueada).' });
+      }
+
       const { rows } = await db.query(`
         INSERT INTO public.notificaciones 
         (organizacion_id, remitente_id, destinatario_id, titulo, mensaje) 

@@ -27,6 +27,9 @@ export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [rolUsuario, setRolUsuario] = useState('');
   const [cargando, setCargando] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [intentosFallidos, setIntentosFallidos] = useState(0);
+  const [bloqueadoHasta, setBloqueadoHasta] = useState(null);
 
   const enProcesoLoginRef = useRef(false);
 
@@ -88,10 +91,24 @@ export default function App() {
 
   const manejarLogin = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return; 
+
+    if (bloqueadoHasta && new Date() < bloqueadoHasta) {
+      const faltan = Math.ceil((bloqueadoHasta - new Date()) / 1000);
+      return setMensaje(`Demasiados intentos fallidos. Intenta de nuevo en ${faltan} segundos.`);
+    }
+
     setMensaje('');
+    setIsSubmitting(true); 
     const emailLimpio = email.trim().toLowerCase();
 
     if (paso === 1) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailLimpio)) {
+        setIsSubmitting(false);
+        return setMensaje('Por favor, ingresa un formato de correo electrónico válido.');
+      }
+
       setMensaje('Validando credenciales...');
       enProcesoLoginRef.current = true;
 
@@ -102,9 +119,20 @@ export default function App() {
 
       if (errorPassword) {
         enProcesoLoginRef.current = false;
-        setMensaje(`Credenciales incorrectas: ${errorPassword.message}`);
+        setIsSubmitting(false);
+        const nuevosIntentos = intentosFallidos + 1;
+        setIntentosFallidos(nuevosIntentos);
+        
+        if (nuevosIntentos >= 3) {
+          setBloqueadoHasta(new Date(Date.now() + 60000)); // Bloquear por 60 segundos
+          setMensaje('Múltiples intentos fallidos. Por seguridad, espera 60 segundos.');
+        } else {
+          setMensaje(`Credenciales incorrectas. Intento ${nuevosIntentos} de 3.`);
+        }
         return;
       }
+
+      setIntentosFallidos(0); 
 
       const rolBD = await obtenerRolBD(data.user.id);
       setRolUsuario(rolBD);
@@ -115,6 +143,8 @@ export default function App() {
           email: emailLimpio,
           options: { shouldCreateUser: false },
         });
+        
+        setIsSubmitting(false); 
         if (errorOtp) {
           enProcesoLoginRef.current = false;
           setMensaje(`Error al enviar código: ${errorOtp.message}`);
@@ -124,6 +154,7 @@ export default function App() {
         }
       } else {
         enProcesoLoginRef.current = false;
+        setIsSubmitting(false);
         setUsuario(data.user);
         setVista('dashboard');
       }
@@ -131,11 +162,19 @@ export default function App() {
     }
 
     if (paso === 2) {
+      const otpLimpio = codigoOtp.trim();
+      if (!/^\d{6}$/.test(otpLimpio)) {
+        setIsSubmitting(false);
+        return setMensaje('El código debe contener exactamente 6 dígitos numéricos.');
+      }
+
       const { data, error } = await supabase.auth.verifyOtp({
         email: emailLimpio,
-        token: codigoOtp.trim(),
+        token: otpLimpio,
         type: 'email',
       });
+      
+      setIsSubmitting(false);
       if (error) {
         setMensaje(`Código inválido: ${error.message}`);
       } else {
@@ -364,7 +403,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button type="submit" className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold tracking-wide hover:bg-brand-brown transition-colors shadow-md hover:shadow-lg mt-4">Entrar al Sistema</button>
+                  <button type="submit" disabled={isSubmitting} className={`w-full text-white py-3.5 rounded-lg font-bold tracking-wide transition-colors shadow-md hover:shadow-lg mt-4 ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-rust hover:bg-brand-brown'}`}>
+                    {isSubmitting ? 'Validando...' : 'Entrar al Sistema'}
+                  </button>
                 </>
               )}
 
@@ -372,8 +413,11 @@ export default function App() {
                 <div className="space-y-6">
                   <input type="text" placeholder="123456" value={codigoOtp} onChange={(e) => setCodigoOtp(e.target.value)} maxLength={6} required className="w-full px-4 py-4 bg-brand-cream/20 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-rust focus:ring-2 focus:ring-brand-rust/20 transition-all text-center text-2xl tracking-[0.5em] font-mono" />
                   <div className="flex flex-col gap-3">
-                    <button type="submit" className="w-full bg-brand-blue text-white py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">Validar e Iniciar Sesión</button>
-                    <button type="button" onClick={() => { enProcesoLoginRef.current = false; setPaso(1); setMensaje(''); }} className="w-full bg-gray-100 text-brand-brown py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors">Volver</button>
+                    {/* MODIFICACIÓN: Atributos dinámicos en base al estado isSubmitting */}
+                    <button type="submit" disabled={isSubmitting} className={`w-full text-white py-3 rounded-lg font-bold transition-colors shadow-md ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-blue hover:bg-brand-brown'}`}>
+                      {isSubmitting ? 'Verificando...' : 'Validar e Iniciar Sesión'}
+                    </button>
+                    <button type="button" disabled={isSubmitting} onClick={() => { enProcesoLoginRef.current = false; setPaso(1); setMensaje(''); }} className={`w-full py-3 rounded-lg font-bold transition-colors ${isSubmitting ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-brand-brown hover:bg-gray-200'}`}>Volver</button>
                   </div>
                 </div>
               )}

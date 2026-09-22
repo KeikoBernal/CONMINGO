@@ -119,6 +119,11 @@ router.get('/partidos/:id/planilla', async (req, res) => {
     }
     const partido = partidoRes.rows[0];
 
+    const estadosValidos = ['Agendado', 'En curso', 'Finalizado'];
+    if (!estadosValidos.includes(partido.estado)) {
+      return res.status(400).json({ error: `No se pueden consultar detalles. El partido se encuentra en estado: ${partido.estado}` });
+    }
+
     const nominaRes = await db.query(`
       SELECT j.*, e.nombre AS equipo_nombre
       FROM public.jugadores j
@@ -268,7 +273,7 @@ router.get('/mi-equipo', async (req, res) => {
       JOIN public.resultados r ON pe.id = r.partido_id
     `, [equipo.id]);
 
-    let estadisticasGrupales = null;
+  let estadisticasGrupales = null;
     if (statsGrpRes.rows.length > 0 && parseInt(statsGrpRes.rows[0].partidos_jugados) > 0) {
       const dataGrp = statsGrpRes.rows[0];
       const ptsFavor = parseInt(dataGrp.puntos_favor) || 0;
@@ -277,9 +282,11 @@ router.get('/mi-equipo', async (req, res) => {
       
       const bolosEstimados = partidosJugados * 8; 
 
+      const promedioPtsBolo = bolosEstimados > 0 ? (ptsFavor / bolosEstimados).toFixed(1) : '0.0';
+
       estadisticasGrupales = {
         diferencial_puntos: ptsFavor - ptsContra,
-        promedio_puntos_bolo: (ptsFavor / bolosEstimados).toFixed(1),
+        promedio_puntos_bolo: promedioPtsBolo,
         porcentaje_retencion: Math.round(50 + (Math.random() * 20)), 
         tiempo_promedio_bolo: 12, 
         desviacion_estandar: 2.1 

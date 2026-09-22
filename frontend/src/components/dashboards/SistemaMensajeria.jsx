@@ -18,6 +18,7 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
   const [chatActivo, setChatActivo] = useState(null);
   const [mensajes, setMensajes] = useState([]);
   const [nuevoMensaje, setNuevoMensaje] = useState('');
+  const [enviando, setEnviando] = useState(false);
   
   const socketRef = useRef(null);
   const scrollRef = useRef(null);
@@ -96,7 +97,7 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
     } catch (e) {}
   };
 
-  const seleccionarContacto = (contacto) => {
+const seleccionarContacto = (contacto) => {
     setChatActivo(contacto);
     setVista('chat');
     if (contacto.isMasivo) setMensajes([]); else cargarConversacion(contacto.id);
@@ -104,30 +105,45 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
 
   const enviarMensaje = async (e) => {
     e.preventDefault();
-    if (!nuevoMensaje.trim() || nuevoMensaje.length > 200) return;
+    
+    // INSERCIÓN: Saneamiento de cadena (.trim) y Bloqueo de envío múltiple
+    const mensajeLimpio = nuevoMensaje.trim();
+    if (!mensajeLimpio || mensajeLimpio.length > 200 || enviando) return;
+
+    setEnviando(true); // Activar bloqueo
 
     const payload = chatActivo.isMasivo 
-      ? { destinatario_rol: chatActivo.rolTarget, mensaje: nuevoMensaje }
-      : { destinatario_id: chatActivo.id, mensaje: nuevoMensaje };
+      ? { destinatario_rol: chatActivo.rolTarget, mensaje: mensajeLimpio }
+      : { destinatario_id: chatActivo.id, mensaje: mensajeLimpio };
 
     const res = await fetch(`${API_URL}/mensajeria/enviar`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload)
     });
 
+    setEnviando(false); // Liberar bloqueo
+
     if (res.ok) {
       const data = await res.json();
       if (data.esMasivo) {
-        data.destinatarios.forEach(idUser => { socketRef.current.emit('enviar_mensaje', { destinatario_sala: `usuario_${idUser}`, remitente_id: usuario.id }); });
-        setMensajes(prev => [...prev, { id: Date.now(), mensaje: nuevoMensaje, remitente_id: usuario.id, hora_envio: new Date() }]);
+        data.destinatarios.forEach(idUser => { 
+          // INSERCIÓN: Validación de Tipos y Estructura en WebSockets
+          if (idUser && usuario?.id) {
+            socketRef.current.emit('enviar_mensaje', { destinatario_sala: `usuario_${idUser}`, remitente_id: usuario.id }); 
+          }
+        });
+        setMensajes(prev => [...prev, { id: Date.now(), mensaje: mensajeLimpio, remitente_id: usuario.id, hora_envio: new Date() }]);
       } else {
         setMensajes(prev => [...prev, data.mensaje]);
-        socketRef.current.emit('enviar_mensaje', { destinatario_sala: `usuario_${chatActivo.id}`, remitente_id: usuario.id });
+        // INSERCIÓN: Validación de Tipos y Estructura en WebSockets
+        if (chatActivo?.id && usuario?.id) {
+          socketRef.current.emit('enviar_mensaje', { destinatario_sala: `usuario_${chatActivo.id}`, remitente_id: usuario.id });
+        }
       }
       setNuevoMensaje(''); cargarBandeja();
     }
   };
 
-  const iniciarNuevoMensaje = () => {
+  const iniciarNuevoMensaje = () => { 
     if (soySuperadmin) setVista('ligas'); else setVista('roles');
   };
 
@@ -373,7 +389,8 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
                     onChange={e => setNuevoMensaje(e.target.value)} 
                     placeholder={chatActivo.isMasivo ? "Escribe el anuncio oficial..." : "Escribe un mensaje..."} 
                     maxLength={200} 
-                    className="w-full resize-none p-3 bg-brand-cream/20 border border-brand-gold/50 rounded-lg text-sm focus:ring-2 focus:ring-brand-rust focus:border-brand-rust outline-none text-brand-brown font-medium transition-shadow" 
+                    disabled={enviando}
+                    className={`w-full resize-none p-3 border border-brand-gold/50 rounded-lg text-sm focus:ring-2 focus:ring-brand-rust focus:border-brand-rust outline-none text-brand-brown font-medium transition-shadow ${enviando ? 'bg-gray-100 opacity-60 cursor-not-allowed' : 'bg-brand-cream/20'}`} 
                     rows={2}
                   />
                   <div className="flex justify-between items-center px-1">
@@ -382,10 +399,10 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
                     </span>
                     <button 
                       type="submit" 
-                      disabled={!nuevoMensaje.trim()} 
-                      className="px-5 py-2 rounded-lg text-sm font-bold transition-all shadow-sm bg-brand-rust text-white hover:bg-brand-brown disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-rust"
+                      disabled={!nuevoMensaje.trim() || enviando} 
+                      className={`px-5 py-2 rounded-lg text-sm font-bold transition-all shadow-sm text-white ${(!nuevoMensaje.trim() || enviando) ? 'bg-brand-rust opacity-50 cursor-not-allowed' : 'bg-brand-rust hover:bg-brand-brown'}`}
                     >
-                      Enviar
+                      {enviando ? 'Enviando...' : 'Enviar'}
                     </button>
                   </div>
                 </form>

@@ -115,6 +115,18 @@ router.get('/partidos-activos', async (req, res) => {
 // 2. INICIAR PARTIDO
 router.put('/partidos/:id/iniciar', async (req, res) => {
   try {
+    // INSERCIÓN: Validación estricta de rol y flujo de estado
+    const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
+    const chk = await db.query('SELECT estado, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [req.params.id]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    
+    if (!esAdmin && chk.rows[0].arbitro_id !== req.usuario.id && chk.rows[0].anotador_id !== req.usuario.id) {
+      return res.status(403).json({ error: 'Acceso denegado. No eres oficial asignado a este encuentro.' });
+    }
+    if (chk.rows[0].estado !== 'Agendado') {
+      return res.status(400).json({ error: `Solo se pueden iniciar partidos en estado 'Agendado'. Estado actual: ${chk.rows[0].estado}` });
+    }
+
     const { hora_inicio } = req.body;
     const resDb = await db.query(
       `UPDATE public.partidos SET estado = 'En Curso', hora_inicio = COALESCE(hora_inicio, $1) WHERE id = $2 RETURNING *`,
@@ -127,6 +139,18 @@ router.put('/partidos/:id/iniciar', async (req, res) => {
 // 3. FINALIZAR PARTIDO
 router.put('/partidos/:id/finalizar', async (req, res) => {
   try {
+    // INSERCIÓN: Validación estricta de rol y flujo de estado
+    const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
+    const chk = await db.query('SELECT estado, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [req.params.id]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    
+    if (!esAdmin && chk.rows[0].arbitro_id !== req.usuario.id && chk.rows[0].anotador_id !== req.usuario.id) {
+      return res.status(403).json({ error: 'Acceso denegado. No eres oficial asignado a este encuentro.' });
+    }
+    if (chk.rows[0].estado !== 'En Curso') {
+      return res.status(400).json({ error: `El partido debe estar 'En Curso' para finalizarlo. Estado actual: ${chk.rows[0].estado}` });
+    }
+
     const { hora_final } = req.body;
     const resDb = await db.query(
       `UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2 RETURNING *`,
@@ -139,6 +163,18 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
 // 4. SUSPENDER PARTIDO
 router.put('/partidos/:id/suspender', async (req, res) => {
   try {
+    // INSERCIÓN: Evitar suspender partidos que ya finalizaron
+    const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
+    const chk = await db.query('SELECT estado, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [req.params.id]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    
+    if (!esAdmin && chk.rows[0].arbitro_id !== req.usuario.id && chk.rows[0].anotador_id !== req.usuario.id) {
+      return res.status(403).json({ error: 'Acceso denegado. No eres oficial asignado a este encuentro.' });
+    }
+    if (chk.rows[0].estado === 'Finalizado') {
+      return res.status(400).json({ error: 'No se puede suspender un partido que ya ha sido finalizado y cerrado.' });
+    }
+
     const resDb = await db.query(`UPDATE public.partidos SET estado = 'Suspendido' WHERE id = $1 RETURNING *`, [req.params.id]);
     res.json({ mensaje: 'Partido suspendido.', partido: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al suspender el partido.' }); }

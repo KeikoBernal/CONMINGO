@@ -36,6 +36,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const [mensajes, setMensajes] = useState([]);
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [destinatarioMsg, setDestinatarioMsg] = useState('rol_arbitro');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const socketRef = useRef(null);
 
   const [token, setToken] = useState(null);
@@ -165,16 +166,23 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   const enviarMensajeComoOficial = (e) => {
     e.preventDefault();
-    if (!nuevoMensaje.trim()) return;
+    const msgLimpio = nuevoMensaje.trim();
+    if (!msgLimpio) return;
+    
     const esParaDelegado = destinatarioMsg.includes('delegado');
-    socketRef.current.emit('enviar_mensaje', { destinatario_sala: destinatarioMsg, cc_admin: esParaDelegado, remitente: `${usuario?.nombre || ''} (Anotador)`, mensaje: nuevoMensaje, timestamp: new Date().toLocaleTimeString('es-VE') });
-    setMensajes(prev => [...prev, { destinatario_sala: destinatarioMsg, remitente: 'Anotador (Tú)', mensaje: nuevoMensaje, timestamp: new Date().toLocaleTimeString('es-VE'), propio: true }]);
+    socketRef.current.emit('enviar_mensaje', { destinatario_sala: destinatarioMsg, cc_admin: esParaDelegado, remitente: `${usuario?.nombre || ''} (Anotador)`, mensaje: msgLimpio, timestamp: new Date().toLocaleTimeString('es-VE') });
+    setMensajes(prev => [...prev, { destinatario_sala: destinatarioMsg, remitente: 'Anotador (Tú)', mensaje: msgLimpio, timestamp: new Date().toLocaleTimeString('es-VE'), propio: true }]);
     setNuevoMensaje('');
   };
 
   const handleIniciarPartido = async () => {
+    if (isSubmitting) return; // INSERCIÓN: Idempotencia
+    setIsSubmitting(true);
+    
     const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/iniciar`, { method: 'PUT', body: JSON.stringify({ hora_inicio: hora }) });
+    
+    setIsSubmitting(false);
     if (res.ok) {
       setPartidoActivo(prev => ({ ...prev, estado: 'En Curso', hora_inicio: hora }));
       setCronometroGlobalActivo(true);
@@ -184,9 +192,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   };
 
   const finalizarPartido = async () => {
+    if (isSubmitting) return;
     if (!window.confirm('¿Cerrar acta y registrar hora final?')) return;
+    
+    setIsSubmitting(true);
     const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/finalizar`, { method: 'PUT', body: JSON.stringify({ hora_final: hora }) });
+    
+    setIsSubmitting(false);
     if (res.ok) {
       setPartidoActivo(prev => ({ ...prev, estado: 'Finalizado', hora_final: hora }));
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
@@ -214,12 +227,19 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   };
 
   const registrarTantosMano = (puntos) => {
+    const ptsValidados = parseInt(puntos);
+    if (isNaN(ptsValidados) || ptsValidados < 0 || ptsValidados > 6) {
+      return alert('Error: Los tantos deben ser un valor entero entre 0 y 6.');
+    }
+
     let nuevoLocal = [...puntosPorManoLocal], nuevoVisita = [...puntosPorManoVisita];
-    const idx = modalTantos.manoIdx;
-    if (modalTantos.esLocal) { nuevoLocal[idx] = puntos; nuevoVisita[idx] = 0; } 
-    else { nuevoVisita[idx] = puntos; nuevoLocal[idx] = 0; }
+    const idx = parseInt(modalTantos.manoIdx); // INSERCIÓN: Casteo de index
+    
+    if (modalTantos.esLocal) { nuevoLocal[idx] = ptsValidados; nuevoVisita[idx] = 0; } 
+    else { nuevoVisita[idx] = ptsValidados; nuevoLocal[idx] = 0; }
+    
     setPuntosPorManoLocal(nuevoLocal); setPuntosPorManoVisita(nuevoVisita);
-    socketRef.current?.emit('tantos_asignados', { partido_id: partidoActivo.id, tantosLocal: nuevoLocal, tantosVisita: nuevoVisita });
+    socketRef.current?.emit('tantos_asignados', { partido_id: parseInt(partidoActivo.id), tantosLocal: nuevoLocal, tantosVisita: nuevoVisita });
     setModalTantos(null);
   };
 
@@ -556,19 +576,27 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               <div className="w-full lg:w-80 flex flex-col gap-5 shrink-0 lg:sticky lg:top-6">
                 
                 {partidoActivo.estado === 'Agendado' && (
-                  <button onClick={handleIniciarPartido} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2">
+                  <button 
+                    onClick={handleIniciarPartido} 
+                    disabled={isSubmitting}
+                    className={`w-full py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                  >
                     <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
-                    INICIAR PARTIDO
+                    {isSubmitting ? 'INICIANDO...' : 'INICIAR PARTIDO'}
                   </button>
                 )}
                 {partidoActivo.estado === 'En Curso' && (
-                  <button onClick={finalizarPartido} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2">
+                  <button 
+                    onClick={finalizarPartido} 
+                    disabled={isSubmitting}
+                    className={`w-full py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+                  >
                     <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
-                    FINALIZAR ACTA
+                    {isSubmitting ? 'FINALIZANDO...' : 'FINALIZAR ACTA'}
                   </button>
                 )}
 
-                {/* CRONÓMETRO MESA TÉCNICA */}
+                {/* CRONÓMETRO MESA TÉCNICA */}   
                 <div className="bg-brand-brown text-white p-6 rounded-xl border border-brand-gold/20 shadow-lg text-center relative overflow-hidden">
                   <h4 className="text-sm font-bold text-brand-cream/70 uppercase tracking-wider mb-2 flex items-center justify-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

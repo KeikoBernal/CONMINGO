@@ -26,13 +26,20 @@ export default function PlanillaUniversal({
   if (totalLocal > totalVisita) textoMarcador = `Lidera ${datosPartido.localNombre} (+${totalLocal - totalVisita})`;
   if (totalVisita > totalLocal) textoMarcador = `Lidera ${datosPartido.visitaNombre} (+${totalVisita - totalLocal})`;
 
-  // ==========================================
+  const [generandoPDF, setGenerandoPDF] = React.useState(false);
+ 
   // FUNCIÓN GENERADORA DEL PDF NATIVO
-  // ==========================================
-  const generarPDF = () => {
-    const doc = new jsPDF('landscape');
 
-    doc.setFontSize(14);
+  const generarPDF = () => {
+    // INSERCIÓN: Regla de Idempotencia y timeout para actualización de UI
+    if (generandoPDF) return;
+    setGenerandoPDF(true);
+
+    setTimeout(() => {
+      try {
+        const doc = new jsPDF('landscape');
+
+        doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.text("LIGA DE BOLAS CRIOLLAS - PLANILLA OFICIAL DE ANOTACIÓN", 14, 15);
     
@@ -148,6 +155,12 @@ export default function PlanillaUniversal({
 
     const nombreArchivo = `Acta_${datosPartido.localNombre}_vs_${datosPartido.visitaNombre}.pdf`.replace(/\s+/g, '_');
     doc.save(nombreArchivo);
+      } catch (error) {
+        console.error('Error al generar el PDF:', error);
+      } finally {
+        setGenerandoPDF(false);
+      }
+    }, 0);
   };
 
   const RenderTablaEquipo = ({ titulo, capitan, jugadores, puntos, esLocal, colorHeader }) => (
@@ -207,7 +220,8 @@ export default function PlanillaUniversal({
                   })}
 
                   {['AL', 'AB', 'BL', 'BB'].map(tipo => {
-                    const val = stats[tipo] || 0;
+                    const val = Math.max(0, parseInt(stats[tipo]) || 0);
+                    
                     return (
                       <td key={tipo} 
                           onClick={() => rol === 'anotador' && alSeleccionarStatCell(j.id, tipo)}
@@ -235,13 +249,19 @@ export default function PlanillaUniversal({
               <td colSpan={3} className="border border-brand-gold/20 p-3 text-right font-black uppercase text-brand-brown text-xs">
                 Puntuación por mano
               </td>
-              {puntos.map((pts, i) => (
-                <td key={`pts-${i}`} 
-                    onClick={() => rol === 'anotador' && alHacerClicPuntuacion(esLocal, i)}
-                    className={`border border-brand-gold/20 p-2 text-center font-black text-lg ${pts ? 'text-brand-blue' : 'text-transparent'} ${rol === 'anotador' ? 'cursor-pointer hover:bg-yellow-50' : 'cursor-default'}`}>
-                  {pts !== 0 && pts !== '' ? pts : '-'}
-                </td>
-              ))}
+              {puntos.map((pts, i) => {
+                // MODIFICACIÓN: Validación de Rango Lógico de Puntuación de Bolas Criollas (0 a 6 tantos permitidos por regla por equipo)
+                const valorNumerico = parseInt(pts);
+                const ptsValidados = (!isNaN(valorNumerico) && valorNumerico >= 0 && valorNumerico <= 6) ? valorNumerico : '';
+
+                return (
+                  <td key={`pts-${i}`} 
+                      onClick={() => rol === 'anotador' && alHacerClicPuntuacion(esLocal, i)}
+                      className={`border border-brand-gold/20 p-2 text-center font-black text-lg ${ptsValidados !== '' ? 'text-brand-blue' : 'text-transparent'} ${rol === 'anotador' ? 'cursor-pointer hover:bg-yellow-50' : 'cursor-default'}`}>
+                    {ptsValidados !== 0 && ptsValidados !== '' ? ptsValidados : '-'}
+                  </td>
+                );
+              })}
               <td colSpan={4} className="border border-brand-gold/20 bg-brand-cream/50"></td>
             </tr>
           </tbody>
@@ -303,10 +323,11 @@ export default function PlanillaUniversal({
         <div className="text-center mt-8 pb-4">
           <button 
             onClick={generarPDF} 
-            className="w-full sm:w-auto mx-auto bg-brand-gold hover:bg-brand-rust text-white px-8 py-3.5 rounded-xl font-black text-sm uppercase tracking-widest transition-colors shadow-md flex justify-center items-center gap-2"
+            disabled={generandoPDF}
+            className={`w-full sm:w-auto mx-auto px-8 py-3.5 rounded-xl font-black text-sm uppercase tracking-widest transition-colors shadow-md flex justify-center items-center gap-2 ${generandoPDF ? 'bg-gray-400 text-white/70 cursor-not-allowed' : 'bg-brand-gold hover:bg-brand-rust text-white'}`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            Descargar Acta Oficial en PDF
+            {generandoPDF ? 'Generando PDF...' : 'Descargar Acta Oficial en PDF'}
           </button>
         </div>
       </div>

@@ -286,11 +286,25 @@ router.post('/jugadores', async (req, res) => {
     return res.status(400).json({ error: 'La cédula debe ser numérica de 5 a 8 dígitos.' });
   }
   const dorsalNum = parseInt(numero_dorsal);
-  if (isNaN(dorsalNum) || dorsalNum <= 0) {
-    return res.status(400).json({ error: 'El número dorsal debe ser un número entero positivo.' });
+  if (isNaN(dorsalNum) || dorsalNum <= 0 || dorsalNum > 99) {
+    return res.status(400).json({ error: 'El número dorsal debe ser un entero entre 1 y 99.' });
   }
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    const eqRes = await db.query('SELECT categoria FROM public.equipos WHERE id = $1', [equipo_id]);
+
+    if (eqRes.rows.length > 0) {
+      const categoriaEq = eqRes.rows[0].categoria;
+      const edad = Math.floor((new Date() - new Date(fecha_nacimiento).getTime()) / 3.15576e+10);
+      
+      if (categoriaEq === 'Pre-Infantil (<8)' && edad >= 8) 
+        return res.status(400).json({ error: 'Categoría Pre-Infantil: El jugador debe ser menor de 8 años.' });
+      if (categoriaEq === 'Infantil (8-13)' && (edad < 8 || edad > 13)) 
+        return res.status(400).json({ error: 'Categoría Infantil: El jugador debe tener entre 8 y 13 años.' });
+      if (categoriaEq === 'Adulto 22+' && edad < 22) 
+        return res.status(400).json({ error: 'Categoría Adulto 22+: El jugador debe tener al menos 22 años.' });
+    }
+
     const dorsalCheck = await db.query(`SELECT id FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND estado = 'Activo'`, [equipo_id, dorsalNum]);
     if (dorsalCheck.rows.length > 0) {
       return res.status(400).json({ error: `El número dorsal #${dorsalNum} ya está asignado a otro jugador activo.` });
@@ -337,8 +351,28 @@ router.put('/jugadores/:id', async (req, res) => {
     
     const equipoId = jugadorPrevio.rows[0].equipo_id;
     
+    if (fecha_nacimiento) {
+      const eqRes = await db.query('SELECT categoria FROM public.equipos WHERE id = $1', [equipoId]);
+      if (eqRes.rows.length > 0) {
+        const categoriaEq = eqRes.rows[0].categoria;
+        const edad = Math.floor((new Date() - new Date(fecha_nacimiento).getTime()) / 3.15576e+10);
+        
+        if (categoriaEq === 'Pre-Infantil (<8)' && edad >= 8) 
+          return res.status(400).json({ error: 'Categoría Pre-Infantil: El jugador debe ser menor de 8 años.' });
+        if (categoriaEq === 'Infantil (8-13)' && (edad < 8 || edad > 13)) 
+          return res.status(400).json({ error: 'Categoría Infantil: El jugador debe tener entre 8 y 13 años.' });
+        if (categoriaEq === 'Adulto 22+' && edad < 22) 
+          return res.status(400).json({ error: 'Categoría Adulto 22+: El jugador debe tener al menos 22 años.' });
+      }
+    }
+    
     if (numero_dorsal) {
       const dorsalNum = parseInt(numero_dorsal);
+      
+      if (isNaN(dorsalNum) || dorsalNum <= 0 || dorsalNum > 99) {
+        return res.status(400).json({ error: 'El número dorsal debe ser un entero entre 1 y 99.' });
+      }
+
       const dorsalCheck = await db.query(
         `SELECT id FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND id != $3 AND estado = 'Activo'`, 
         [equipoId, dorsalNum, id]
@@ -686,8 +720,13 @@ router.post('/torneos', async (req, res) => {
     return res.status(400).json({ error: 'Faltan datos obligatorios para crear el torneo o no hay partidos configurados.' });
   }
 
+if (fecha_fin < fecha_inicio) {
+    return res.status(400).json({ error: 'La fecha de fin no puede ser anterior a la fecha de inicio del torneo.' });
+  }
+
   const hoyStr = new Date().toISOString().split('T')[0];
   if (fecha_inicio < hoyStr) {
+
     return res.status(400).json({ error: 'La fecha de inicio del torneo no puede ser una fecha pasada.' });
   }
 
@@ -1010,8 +1049,11 @@ router.post('/partidos/:id/forzar-ganador', async (req, res) => {
       return res.status(401).json({ error: 'Contraseña de administrador incorrecta. Acción denegada.' });
     }
 
-    // 3. Si la contraseña es válida, procedemos a forzar el resultado
-    // Primero garantizamos que el partido figure como finalizado.
+    const oficialesRes = await db.query('SELECT arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [partidoId]);
+    if (oficialesRes.rows.length > 0 && (!oficialesRes.rows[0].arbitro_id || !oficialesRes.rows[0].anotador_id)) {
+       return res.status(400).json({ error: 'No se puede finalizar el partido: faltan oficiales asignados (Árbitro y/o Anotador).' });
+    }
+
     await db.query(`UPDATE public.partidos SET estado = 'Finalizado' WHERE id = $1`, [partidoId]);
 
     // Usamos Upsert sobre la tabla resultados, que es la que tiene la columna equipo_ganador_id

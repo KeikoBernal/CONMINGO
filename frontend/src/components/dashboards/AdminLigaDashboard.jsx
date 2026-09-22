@@ -34,6 +34,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [mensaje, setMensaje] = useState('');
   const [debeCambiarPass, setDebeCambiarPass] = useState(false);
   const [nuevaClave, setNuevaClave] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estados Globales
   const [equipos, setEquipos] = useState([]);
@@ -97,6 +98,12 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   };
 
   const toBase64 = file => new Promise((resolve, reject) => {
+    const maxSize = 2 * 1024 * 1024; // 2MB
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    
+    if (!allowedTypes.includes(file.type)) return reject(new Error('Formato no permitido. Solo JPG, PNG o WEBP.'));
+    if (file.size > maxSize) return reject(new Error('El archivo supera los 2MB permitidos.'));
+
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result);
@@ -135,8 +142,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       } else {
         alert(data.error || 'Error subiendo logo');
       }
-    } catch (err) { 
-      alert('Error al procesar la imagen del logo.'); 
+    } catch (e) { 
+      alert(e.message || 'Error al procesar la imagen del logo.'); 
     }
   };
 
@@ -239,10 +246,24 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   const guardarJugador = async (e) => {
     e.preventDefault();
-    const res = await fetchConToken(jugadorEditandoId ? `/jugadores/${jugadorEditandoId}` : `/jugadores`, { method: jugadorEditandoId ? 'PUT' : 'POST', body: JSON.stringify({ ...formJugador, equipo_id: equipoSeleccionado.id }) });
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    
+    const datosLimpios = {
+      ...formJugador,
+      nombre: formJugador.nombre.trim(),
+      apellido: formJugador.apellido.trim(),
+      correo: formJugador.correo.toLowerCase().trim(),
+      equipo_id: equipoSeleccionado.id
+    };
+
+    const res = await fetchConToken(jugadorEditandoId ? `/jugadores/${jugadorEditandoId}` : `/jugadores`, { method: jugadorEditandoId ? 'PUT' : 'POST', body: JSON.stringify(datosLimpios) });
     const data = await res.json();
-    if (res.ok) { setMensaje('Jugador guardado con éxito'); setFormJugador({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false }); setJugadorEditandoId(null); seleccionarEquipoModal(equipoSeleccionado); } 
-    else { alert(data.error); }
+
+    setIsSubmitting(false);
+
+    if (res.ok) { setMensaje('Jugador guardado con éxito'); setFormJugador({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false }); setJugadorEditandoId(null); seleccionarEquipoModal(equipoSeleccionado); }    else { alert(data.error); }
+  
   };
 
   const guardarPlantillaReglas = async (e) => {
@@ -714,13 +735,13 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
         </div>
       </aside>
 
-      {/* OVERLAY MOBILE */}
+    {/* OVERLAY MOBILE */}
       {menuAbierto && (
         <div className="fixed inset-0 bg-brand-brown/50 z-30 md:hidden" onClick={() => setMenuAbierto(false)}></div>
       )}
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
-      <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative">
+      <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto"> {/* INSERCIÓN: overflow-y-auto */}
         
         {/* HEADER SUPERIOR */}
         <header className="h-16 sm:h-20 bg-white border-b border-brand-gold/20 flex items-center justify-between px-6 shadow-sm shrink-0">
@@ -741,6 +762,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
             </label>
           </div>
         </header>
+
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
 
             {mensaje && (
               <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded shadow-sm flex items-center gap-3 animate-fade-in">
@@ -949,9 +972,9 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
                         <input type="text" placeholder="Apellido" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.apellido} onChange={e => setFormJugador({...formJugador, apellido: e.target.value})} required />
                         <input type="date" max={hoyStr} className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.fecha_nacimiento} onChange={e => setFormJugador({...formJugador, fecha_nacimiento: e.target.value})} required />
                         <input type="email" placeholder="Correo" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.correo} onChange={e => setFormJugador({...formJugador, correo: e.target.value})} required />
-                        <input type="text" placeholder="Teléfono" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.telefono} onChange={e => setFormJugador({...formJugador, telefono: e.target.value})} required />
-                        <input type="number" min="1" placeholder="Dorsal" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.numero_dorsal} onChange={e => setFormJugador({...formJugador, numero_dorsal: e.target.value})} required />
-                        
+                        <input type="tel" pattern="[0-9\-\+ ]+" title="Solo se permiten números, espacios, guiones y el signo +" placeholder="Teléfono" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust invalid:border-red-500 invalid:text-red-600 focus:invalid:ring-red-500 transition-colors" value={formJugador.telefono} onChange={e => setFormJugador({...formJugador, telefono: e.target.value})} required />
+                        <input type="number" min="1" max="99" placeholder="Dorsal" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.numero_dorsal} onChange={e => setFormJugador({...formJugador, numero_dorsal: e.target.value})} required />
+
                         <div className="flex items-center gap-3 bg-brand-cream/20 px-3 rounded border border-brand-gold/30">
                           <label className="flex items-center gap-2 text-sm font-semibold text-brand-brown cursor-pointer flex-1">
                             <input type="checkbox" className="w-4 h-4 text-brand-rust rounded focus:ring-brand-rust" checked={formJugador.es_capitan} onChange={e => setFormJugador({...formJugador, es_capitan: e.target.checked})} />
@@ -965,7 +988,9 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
                               <input type="file" accept="image/*" onChange={async e => { const f = e.target.files[0]; if(f) setFormJugador({...formJugador, foto_url: await toBase64(f)}); }} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand-blue/10 file:text-brand-blue hover:file:bg-brand-blue/20" />
                             </label>
                           <div className="flex gap-2 w-full sm:w-auto">
-                            <button type="submit" className="flex-1 sm:flex-none bg-brand-rust text-white px-6 py-2.5 rounded font-bold hover:bg-brand-brown transition-colors shadow-md">{jugadorEditandoId ? 'Actualizar Jugador' : 'Registrar Jugador'}</button>
+                            <button type="submit" disabled={isSubmitting} className={`flex-1 sm:flex-none text-white px-6 py-2.5 rounded font-bold transition-colors shadow-md ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-rust hover:bg-brand-brown'}`}>
+                              {isSubmitting ? 'Guardando...' : (jugadorEditandoId ? 'Actualizar Jugador' : 'Registrar Jugador')}
+                            </button>
                             {jugadorEditandoId && <button type="button" onClick={() => { setJugadorEditandoId(null); setFormJugador({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false }); }} className="px-6 py-2.5 bg-gray-200 text-brand-brown rounded font-bold hover:bg-gray-300">Cancelar</button>}
                           </div>
                         </div>
@@ -1546,6 +1571,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
                 </div>
               </div>
             )}
+          </div>
       </main>
     </div>
   );

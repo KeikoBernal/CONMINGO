@@ -29,9 +29,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     }, 700);
   };
   
-  // Seguridad y Sesión
+// Seguridad y Sesión
   const [debeCambiarPass, setDebeCambiarPass] = useState(false);
   const [nuevaClave, setNuevaClave] = useState('');
+  const [isSubmittingPass, setIsSubmittingPass] = useState(false);
+
   const [token, setToken] = useState(null);
 
   // Datos del Delegado
@@ -143,11 +145,24 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
 
   const cambiarClaveObligatoria = async (e) => {
     e.preventDefault();
+    
+    if (isSubmittingPass) return;
+    const claveSaneada = nuevaClave.trim();
+    
+    if (claveSaneada.length < 6) {
+      return alert('La contraseña no puede contener puros espacios en blanco y debe tener al menos 6 caracteres válidos.');
+    }
+    
+    setIsSubmittingPass(true);
+
     const res = await fetch(`${API_URL}/delegado/cambiar-password-propio`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ nueva_password: nuevaClave })
+      body: JSON.stringify({ nueva_password: claveSaneada })
     });
+    
+    setIsSubmittingPass(false); // Liberar bloqueo
+    
     if (res.ok) {
       alert('Contraseña actualizada correctamente.');
       setDebeCambiarPass(false);
@@ -168,6 +183,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
 
   const exportarScouting = (formato) => {
     if (!miEquipo || !estadisticas) return alert('Datos no disponibles.');
+    if (!estadisticas.individual || estadisticas.individual.length === 0) return alert('No hay datos de jugadores registrados para generar el reporte de scouting.');
+    
     const nombreArchivo = `Scouting_${miEquipo.nombre.replace(/\s+/g, '_')}`;
     const grupal = estadisticas.grupal || {};
 
@@ -278,7 +295,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
             <p className="text-sm text-brand-brown/70 mb-4">Por razones de seguridad, debes actualizar tu contraseña temporal antes de gestionar tu equipo.</p>
             <form onSubmit={cambiarClaveObligatoria} className="space-y-4">
               <input type="password" placeholder="Nueva Contraseña (mín 6 chars)" className="w-full p-3 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={nuevaClave} onChange={e => setNuevaClave(e.target.value)} required minLength={6} />
-              <button type="submit" className="w-full bg-brand-rust text-white py-3 rounded font-bold hover:bg-brand-brown transition-colors">Actualizar Contraseña</button>
+              
+              {/* MODIFICACIÓN: Botón con estado deshabilitado */}
+              <button type="submit" disabled={isSubmittingPass} className={`w-full py-3 rounded text-white font-bold transition-colors ${isSubmittingPass ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-rust hover:bg-brand-brown'}`}>
+                {isSubmittingPass ? 'Actualizando...' : 'Actualizar Contraseña'}
+              </button>
             </form>
           </div>
         </div>
@@ -425,9 +446,15 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                             <td className="text-brand-brown/80">{j.cedula}</td>
                             <td className="text-brand-brown/80">{j.posicion || 'Atleta'}</td>
                             <td className="text-center">
-                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${j.estado === 'Activo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${j.estado === 'Activo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 border border-red-300'}`}>
                                 {j.estado}
                               </span>
+                              
+                              {j.estado === 'Inactivo' && (
+                                <div className="text-[10px] text-red-600 mt-1 font-bold uppercase tracking-tight bg-red-50 py-0.5 rounded">
+                                  Inhabilitado
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))

@@ -40,6 +40,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [filtroRol, setFiltroRol] = useState('');
   const [filtroUsuarioId, setFiltroUsuarioId] = useState('');
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [token, setToken] = useState(null);
 
   useEffect(() => {
@@ -228,8 +230,21 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
   const guardarLiga = async (e) => {
     e.preventDefault();
-    const res = await fetchConToken('/ligas', { method: 'POST', body: JSON.stringify(formLiga) });
+    if (isSubmitting) return; 
+    setIsSubmitting(true);
+
+    const payloadLimpio = {
+      ...formLiga,
+      nombre: formLiga.nombre.trim().replace(/\s+/g, ' '),
+      responsable_nombre: formLiga.responsable_nombre.trim().replace(/\s+/g, ' '),
+      responsable_apellido: formLiga.responsable_apellido.trim().replace(/\s+/g, ' '),
+      responsable_email: formLiga.responsable_email.trim().toLowerCase()
+    };
+
+    const res = await fetchConToken('/ligas', { method: 'POST', body: JSON.stringify(payloadLimpio) });
     const data = await res.json();
+    
+    setIsSubmitting(false); 
     if (res.ok) {
       setMensaje({ texto: data.mensaje, tipo: 'exito' }); 
       setFormLiga({ nombre: '', responsable_nombre: '', responsable_apellido: '', responsable_cedula: '', responsable_telefono: '', responsable_email: '' });
@@ -239,7 +254,19 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
   const actualizarLiga = async (e) => {
     e.preventDefault();
-    const res = await fetchConToken(`/ligas/${ligaEditando.id}`, { method: 'PUT', body: JSON.stringify(ligaEditando) });
+    if (isSubmitting) return; 
+    setIsSubmitting(true);
+
+    const payloadLimpio = {
+      ...ligaEditando,
+      nombre: ligaEditando.nombre.trim().replace(/\s+/g, ' '),
+      responsable_nombre: ligaEditando.responsable_nombre.trim().replace(/\s+/g, ' '),
+      responsable_email: ligaEditando.responsable_email.trim().toLowerCase()
+    };
+
+    const res = await fetchConToken(`/ligas/${ligaEditando.id}`, { method: 'PUT', body: JSON.stringify(payloadLimpio) });
+    
+    setIsSubmitting(false); // Liberar botón
     if (res.ok) { setMensaje({ texto: 'Liga actualizada.', tipo: 'exito' }); setLigaEditando(null); cargarDatosPestana(); }
   };
 
@@ -250,8 +277,19 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
   const guardarUsuario = async (e) => {
     e.preventDefault();
-    const res = await fetchConToken('/usuarios', { method: 'POST', body: JSON.stringify(formUser) });
+    if (isSubmitting) return; 
+
+    const payloadLimpio = {
+      ...formUser,
+      nombre: formUser.nombre.trim().replace(/\s+/g, ' '),
+      apellido: formUser.apellido.trim().replace(/\s+/g, ' '),
+      email: formUser.email.trim().toLowerCase()
+    };
+
+    const res = await fetchConToken('/usuarios', { method: 'POST', body: JSON.stringify(payloadLimpio) });
     const data = await res.json();
+    
+    setIsSubmitting(false); 
     if (res.ok) {
       setMensaje({ texto: data.mensaje, tipo: 'exito' });
       setFormUser({ nombre: '', apellido: '', cedula: '', email: '', rol: 'administrador de liga', organizacion_id: '', equipo_id: '' });
@@ -261,7 +299,18 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
   const actualizarUsuario = async (e) => {
     e.preventDefault();
-    const res = await fetchConToken(`/usuarios/${userEditando.id}`, { method: 'PUT', body: JSON.stringify(userEditando) });
+    if (isSubmitting) return; 
+    setIsSubmitting(true);
+
+    const payloadLimpio = {
+      ...userEditando,
+      nombre: userEditando.nombre.trim().replace(/\s+/g, ' '),
+      apellido: userEditando.apellido.trim().replace(/\s+/g, ' ')
+    };
+
+    const res = await fetchConToken(`/usuarios/${userEditando.id}`, { method: 'PUT', body: JSON.stringify(payloadLimpio) });
+    
+    setIsSubmitting(false); // Liberar botón
     if (res.ok) { setMensaje({ texto: 'Datos actualizados.', tipo: 'exito' }); setUserEditando(null); cargarDatosPestana(); }
   };
 
@@ -669,7 +718,13 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                       <input type="email" placeholder="Correo Electrónico" value={ligaEditando ? ligaEditando.responsable_email : formLiga.responsable_email} onChange={(e) => ligaEditando ? setLigaEditando({...ligaEditando, responsable_email: e.target.value}) : setFormLiga({...formLiga, responsable_email: e.target.value})} required className="p-3 rounded-lg border border-brand-gold/40 focus:ring-1 focus:ring-brand-rust outline-none bg-brand-cream/10 text-sm" />
                       
                       <div className="md:col-span-2 flex gap-3 mt-2">
-                        <button type="submit" className="flex-1 bg-brand-blue hover:bg-blue-700 text-white py-3 rounded-lg font-bold transition-colors shadow-sm">{ligaEditando ? 'Guardar Cambios' : 'Registrar Organización'}</button>
+                        <button 
+                          type="submit" 
+                          disabled={isSubmitting}
+                          className={`flex-1 text-white py-3 rounded-lg font-bold transition-colors shadow-sm ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-blue hover:bg-blue-700'}`}
+                        >
+                          {ligaEditando ? (isSubmitting ? 'Guardando Cambios...' : 'Guardar Cambios') : (isSubmitting ? 'Registrando...' : 'Registrar Organización')}
+                        </button>
                         {ligaEditando && <button type="button" onClick={() => setLigaEditando(null)} className="flex-1 bg-gray-200 text-brand-brown py-3 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>}
                       </div>
                     </form>
@@ -735,25 +790,18 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                       <option value="">-- Sin Liga Asignada --</option>{ligas.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
                     </select>
                     <div className="md:col-span-2 flex gap-3 mt-2">
-                      <button type="submit" className="flex-1 bg-brand-blue hover:bg-blue-700 text-white py-3 rounded-lg font-bold transition-colors shadow-sm">Actualizar Datos</button>
+                      <button 
+                        type="submit" 
+                        disabled={isSubmitting}
+                        className={`flex-1 text-white py-3 rounded-lg font-bold transition-colors shadow-sm ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-blue hover:bg-blue-700'}`}
+                      >
+                        {isSubmitting ? 'Actualizando Datos...' : 'Actualizar Datos'}
+                      </button>
                       <button type="button" onClick={() => setUserEditando(null)} className="flex-1 bg-gray-200 text-brand-brown py-3 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
                     </div>
                   </form>
                 ) : (
                   <form onSubmit={guardarUsuario} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" placeholder="Nombre" value={formUser.nombre} onChange={(e) => setFormUser({...formUser, nombre: e.target.value})} required className="p-3 rounded-lg border border-brand-gold/40 focus:ring-1 focus:ring-brand-rust outline-none bg-brand-cream/10 text-sm" />
-                    <input type="text" placeholder="Apellido" value={formUser.apellido} onChange={(e) => setFormUser({...formUser, apellido: e.target.value})} required className="p-3 rounded-lg border border-brand-gold/40 focus:ring-1 focus:ring-brand-rust outline-none bg-brand-cream/10 text-sm" />
-                    <input type="text" placeholder="Cédula (Min 5, Max 8 dígitos)" pattern="\d{5,8}" value={formUser.cedula} onChange={(e) => setFormUser({...formUser, cedula: e.target.value})} required className="p-3 rounded-lg border border-brand-gold/40 focus:ring-1 focus:ring-brand-rust outline-none bg-brand-cream/10 text-sm" />
-                    <input type="email" placeholder="Correo Electrónico" value={formUser.email} onChange={(e) => setFormUser({...formUser, email: e.target.value})} required className="p-3 rounded-lg border border-brand-gold/40 focus:ring-1 focus:ring-brand-rust outline-none bg-brand-cream/10 text-sm" />
-                    
-                    <select value={formUser.rol} onChange={(e) => setFormUser({...formUser, rol: e.target.value})} className="p-3 rounded-lg border border-brand-gold/40 focus:ring-1 focus:ring-brand-rust outline-none bg-white text-sm">
-                      <option value="administrador de liga">Admin Liga</option><option value="arbitro">Árbitro</option><option value="anotador">Anotador</option><option value="delegado de equipo">Delegado de Equipo</option><option value="Superadmin">Superadmin</option>
-                    </select>
-                    
-                    <select value={formUser.organizacion_id} onChange={(e) => setFormUser({...formUser, organizacion_id: e.target.value})} className="p-3 rounded-lg border border-brand-gold/40 focus:ring-1 focus:ring-brand-rust outline-none bg-white text-sm">
-                      <option value="">-- Asignar Liga --</option>{ligas.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-                    </select>
-
                     {formUser.rol.toLowerCase() === 'delegado de equipo' && formUser.organizacion_id && (
                       <div className="md:col-span-2 bg-brand-cream/30 p-4 rounded-lg border border-brand-gold/40 animate-fade-in">
                         <label className="block text-xs font-bold text-brand-brown uppercase tracking-wider mb-2">Asignación Inmediata de Equipo (Opcional):</label>
@@ -763,7 +811,13 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                         </select>
                       </div>
                     )}
-                    <button type="submit" className="md:col-span-2 mt-2 bg-brand-blue hover:bg-blue-700 text-white py-3 rounded-lg font-bold transition-colors shadow-sm">Registrar Nuevo Usuario</button>
+                    <button 
+                      type="submit" 
+                      disabled={isSubmitting}
+                      className={`md:col-span-2 mt-2 text-white py-3 rounded-lg font-bold transition-colors shadow-sm ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-blue hover:bg-blue-700'}`}
+                    >
+                      {isSubmitting ? 'Registrando Usuario...' : 'Registrar Nuevo Usuario'}
+                    </button>
                   </form>
                 )}
               </div>

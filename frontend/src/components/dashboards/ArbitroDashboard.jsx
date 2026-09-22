@@ -32,6 +32,7 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const [jugadorSancionId, setJugadorSancionId] = useState('');
   const [modalSorteo, setModalSorteo] = useState(null);
   const [sorteoTexto, setSorteoTexto] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [token, setToken] = useState(null);
   const [ligas, setLigas] = useState([]);
@@ -135,17 +136,28 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  const guardarSorteo = async () => {
-    const res = await fetchConToken(`/partidos/${modalSorteo}/sorteo`, { method: 'PUT', body: JSON.stringify({ sorteo: sorteoTexto }) });
-    if (res.ok) { alert('Sorteo guardado exitosamente.'); setModalSorteo(null); }
+const guardarSorteo = async () => {
+    // INSERCIÓN: Bloqueo y saneamiento
+    if (isSubmitting) return;
+    const textoSaneado = sorteoTexto.trim();
+    if (!textoSaneado) return alert('El acta de sorteo no puede estar vacía.');
+    
+    setIsSubmitting(true);
+    const res = await fetchConToken(`/partidos/${modalSorteo}/sorteo`, { method: 'PUT', body: JSON.stringify({ sorteo: textoSaneado }) });
+    setIsSubmitting(false);
+    
+    if (res.ok) { alert('Sorteo guardado exitosamente.'); setModalSorteo(null); setSorteoTexto(''); }
   };
 
   const suspenderPartido = async () => {
-    if(!partidoActivo) return;
+    if(!partidoActivo || isSubmitting) return; // INSERCIÓN: Prevención de doble click
     const confirmacion = window.confirm("🛑 ¿Estás seguro de suspender este partido? Se guardarán los resultados actuales y desaparecerá de tu panel y del anotador hasta ser reagendado.");
     if (!confirmacion) return;
 
+    setIsSubmitting(true); // INSERCIÓN: Bloqueo
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/suspender`, { method: 'PUT' });
+    setIsSubmitting(false); // INSERCIÓN: Liberación
+    
     if (res.ok) {
       socketRef.current.emit('partido_suspendido', { partidoId: partidoActivo.id });
       socketRef.current.emit('enviar_notificacion_admin', { mensaje: `🚨 El árbitro ha suspendido el encuentro: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre} (Partido #${partidoActivo.id}). Requiere ser reagendado en el panel.`, tipo: 'alerta_suspension' });
@@ -180,8 +192,16 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const solicitarRevision = (jugadorId, manoIndex, jugadaObj) => {
     if (!jugadaObj || jugadaObj.estado === 'rechazado') return;
     const msg = window.prompt("Indique el motivo de la revisión para el anotador:", "Corregir valor ingresado");
-    if (msg) {
-      socketRef.current?.emit('solicitar_revision_jugada', { partido_id: partidoActivo.id, jugador_id: jugadorId, mano_index: manoIndex, mensaje: msg });
+    
+    // INSERCIÓN: Saneamiento y Tipado numérico estricto antes del Socket
+    const msgSaneado = msg?.trim();
+    if (msgSaneado) {
+      socketRef.current?.emit('solicitar_revision_jugada', { 
+        partido_id: parseInt(partidoActivo.id), 
+        jugador_id: parseInt(jugadorId), 
+        mano_index: parseInt(manoIndex), 
+        mensaje: msgSaneado 
+      });
     }
   };
 
@@ -225,7 +245,13 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
               className="w-full h-28 p-3 border border-brand-gold/40 rounded-lg focus:ring-2 focus:ring-brand-rust focus:border-brand-rust outline-none resize-none mb-5 text-sm font-medium text-brand-brown bg-brand-cream/10" 
             />
             <div className="flex gap-3">
-              <button onClick={guardarSorteo} className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm">Guardar Acta</button>
+              <button 
+                onClick={guardarSorteo} 
+                disabled={isSubmitting}
+                className={`flex-1 text-white py-2.5 rounded-lg font-bold transition-colors shadow-sm ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-brand-blue hover:bg-brand-brown'}`}
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar Acta'}
+              </button>
               <button onClick={() => setModalSorteo(null)} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
             </div>
           </div>
@@ -528,9 +554,13 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
                   <p className="text-[0.75rem] text-brand-brown/60 mb-4 pl-2 leading-relaxed">
                     Utilice esta opción solo en caso de fuerza mayor (lluvia, falta de luz, etc).
                   </p>
-                  <button onClick={suspenderPartido} className="w-full py-3 bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2">
+                  <button 
+                    onClick={suspenderPartido} 
+                    disabled={isSubmitting}
+                    className={`w-full py-3 border rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 ${isSubmitting ? 'bg-gray-200 text-gray-500 border-gray-300 opacity-70 cursor-not-allowed' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-600 hover:text-white'}`}
+                  >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
-                    Suspender Partido
+                    {isSubmitting ? 'Suspendiendo...' : 'Suspender Partido'}
                   </button>
                 </div>
 

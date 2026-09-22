@@ -45,11 +45,15 @@ export default function PantallaPuntajes() {
     socketRef.current.emit('unirse_partido', id);
     
     socketRef.current.on('actualizar_planilla', (data) => {
-      if (data.efectividad) setEfectividadJugadores(data.efectividad);
-      if (data.manualStats) setManualStats(data.manualStats);
-      if (data.tantosLocal) setPuntosPorManoLocal(data.tantosLocal);
-      if (data.tantosVisita) setPuntosPorManoVisita(data.tantosVisita);
-      if (data.estadoPartido) setPartidoSeleccionado(prev => prev ? { ...prev, estado: data.estadoPartido } : null);
+      // 1. Validar que la data que entra por el socket pertenece exactamente al ID en pantalla
+      if (data.partido_id && String(data.partido_id) !== String(id)) return;
+      
+      // 2. Sanitización estricta de tipos de datos antes de inyectar en el estado de React
+      if (data.efectividad && typeof data.efectividad === 'object') setEfectividadJugadores(data.efectividad);
+      if (data.manualStats && typeof data.manualStats === 'object') setManualStats(data.manualStats);
+      if (Array.isArray(data.tantosLocal)) setPuntosPorManoLocal(data.tantosLocal);
+      if (Array.isArray(data.tantosVisita)) setPuntosPorManoVisita(data.tantosVisita);
+      if (data.estadoPartido && typeof data.estadoPartido === 'string') setPartidoSeleccionado(prev => prev ? { ...prev, estado: data.estadoPartido } : null);
     });
 
     fetch(`${API_URL}/publico/partidos/${id}`) 
@@ -64,9 +68,16 @@ export default function PantallaPuntajes() {
               setJugadoresVisita(nomina.filter(j => j.equipo_id === data.equipo_visita_id));
               setCargando(false);
             });
+        } else {
+          // INSERCIÓN: Manejo explícito de error en carga si el partido no existe o hay error de DB
+          alert('El partido solicitado no existe o no se encuentra disponible.');
+          window.location.href = '/?vista=puntajes';
         }
-        setCargando(false);
-      }).catch(() => setCargando(false));
+      }).catch(() => {
+        // INSERCIÓN: Redirección de seguridad en caso de caída del servidor
+        alert('Error de conexión al intentar cargar la información del encuentro.');
+        window.location.href = '/?vista=puntajes';
+      });
   };
 
   if (cargando) {
