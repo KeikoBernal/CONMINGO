@@ -7,14 +7,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'], // Agrega aquí tus assets estáticos
+      includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
-        name: 'Sistema de Gestión de Ligas',
-        short_name: 'LigasApp',
-        description: 'Gestión de estadísticas y planillas para anotadores y árbitros',
-        theme_color: '#ffffff', // Cambia esto al color principal de tu UI
-        background_color: '#ffffff',
-        display: 'standalone', // Esto oculta la barra del navegador (look de app nativa)
+        name: 'conmingo',
+        short_name: 'conmingo',
+        description: 'Gestión deportiva de bolas criollas',
+        theme_color: '#F2EBE0', 
+        background_color: '#F2EBE0',
+        display: 'standalone', 
         icons: [
           {
             src: '/pwa-192x192.png',
@@ -30,7 +30,6 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Configuración para el caché offline
         globPatterns: ['**/*.{js,css,html,ico,png,svg}']
       }
     })
