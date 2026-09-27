@@ -417,7 +417,9 @@ router.put('/jugadores/:id/estado', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
     const resDb = await db.query(`UPDATE public.jugadores SET estado = $1 WHERE id = $2 RETURNING *`, [estado, req.params.id]);
-    
+    if (estado !== 'Activo') {
+      await db.query(`UPDATE public.equipos SET capitan_id = NULL WHERE capitan_id = $1`, [req.params.id]);
+    }
     let mensajeDelegado = '';
     if (nuevo_capitan_id && equipo_id) {
       await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [nuevo_capitan_id, equipo_id]);
@@ -588,9 +590,11 @@ router.post('/plantillas-reglas', async (req, res) => {
   const { nombre, descripcion, reglas } = req.body;
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    const reglasParseadas = typeof reglas === 'object' ? reglas : JSON.parse(reglas || '{}');
+    if (!reglasParseadas.esferas_por_equipo) reglasParseadas.esferas_por_equipo = 8;
     const resDb = await db.query(
       `INSERT INTO public.plantillas_reglas (organizacion_id, nombre, descripcion, reglas) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [orgId, formatearTexto(nombre), descripcion ? descripcion.trim() : null, JSON.stringify(reglas)]
+      [orgId, formatearTexto(nombre), descripcion ? descripcion.trim() : null, JSON.stringify(reglasParseadas)]
     );
     res.status(201).json({ mensaje: 'Plantilla de reglas guardada con éxito.', plantilla: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error guardando reglas.' }); }

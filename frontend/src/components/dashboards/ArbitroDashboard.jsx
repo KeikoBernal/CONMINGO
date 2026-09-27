@@ -121,6 +121,13 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
       if (data.estadoPartido) setPartidoActivo(prev => prev ? ({ ...prev, estado: data.estadoPartido }) : null);
     });
 
+    socketRef.current.on('partido_finalizado_auto', (data) => {
+      alert(`🏆 ¡META DE PUNTOS ALCANZADA! El sistema ha cerrado el acta de forma automática.\nHora final registrada: ${data.hora_final}`);
+      setPartidoActivo(prev => prev ? ({ ...prev, estado: 'Finalizado', hora_final: data.hora_final }) : null);
+      setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
+      localStorage.removeItem('partidoActivoId');
+    });
+
     socketRef.current.on('sincronizacion_cronometro', (data) => {
       setTiempoTurno(data.tiempoTurno);
       setCronometroTurnoActivo(data.cronometroTurnoActivo);

@@ -75,8 +75,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [formJugador, setFormJugador] = useState({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false });
   const [formCredencial, setFormCredencial] = useState({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' });
   const [formPartidoSuelto, setFormPartidoSuelto] = useState({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '' });
-  const [formReglas, setFormReglas] = useState({ nombre: '', descripcion: '', puntos_victoria: 3, puntos_empate: 1, puntos_derrota: 0, limite_jugadores: 8, meta_puntos: 15, tiempo_minutos: 60, tarjetas_suspension: 2, politica_clasificacion: 'ganador_vs_ganador' });
-  
+  const [formReglas, setFormReglas] = useState({ nombre: '', descripcion: '', puntos_victoria: 3, puntos_empate: 1, puntos_derrota: 0, limite_jugadores: 8, meta_puntos: 15, tiempo_minutos: 60, tarjetas_suspension: 2, esferas_por_equipo: 8, politica_clasificacion: 'ganador_vs_ganador' });  
   const [subPestanaTorneo, setSubPestanaTorneo] = useState('lista');
   const [pasoTorneo, setPasoTorneo] = useState(1);
   const [formTorneo, setFormTorneo] = useState({ nombre: '', fecha_inicio: '', fecha_fin: '', plantilla_id: '', categoria: 'Adulto 22+', tipo_genero: 'Mixto', sistema_clasificacion: 'liga_semifinales', opcion_grupos: 'cruc_semis', incluir_tercer_lugar: true, temporada: '2026' });
@@ -269,7 +268,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const guardarPlantillaReglas = async (e) => {
     e.preventDefault();
     const res = await fetchConToken('/plantillas-reglas', {
-      method: 'POST', body: JSON.stringify({ nombre: formReglas.nombre, descripcion: formReglas.descripcion, reglas: { puntos_victoria: parseInt(formReglas.puntos_victoria), puntos_empate: parseInt(formReglas.puntos_empate), puntos_derrota: parseInt(formReglas.puntos_derrota), limite_jugadores: parseInt(formReglas.limite_jugadores), meta_puntos: parseInt(formReglas.meta_puntos), tiempo_minutos: parseInt(formReglas.tiempo_minutos), tarjetas_suspension: parseInt(formReglas.tarjetas_suspension), politica_clasificacion: formReglas.politica_clasificacion }})
+      method: 'POST', body: JSON.stringify({ nombre: formReglas.nombre, descripcion: formReglas.descripcion, reglas: { puntos_victoria: parseInt(formReglas.puntos_victoria), puntos_empate: parseInt(formReglas.puntos_empate), puntos_derrota: parseInt(formReglas.puntos_derrota), limite_jugadores: parseInt(formReglas.limite_jugadores), meta_puntos: parseInt(formReglas.meta_puntos), tiempo_minutos: parseInt(formReglas.tiempo_minutos), tarjetas_suspension: parseInt(formReglas.tarjetas_suspension), esferas_por_equipo: parseInt(formReglas.esferas_por_equipo), politica_clasificacion: formReglas.politica_clasificacion }})
     });
     const data = await res.json();
     if (res.ok) { setMensaje('Plantilla guardada.'); cargarDatos(); } else { alert(data.error); }
@@ -846,6 +845,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
                     <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Meta Tantos</label><input type="number" min="1" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.meta_puntos} onChange={e => setFormReglas({...formReglas, meta_puntos: e.target.value})} required /></div>
                     <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Tiempo (Min)</label><input type="number" min="1" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.tiempo_minutos} onChange={e => setFormReglas({...formReglas, tiempo_minutos: e.target.value})} required /></div>
                     <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Tarjetas Suspensión</label><input type="number" min="0" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.tarjetas_suspension} onChange={e => setFormReglas({...formReglas, tarjetas_suspension: e.target.value})} required /></div>
+                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Esferas por Equipo</label><input type="number" min="1" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.esferas_por_equipo} onChange={e => setFormReglas({...formReglas, esferas_por_equipo: e.target.value})} required title="Tope de lanzamientos permitidos por equipo en cada mano" /></div>
                     
                     <div className="space-y-1 lg:col-span-1">
                       <label className="text-xs font-bold text-brand-brown/70 uppercase">Política Llaves</label>

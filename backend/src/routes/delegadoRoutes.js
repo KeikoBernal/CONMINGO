@@ -109,8 +109,8 @@ router.get('/partidos/:id/planilla', async (req, res) => {
       LEFT JOIN public.sedes s ON p.sede_id = s.id
       LEFT JOIN public.usuarios ua ON p.arbitro_id = ua.id
       LEFT JOIN public.usuarios un ON p.anotador_id = un.id
-      LEFT JOIN public.jugadores jl ON el.capitan_id = jl.id
-      LEFT JOIN public.jugadores jv ON ev.capitan_id = jv.id
+      LEFT JOIN public.jugadores jl ON el.capitan_id = jl.id AND jl.estado = 'Activo'
+      LEFT JOIN public.jugadores jv ON ev.capitan_id = jv.id AND jv.estado = 'Activo'
       WHERE p.id = $1 AND (p.equipo_local_id = $2 OR p.equipo_visita_id = $2)
     `, [partidoId, equipoId]);
 

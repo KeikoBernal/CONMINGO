@@ -187,9 +187,9 @@ export default function PlanillaUniversal({
           <tbody>
             {jugadores.map((j) => {
               const stats = manualStats[j.id] || { AL: 0, AB: 0, BL: 0, BB: 0 };
-
+              const esSuspendido = j.estado === 'Suspendido' || j.tarjeta_roja;
               return (
-                <tr key={j.id} className="border-b border-brand-gold/20 hover:bg-brand-cream/10 transition-colors">
+                <tr key={j.id} className={`border-b border-brand-gold/20 transition-colors ${esSuspendido ? 'bg-red-50 opacity-60 pointer-events-none' : 'hover:bg-brand-cream/10'}`}>
                   <td className="border border-brand-gold/20 p-1">
                     <div className="w-7 h-7 rounded-full bg-brand-cream/50 mx-auto overflow-hidden flex items-center justify-center border border-brand-gold/30">
                       {j.foto_url ? (
