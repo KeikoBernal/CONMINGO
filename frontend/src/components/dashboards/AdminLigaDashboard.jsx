@@ -972,21 +972,56 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
                       <table className="tabla-admin">
                         <thead>
                           <tr>
-                            <th>Usuario</th>
-                            <th>Rol</th>
-                            <th>Contacto</th>
+                            <th className="w-16 text-center"></th>
+                            <th className="text-center">Dorsal</th>
+                            <th>Jugador</th>
+                            <th>Cédula</th>
+                            <th className="text-center">Estado</th>
                             <th className="text-center">Acciones</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {usuariosOperativos.filter(u => `${u.nombre} ${u.apellido} ${u.cedula} ${u.email}`.toLowerCase().includes(busquedaCredenciales.toLowerCase())).map(u => (
-                            <tr key={u.id}>
-                              <td className="font-bold">{u.nombre} {u.apellido}</td>
-                              <td><span className="px-2 py-1 bg-brand-blue/10 text-brand-blue rounded text-xs font-bold uppercase">{u.rol}</span></td>
-                              <td className="text-xs text-brand-brown/70"><div>{u.cedula}</div><div>{u.email}</div></td>
+                          {jugadores.length === 0 ? (
+                            <tr>
+                              <td colSpan="6" className="text-center p-4 text-brand-brown/60">
+                                No hay jugadores registrados en esta nómina.
+                              </td>
+                            </tr>
+                          ) : jugadores.map(j => (
+                            <tr key={j.id} className={j.estado !== 'Activo' ? 'opacity-60 bg-gray-50' : ''}>
+                              <td className="text-center font-bold text-brand-rust text-lg">#{j.numero_dorsal}</td>
+                              <td>
+                                <div className="flex items-center gap-3">
+                                  {j.foto_url ? (
+                                    <img src={j.foto_url} alt="foto" className="w-8 h-8 rounded-full object-cover border border-brand-gold/50" />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-full bg-brand-cream flex items-center justify-center text-xs font-bold text-brand-brown border border-brand-gold/50">
+                                      {j.nombre.charAt(0)}{j.apellido.charAt(0)}
+                                    </div>
+                                  )}
+                                  <div className="font-bold">
+                                    {j.nombre} {j.apellido}
+                                    {equipoSeleccionado.capitan_id === j.id && (
+                                      <span className="ml-2 text-xs bg-brand-gold text-brand-brown px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                        Capitán
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="text-brand-brown/80 font-medium">{j.cedula}</td>
+                              <td className="text-center">
+                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${j.estado === 'Activo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {j.estado}
+                                </span>
+                              </td>
                               <td className="flex justify-center gap-2">
-                                <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm">Reset Clave</button>
-                                <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json(); if (res.ok) alert(data.mensaje); else alert(data.error); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
+                                <button type="button" onClick={() => iniciarEdicionJugador(j)} className="px-3 py-1.5 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded text-xs font-bold transition-colors shadow-sm">
+                                  Editar
+                                </button>
+                                <button type="button" onClick={() => cambiarEstadoJugador(j.id, j.estado)} className={`px-3 py-1.5 rounded text-xs font-bold transition-colors shadow-sm ${j.estado === 'Activo' ? 'bg-red-100 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-green-100 text-green-700 hover:bg-green-600 hover:text-white'}`}>
+                                  {j.estado === 'Activo' ? 'Desactivar' : 'Activar'}
+                                </button>
                               </td>
                             </tr>
                           ))}
