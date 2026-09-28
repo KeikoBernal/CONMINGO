@@ -696,34 +696,6 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
               })}
             </nav>
           </div>
-
-          <div>
-            <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Administración</div>
-            <nav className="space-y-1">
-              {[
-                { id: 'credenciales', label: 'Credenciales' },
-                { id: 'reglas', label: 'Plantillas y Reglas' },
-                { id: 'estadisticas', label: 'Estadísticas Globales' },
-                { id: 'historial', label: 'Historial / Archivo' }
-              ].map(item => {
-                const isAnimating = animandoBoton === item.id;
-                const isActive = pestana === item.id && !isAnimating;
-                
-                return (
-                  <button 
-                    key={item.id} 
-                    onClick={() => cambiarPestanaConAnimacion(item.id)} 
-                    className={`w-full px-6 py-3 text-sm font-medium transition-colors btn-opcion-lateral ${isAnimating ? 'anim-boton-bola' : ''} ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <NavIcon pestanaId={item.id} />
-                      {item.label}
-                    </div>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
         </div>
 
         <div className="p-4 border-t border-brand-gold/20 shrink-0">
