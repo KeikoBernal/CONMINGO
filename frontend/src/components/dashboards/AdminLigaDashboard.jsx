@@ -866,7 +866,6 @@ const confirmarReagendar = async (e) => {
                     </div>
                   </div>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
-                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }, { key: 'estado', label: 'Estado' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename={`nomina_${equipoSeleccionado.nombre}_filtrada`} />
                       <div className="overflow-x-auto">
                         <table className="tabla-admin">
                       <thead>
