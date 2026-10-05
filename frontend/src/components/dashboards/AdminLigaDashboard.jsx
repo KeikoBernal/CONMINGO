@@ -74,8 +74,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   
   const [formJugador, setFormJugador] = useState({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false });
   const [formCredencial, setFormCredencial] = useState({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' });
-  const [formPartidoSuelto, setFormPartidoSuelto] = useState({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '' });
-  const [formReglas, setFormReglas] = useState({ nombre: '', descripcion: '', puntos_victoria: 3, puntos_empate: 1, puntos_derrota: 0, limite_jugadores: 8, meta_puntos: 15, tiempo_minutos: 60, tarjetas_suspension: 2, esferas_por_equipo: 8, politica_clasificacion: 'ganador_vs_ganador' });  
+  const [formPartidoSuelto, setFormPartidoSuelto] = useState({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '', plantilla_id: '' });  const [formReglas, setFormReglas] = useState({ nombre: '', descripcion: '', puntos_victoria: 3, puntos_empate: 1, puntos_derrota: 0, limite_jugadores: 8, meta_puntos: 15, tiempo_minutos: 60, tarjetas_suspension: 2, esferas_por_equipo: 8, politica_clasificacion: 'ganador_vs_ganador' });  
   const [subPestanaTorneo, setSubPestanaTorneo] = useState('lista');
   const [pasoTorneo, setPasoTorneo] = useState(1);
   const [formTorneo, setFormTorneo] = useState({ nombre: '', fecha_inicio: '', fecha_fin: '', plantilla_id: '', categoria: 'Adulto 22+', tipo_genero: 'Mixto', sistema_clasificacion: 'liga_semifinales', opcion_grupos: 'cruc_semis', incluir_tercer_lugar: true, temporada: '2026' });
@@ -293,8 +292,11 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     if (!validarDisponibilidadEquipos(formPartidoSuelto.equipo_local_id, formPartidoSuelto.equipo_visita_id, formPartidoSuelto.fecha_hora)) return;
     const res = await fetchConToken('/partidos-sueltos', { method: 'POST', body: JSON.stringify(formPartidoSuelto) });
     const data = await res.json();
-    if (res.ok) { setMensaje('Partido agendado con éxito.'); setFormPartidoSuelto({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '' }); cargarDatos(); } 
-    else { alert(data.error); }
+    if (res.ok) { 
+      setMensaje('Partido agendado con éxito.'); 
+      setFormPartidoSuelto({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '', plantilla_id: '' }); 
+      cargarDatos();
+    } else { alert(data.error); }
   };
 
   const iniciarEdicionJugador = (j) => {
@@ -1475,13 +1477,60 @@ const confirmarReagendar = async (e) => {
                       
                       <form onSubmit={guardarPartidoSuelto} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formPartidoSuelto.equipo_local_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_local_id: e.target.value})} required><option value="">-- Local --</option>{recursosTorneo.equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}</select>
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formPartidoSuelto.equipo_visita_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_visita_id: e.target.value})} required><option value="">-- Visitante --</option>{recursosTorneo.equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}</select>
+                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formPartidoSuelto.equipo_local_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_local_id: e.target.value})} required>
+                            <option value="">-- Local --</option>
+                            {recursosTorneo.equipos.map(eq => (
+                              <option key={eq.id} value={eq.id}>
+                                {eq.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formPartidoSuelto.equipo_visita_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_visita_id: e.target.value})} required>
+                            <option value="">-- Visitante --</option>
+                            {recursosTorneo.equipos.map(eq => (
+                              <option key={eq.id} value={eq.id}>
+                                {eq.nombre}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                        <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.sede_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, sede_id: e.target.value})} required><option value="">-- Instalación --</option>{recursosTorneo.sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}</select>
+
                         <div className="grid grid-cols-2 gap-4">
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.arbitro_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, arbitro_id: e.target.value})}><option value="">-- Árbitro Asignado --</option>{recursosTorneo.arbitros.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.anotador_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, anotador_id: e.target.value})}><option value="">-- Anotador Asignado --</option>{recursosTorneo.anotadores.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
+                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.sede_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, sede_id: e.target.value})} required>
+                            <option value="">-- Instalación --</option>
+                            {recursosTorneo.sedes.map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.plantilla_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, plantilla_id: e.target.value})} required>
+                            <option value="">-- Plantilla de Reglas --</option>
+                            {plantillasReglas.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.arbitro_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, arbitro_id: e.target.value})} required>
+                            <option value="">-- Árbitro Asignado --</option>
+                            {recursosTorneo.arbitros.map(a => (
+                              <option key={a.id} value={a.id}>
+                                {a.nombre} {a.apellido}
+                              </option>
+                            ))}
+                          </select>
+                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.anotador_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, anotador_id: e.target.value})} required>
+                            <option value="">-- Anotador Asignado --</option>
+                            {recursosTorneo.anotadores.map(a => (
+                              <option key={a.id} value={a.id}>
+                                {a.nombre} {a.apellido}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <input type="datetime-local" min={ahoraIsoLocal} className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-medium" value={formPartidoSuelto.fecha_hora} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, fecha_hora: e.target.value})} required />
                         <button type="submit" className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-4">Confirmar Agendamiento</button>

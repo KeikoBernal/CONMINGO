@@ -81,7 +81,6 @@ const validarConflictos = async (fecha_hora, eqLocal, eqVisita, arbitro, anotado
   return res.rows.length > 0;
 };
 
-// NUEVA FUNCIÓN PARA SUSPENDER AUTOMÁTICAMENTE PARTIDOS PASADOS SIN INICIAR
 const suspenderPartidosPasados = async (orgId) => {
   try {
     await db.query(`
@@ -91,7 +90,7 @@ const suspenderPartidosPasados = async (orgId) => {
       WHERE p.torneo_id = t.id 
       AND t.organizacion_id = $1 
       AND p.estado = 'Agendado' 
-      AND p.fecha_hora::timestamp < (NOW() AT TIME ZONE 'America/Caracas')
+      AND p.fecha_hora::timestamp < (NOW() AT TIME ZONE 'America/Caracas' - INTERVAL '1 hour')
     `, [orgId]);
   } catch (error) { console.error('Error al auto-suspender partidos:', error); }
 };
@@ -948,15 +947,24 @@ router.get('/acumulado-temporada', async (req, res) => {
 
 
 router.post('/partidos-sueltos', async (req, res) => {
-  const { equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora } = req.body;
+  const { equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora, plantilla_id } = req.body;
   try {
-    const ahoraLocalIso = obtenerHoraCaracas(); // <-- Hora correcta
+    const ahoraLocalIso = obtenerHoraCaracas();
 
     if (fecha_hora < ahoraLocalIso) {
       return res.status(400).json({ error: 'No se puede programar un partido en una fecha y hora que ya pasó.' });
     }
+    if (!plantilla_id) {
+      return res.status(400).json({ error: 'Es obligatorio seleccionar una plantilla de reglas para el partido.' });
+    }
 
     const orgId = await obtenerOrgId(req.usuario);
+
+    const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1', [plantilla_id]);
+    if (reglaDb.rows.length === 0) return res.status(400).json({ error: 'La plantilla seleccionada no existe.' });
+    
+    let reglasJson = reglaDb.rows[0].reglas;
+    reglasJson.estado = 'Activo';
 
     let torneoIndep = await db.query(
       `SELECT id FROM public.torneos WHERE organizacion_id = $1 AND nombre = 'Partidos Independientes' LIMIT 1`,
@@ -972,17 +980,18 @@ router.post('/partidos-sueltos', async (req, res) => {
       const nuevoTorneo = await db.query(
         `INSERT INTO public.torneos (organizacion_id, nombre, fecha_inicio, fecha_fin, reglas, categorias_permitidas, temporada) 
          VALUES ($1, 'Partidos Independientes', $2, $3, $4, $5, $6) RETURNING id`,
-        [orgId, fechaActual, fechaFutura, JSON.stringify({ estado: 'Activo' }), JSON.stringify([]), temporadaActual]
+        [orgId, fechaActual, fechaFutura, JSON.stringify(reglasJson), JSON.stringify([]), temporadaActual]
       );
       torneoId = nuevoTorneo.rows[0].id;
     } else {
       torneoId = torneoIndep.rows[0].id;
+      await db.query(`UPDATE public.torneos SET reglas = $1 WHERE id = $2`, [JSON.stringify(reglasJson), torneoId]);
     }
 
     const resDb = await db.query(
-      `INSERT INTO public.partidos (torneo_id, equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora, fase, estado) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Partido Suelto', 'Agendado') RETURNING *`,
-      [torneoId, equipo_local_id, equipo_visita_id, sede_id, arbitro_id || null, anotador_id || null, fecha_hora]
+      `INSERT INTO public.partidos (torneo_id, equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora, fase, estado, snapshot_data) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Partido Suelto', 'Agendado', $8) RETURNING *`,
+      [torneoId, equipo_local_id, equipo_visita_id, sede_id, arbitro_id || null, anotador_id || null, fecha_hora, JSON.stringify({ reglas_especificas: reglasJson })]
     );
 
     await notificarInvolucrados([resDb.rows[0]], orgId, req.usuario.id);
