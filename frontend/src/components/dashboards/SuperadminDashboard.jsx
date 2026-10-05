@@ -198,8 +198,15 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     if (pestana === 'ligas') {
       const configPDF = [{ label: 'Nombre Liga', key: 'nombre' }, { label: 'Administrador', key: 'responsable_nombre' }, { label: 'Teléfono', key: 'responsable_telefono' }, { label: 'Correo', key: 'responsable_email' }];
       generarReporte(ligas, 'Ligas_Organizaciones', formato, configPDF);
-    } else if (pestana === 'usuarios') {
-      const configPDF = [{ label: 'Nombre', key: 'nombre' }, { label: 'Apellido', key: 'apellido' }, { label: 'Cédula', key: 'cedula' }, { label: 'Rol', key: 'rol' }, { label: 'Correo', key: 'email' }];
+      } else if (pestana === 'usuarios') {
+      const configPDF = [
+        { label: 'Nombre', key: 'nombre' }, 
+        { label: 'Apellido', key: 'apellido' }, 
+        { label: 'Cédula', key: 'cedula' }, 
+        { label: 'Rol', key: 'rol' }, 
+        { label: 'Correo', key: 'email' },
+        { label: 'Estado', key: 'estado' }
+      ];
       generarReporte(usuariosList, 'Usuarios_Sistema', formato, configPDF);
     } else if (pestana === 'bitacora') {
       const datosBitacora = bitacora.map(b => ({ Fecha: new Date(b.fecha).toLocaleString(), Usuario: b.usuario_email, Rol: b.usuario_rol, Accion: b.accion, Tabla: b.tabla }));
@@ -375,20 +382,30 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
             <th className="p-4">Email</th>
             <th className="p-4">Rol</th>
             <th className="p-4">Liga</th>
+            <th className="p-4">Estado</th>
             <th className="p-4 text-center">Acciones</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-brand-gold/20 bg-white">
           {arregloUsuarios.length === 0 ? (
-            <tr><td colSpan={6} className="text-center p-8 text-brand-brown/50">No se encontraron usuarios.</td></tr>
+            <tr><td colSpan={7} className="text-center p-8 text-brand-brown/50">No se encontraron usuarios.</td></tr>
           ) : (
             arregloUsuarios.map((u) => (
-              <tr key={u.id} className="hover:bg-brand-cream/10 transition-colors">
+              <tr key={u.id} className={`transition-colors ${u.estado === 'Inactivo' ? 'opacity-60 bg-gray-50' : 'hover:bg-brand-cream/10'}`}>
                 <td className="p-4 font-bold">{u.nombre} {u.apellido}</td>
                 <td className="p-4">{u.cedula || 'N/R'}</td>
                 <td className="p-4">{u.email}</td>
-                <td className="p-4"><span className="px-2 py-1 bg-brand-cream/50 border border-brand-gold/20 rounded-md text-xs font-semibold">{u.rol}</span></td>
+                <td className="p-4">
+                  <span className="px-2 py-1 bg-brand-cream/50 border border-brand-gold/20 rounded-md text-xs font-semibold">
+                    {u.rol}
+                  </span>
+                </td>
                 <td className="p-4">{u.organizacion_nombre || 'General'}</td>
+                <td className="p-4">
+                  <span className={`px-2 py-1 rounded-full text-[0.7rem] font-bold uppercase tracking-wider ${u.estado === 'Inactivo' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    {u.estado || 'Activo'}
+                  </span>
+                </td>
                 <td className="p-4 flex gap-2 justify-center">
                   <button onClick={() => setUserEditando(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded transition-colors" title="Editar">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
@@ -396,9 +413,11 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   <button onClick={() => resetearPasswordAccion(u)} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded transition-colors" title="Resetear Clave">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                   </button>
-                  <button onClick={() => iniciarEliminacionUsuario(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Eliminar">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
+                  {u.estado !== 'Inactivo' && (
+                    <button onClick={() => iniciarEliminacionUsuario(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Desactivar Acceso">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  )}
                 </td>
               </tr>
             ))

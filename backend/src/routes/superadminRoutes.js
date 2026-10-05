@@ -190,7 +190,7 @@ router.get('/equipos', async (req, res) => {
 // ==========================================
 router.get('/usuarios', async (req, res) => {
   try {
-    const resultado = await db.query(`SELECT u.id, u.email, u.rol, u.nombre, u.apellido, u.cedula, u.debe_cambiar_password, u.organizacion_id, o.nombre as organizacion_nombre FROM public.usuarios u LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id ORDER BY u.email ASC`);
+    const resultado = await db.query(`SELECT u.id, u.email, u.rol, u.nombre, u.apellido, u.cedula, u.estado, u.debe_cambiar_password, u.organizacion_id, o.nombre as organizacion_nombre FROM public.usuarios u LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id ORDER BY u.email ASC`);
     res.json(resultado.rows);
   } catch (error) { res.status(500).json({ error: 'Error al obtener usuarios.' }); }
 });
@@ -287,7 +287,7 @@ router.get('/usuarios/:id/verificar-eliminacion', async (req, res) => {
 });
 
 // ==========================================
-// ELIMINAR USUARIO OPERATIVO (ÁRBITRO, ANOTADOR, DELEGADO)
+// DESACTIVAR USUARIO (SOFT DELETE)
 // ==========================================
 router.delete('/usuarios/:id', async (req, res) => {
   const { id } = req.params;
@@ -311,23 +311,23 @@ router.delete('/usuarios/:id', async (req, res) => {
       await db.query('UPDATE public.equipos SET delegado_id = NULL WHERE delegado_id = $1', [id]);
     }
 
-    // 3. Eliminar obligatoriamente de Supabase Auth (Para que no pueda volver a iniciar sesión)
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
+    // 3. Inactivar y bloquear obligatoriamente de Supabase Auth (Pierde validez)
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { ban_duration: '876000h' });
     if (authError) {
-      console.error('Error al eliminar de Supabase Auth:', authError);
+      console.error('Error al bloquear en Supabase Auth:', authError);
       return res.status(400).json({ error: `No se pudo revocar el acceso en Supabase: ${authError.message}` });
     }
 
-    // 4. Eliminar de la base de datos local
-    await db.query('DELETE FROM public.usuarios WHERE id = $1', [id]);
+    // 4. Soft Delete en la base de datos local (NO SE ELIMINA)
+    await db.query("UPDATE public.usuarios SET estado = 'Inactivo' WHERE id = $1", [id]);
 
     // 5. Registrar auditoría
-    await registrarAuditoria(req.usuario.id, 'ELIMINAR_USUARIO', 'usuarios', usuarioAEliminar, null, req.ip);
+    await registrarAuditoria(req.usuario.id, 'DESACTIVAR_USUARIO', 'usuarios', usuarioAEliminar, { estado: 'Inactivo' }, req.ip);
 
-    res.json({ mensaje: 'Usuario eliminado con éxito del sistema y de la autenticación.' });
+    res.json({ mensaje: 'Usuario desactivado con éxito. Sus credenciales han perdido validez.' });
   } catch (error) {
-    console.error('Error crítico al eliminar usuario:', error);
-    res.status(500).json({ error: 'Error interno al intentar eliminar el usuario.' });
+    console.error('Error crítico al desactivar usuario:', error);
+    res.status(500).json({ error: 'Error interno al intentar desactivar el usuario.' });
   }
 });
 

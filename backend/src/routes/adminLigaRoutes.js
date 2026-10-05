@@ -535,18 +535,24 @@ router.delete('/remover-credencial/:id', async (req, res) => {
     if (equiposDelDelegado.rows.length > 0) {
       const nombresEquipos = equiposDelDelegado.rows.map(e => e.nombre).join(', ');
       return res.status(400).json({ 
-        error: `⚠️ Acción denegada: Un equipo nunca puede quedar sin delegado. Este usuario es el delegado actual del/los equipo(s): [${nombresEquipos}]. Debe asignar otro delegado a dicho(s) equipo(s) antes de poder eliminar sus credenciales.` 
+        error: `⚠️️ Acción denegada: Un equipo nunca puede quedar sin delegado. Este usuario es el delegado actual del/los equipo(s): [${nombresEquipos}]. Debe asignar otro delegado a dicho(s) equipo(s) antes de poder eliminar sus credenciales.` 
       });
     }
     
+    // Lo removemos de la tabla de relaciones (pierde acceso a la liga actual)
     await db.query('DELETE FROM public.usuario_organizaciones WHERE usuario_id = $1 AND organizacion_id = $2', [usuarioId, orgId]);
     
+    // Verificamos si el usuario aún pertenece a otras ligas
     const ligasRestantes = await db.query('SELECT count(*) FROM public.usuario_organizaciones WHERE usuario_id = $1', [usuarioId]);
     
     if (parseInt(ligasRestantes.rows[0].count) === 0) {
-      await db.query('DELETE FROM public.usuarios WHERE id = $1', [usuarioId]);
-      await supabaseAdmin.auth.admin.deleteUser(usuarioId);
-      return res.json({ mensaje: 'Credencial eliminada permanentemente (el usuario no pertenecía a ninguna otra liga).' });
+      // SOFT DELETE: El usuario ya no está en ninguna liga. Lo inactivamos y bloqueamos su acceso.
+      await db.query("UPDATE public.usuarios SET estado = 'Inactivo' WHERE id = $1", [usuarioId]);
+      
+      // Supabase ban (876000h = 100 años), el usuario pierde validez para iniciar sesión
+      await supabaseAdmin.auth.admin.updateUserById(usuarioId, { ban_duration: '876000h' });
+      
+      return res.json({ mensaje: 'Credencial desactivada permanentemente (el usuario fue inactivado en el sistema global).' });
     }
     
     res.json({ mensaje: 'Acceso revocado para tu liga con éxito. (El usuario conserva sus credenciales en sus otras ligas).' });
