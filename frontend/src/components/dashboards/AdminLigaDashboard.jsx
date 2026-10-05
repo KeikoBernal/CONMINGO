@@ -399,16 +399,25 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     if (res.ok) { alert('Contraseña actualizada.'); setDebeCambiarPass(false); }
   };
 
-  const confirmarReagendar = async (e) => {
+const confirmarReagendar = async (e) => {
     e.preventDefault();
-    const res = await fetchConToken(`/partidos/${modalReagendar.partido.id}/reagendar`, { 
-      method: 'PUT', 
-      body: JSON.stringify({ nueva_fecha_hora: modalReagendar.nuevaFecha }) 
-    });
-    if (res.ok) { 
-      alert('Partido Reagendado Exitosamente'); 
-      setModalReagendar({ visible: false, partido: null, nuevaFecha: '' });
-      cargarDatos(); 
+    try {
+      const res = await fetchConToken(`/partidos/${modalReagendar.partido.id}/reagendar`, { 
+        method: 'PUT', 
+        body: JSON.stringify({ nueva_fecha_hora: modalReagendar.nuevaFecha }) 
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) { 
+        alert('Partido reagendado exitosamente.'); 
+        setModalReagendar({ visible: false, partido: null, nuevaFecha: '' });
+        cargarDatos(); 
+      } else {
+        alert(data.error || 'Error al intentar reagendar el partido.');
+      }
+    } catch (error) {
+      alert('Error de conexión con el servidor al reagendar.');
     }
   };
 
