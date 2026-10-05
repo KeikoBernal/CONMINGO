@@ -697,13 +697,6 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
             </nav>
           </div>
         </div>
-
-        <div className="p-4 border-t border-brand-gold/20 shrink-0">
-          <button onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-brand-rust text-brand-cream rounded transition-colors text-sm font-semibold">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            Cerrar Sesión
-          </button>
-        </div>
       </aside>
 
     {/* OVERLAY MOBILE */}
@@ -731,6 +724,12 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
               Actualizar Logo
               <input type="file" accept="image/*" onChange={subirLogoOrganizacion} className="hidden" />
             </label>
+            <button onClick={cerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span className="hidden sm:inline">Cerrar Sesión</span>
+            </button>
           </div>
         </header>
 

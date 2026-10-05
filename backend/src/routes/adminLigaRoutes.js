@@ -30,6 +30,17 @@ const obtenerOrgId = async (usuario) => {
   return res.rows[0]?.organizacion_id || null;
 };
 
+const obtenerHoraCaracas = () => {
+  const dateStr = new Date().toLocaleString('en-US', { timeZone: 'America/Caracas' });
+  const cDate = new Date(dateStr);
+  const anio = cDate.getFullYear();
+  const mes = String(cDate.getMonth() + 1).padStart(2, '0');
+  const dia = String(cDate.getDate()).padStart(2, '0');
+  const hora = String(cDate.getHours()).padStart(2, '0');
+  const minuto = String(cDate.getMinutes()).padStart(2, '0');
+  return `\({anio}-\){mes}-\({dia}T\){hora}:${minuto}`;
+};
+
 const validarConflictos = async (fecha_hora, eqLocal, eqVisita, arbitro, anotador, partidoIgnorado = null) => {
   // Buscamos jugadores de los equipos local y visitante para verificar que no jueguen en paralelo
   const obtenerJugadores = async (eId) => {
@@ -80,7 +91,7 @@ const suspenderPartidosPasados = async (orgId) => {
       WHERE p.torneo_id = t.id 
       AND t.organizacion_id = $1 
       AND p.estado = 'Agendado' 
-      AND p.fecha_hora::timestamp < CURRENT_TIMESTAMP
+      AND p.fecha_hora::timestamp < (NOW() AT TIME ZONE 'America/Caracas')
     `, [orgId]);
   } catch (error) { console.error('Error al auto-suspender partidos:', error); }
 };
@@ -742,18 +753,18 @@ if (fecha_fin < fecha_inicio) {
       }
     }
 
-    const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1', [plantilla_id]);
+const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1', [plantilla_id]);
     let reglasJson = reglaDb.rows.length > 0 ? reglaDb.rows[0].reglas : {};
     reglasJson.estado = 'Activo';
 
-    const ahoraIso = new Date().toISOString();
+    const ahoraLocalIso = obtenerHoraCaracas(); // <-- Corrección de zona horaria
     for (const p of partidos_iniciales) {
       if (!p.fecha_hora) return res.status(400).json({ error: 'Todos los partidos agendados deben tener fecha y hora.' });
       const fechaPartidoSolo = p.fecha_hora.split('T')[0];
       if (fechaPartidoSolo < fecha_inicio || fechaPartidoSolo > fecha_fin) {
         return res.status(400).json({ error: `La fecha del partido (${fechaPartidoSolo}) está fuera del rango del torneo.` });
       }
-      if (p.fecha_hora < ahoraIso) {
+      if (p.fecha_hora < ahoraLocalIso) {
         return res.status(400).json({ error: 'No se puede programar un partido en una fecha y hora que ya pasó.' });
       }
     }
@@ -936,13 +947,7 @@ router.get('/acumulado-temporada', async (req, res) => {
 router.post('/partidos-sueltos', async (req, res) => {
   const { equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora } = req.body;
   try {
-    const ahora = new Date();
-    const anio = ahora.getFullYear();
-    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-    const dia = String(ahora.getDate()).padStart(2, '0');
-    const hora = String(ahora.getHours()).padStart(2, '0');
-    const minuto = String(ahora.getMinutes()).padStart(2, '0');
-    const ahoraLocalIso = `${anio}-${mes}-${dia}T${hora}:${minuto}`;
+    const ahoraLocalIso = obtenerHoraCaracas(); // <-- Hora correcta
 
     if (fecha_hora < ahoraLocalIso) {
       return res.status(400).json({ error: 'No se puede programar un partido en una fecha y hora que ya pasó.' });
@@ -957,9 +962,9 @@ router.post('/partidos-sueltos', async (req, res) => {
 
     let torneoId;
     if (torneoIndep.rows.length === 0) {
-      const fechaActual = new Date().toISOString().split('T')[0];
+      const fechaActual = ahoraLocalIso.split('T')[0];
       const fechaFutura = '2099-12-31';
-      const temporadaActual = '2026';
+      const temporadaActual = new Date(ahoraLocalIso).getFullYear().toString();
 
       const nuevoTorneo = await db.query(
         `INSERT INTO public.torneos (organizacion_id, nombre, fecha_inicio, fecha_fin, reglas, categorias_permitidas, temporada) 
@@ -988,6 +993,11 @@ router.put('/partidos/:id/reagendar', async (req, res) => {
   const { nueva_fecha_hora } = req.body;
   const { id } = req.params;
   try {
+    const ahoraLocalIso = obtenerHoraCaracas(); // <-- Validación agregada
+    if (nueva_fecha_hora < ahoraLocalIso) {
+      return res.status(400).json({ error: 'No se puede reagendar el partido a una fecha y hora que ya pasó.' });
+    }
+
     const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [id]);
     const pInfo = partidoInfo.rows[0];
 
@@ -1004,6 +1014,11 @@ router.put('/partidos/:id/editar-oficiales', async (req, res) => {
   const { id } = req.params;
   const { fecha_hora, arbitro_id, anotador_id, sede_id } = req.body;
   try {
+    const ahoraLocalIso = obtenerHoraCaracas(); // <-- Validación agregada
+    if (fecha_hora && fecha_hora < ahoraLocalIso) {
+      return res.status(400).json({ error: 'No se puede modificar la fecha del partido hacia el pasado.' });
+    }
+
     const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [id]);
     const pInfo = partidoInfo.rows[0];
 
