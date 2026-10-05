@@ -692,7 +692,8 @@ router.get('/torneos', async (req, res) => {
     const torneosConPartidos = [];
     for (let t of torneosRes.rows) {
       const partidosRes = await db.query(`
-        SELECT p.*, el.nombre as local_nombre, ev.nombre as visita_nombre, s.nombre as sede_nombre 
+        SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, 
+               el.nombre as local_nombre, ev.nombre as visita_nombre, s.nombre as sede_nombre 
         FROM public.partidos p
         LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
         LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
@@ -842,7 +843,9 @@ router.get('/partidos-finalizados', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     await suspenderPartidosPasados(orgId);
     const resultado = await db.query(`
-      SELECT p.id, p.fecha_hora, p.estado, t.nombre as torneo_nombre, el.nombre as local_nombre, ev.nombre as visita_nombre, r.marcador_local, r.marcador_visita, p.equipo_local_id, p.equipo_visita_id, p.arbitro_id, p.anotador_id
+      SELECT p.id, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, 
+             p.estado, t.nombre as torneo_nombre, el.nombre as local_nombre, ev.nombre as visita_nombre, 
+             r.marcador_local, r.marcador_visita, p.equipo_local_id, p.equipo_visita_id, p.arbitro_id, p.anotador_id
       FROM public.partidos p
       JOIN public.torneos t ON p.torneo_id = t.id
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
