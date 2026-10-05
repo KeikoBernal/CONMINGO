@@ -24,49 +24,49 @@ const rowMatchesFilter = (row, filter, categoryFields = [], dateFields = []) => 
   return matchesSearch && matchesCategory && matchesDate;
 };
 
-function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFields = [], dateFields = [], filename }) {
+function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFields = [], dateFields = [], filename, reportContext = {} }) {
   const categoryOptions = [...new Set(rows.flatMap(row => categoryFields.map(field => row[field]).filter(Boolean)))].sort();
   const update = patch => setFilter({ ...filter, ...patch });
+  const context = {
+    modulo: 'Administrador de liga',
+    usuario: reportContext.usuario || 'Administrador de liga',
+    generado: new Date().toLocaleString('es-VE'),
+    filtros: { busqueda: filter.search || 'Todas', categorias: filter.categories?.length ? filter.categories.join(', ') : 'Todas', desde: filter.dateFrom || 'Sin límite', hasta: filter.dateTo || 'Sin límite' },
+  };
   const exportRows = (format) => {
     const safeName = filename.replace(/[^a-z0-9áéíóúñ_-]+/gi, '_');
     const data = filteredRows.map(row => Object.fromEntries(columns.map(({ key, label }) => [label, row[key] ?? ''])));
+    const csvCell = value => `"${String(value).replaceAll('"', '""')}"`;
     if (format === 'json') {
-      descargarBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${safeName}.json`);
+      descargarBlob(new Blob([JSON.stringify({ contexto: context, registros: data }, null, 2)], { type: 'application/json' }), `${safeName}.json`);
     } else if (format === 'csv') {
-      const csvCell = value => `"${String(value).replaceAll('"', '""')}"`;
-      descargarBlob(new Blob([`${columns.map(column => csvCell(column.label)).join(',')}\n${data.map(row => columns.map(column => csvCell(row[column.label])).join(',')).join('\n')}`], { type: 'text/csv;charset=utf-8;' }), `${safeName}.csv`);
+      const info = [`# Reporte: ${context.modulo}`, `# Usuario: ${context.usuario}`, `# Generado: ${context.generado}`, `# Filtros: ${JSON.stringify(context.filtros)}`];
+      descargarBlob(new Blob([[...info, columns.map(column => csvCell(column.label)).join(','), ...data.map(row => columns.map(column => csvCell(row[column.label])).join(','))].join('\n')], { type: 'text/csv;charset=utf-8;' }), `${safeName}.csv`);
     } else if (format === 'excel') {
-      const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Datos filtrados');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(data), 'Datos filtrados');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ Campo: 'Módulo', Valor: context.modulo }, { Campo: 'Usuario', Valor: context.usuario }, { Campo: 'Generado', Valor: context.generado }, ...Object.entries(context.filtros).map(([Campo, Valor]) => ({ Campo, Valor }))]), 'Contexto del reporte');
       XLSX.writeFile(workbook, `${safeName}.xlsx`);
     } else {
       const pdf = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' });
-      autoTable(pdf, { head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 } });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      pdf.setFillColor(34, 78, 105); pdf.rect(0, 0, pageWidth, 22, 'F');
+      pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · REPORTE OFICIAL', 14, 10); pdf.setFontSize(9); pdf.text(context.modulo, 14, 17);
+      pdf.setTextColor(70, 45, 30); pdf.setFontSize(8); pdf.text(`Usuario: ${context.usuario}   |   Generado: ${context.generado}`, 14, 30); pdf.text(`Filtros: ${Object.values(context.filtros).join(' · ')}`, 14, 35);
+      autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] }, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text('Documento generado desde el módulo Administrador de liga · CONMINGO', 14, pdf.internal.pageSize.getHeight() - 10); } });
       pdf.save(`${safeName}.pdf`);
     }
   };
-
+  const setCategory = option => update({ categories: filter.categories.includes(option) ? filter.categories.filter(value => value !== option) : [...filter.categories, option] });
+  const setDatePreset = preset => { const today = new Date(); const from = new Date(today); if (preset === 'week') from.setDate(today.getDate() - 7); if (preset === 'month') from.setMonth(today.getMonth() - 1); update({ datePreset: preset, dateFrom: preset === 'all' ? '' : from.toISOString().slice(0, 10), dateTo: preset === 'all' ? '' : today.toISOString().slice(0, 10) }); };
   return <div className="mb-4 rounded-xl border border-brand-gold/30 bg-brand-cream/20 p-4">
     <div className="flex flex-wrap items-end gap-3">
-      <label className="min-w-56 flex-1 text-xs font-bold uppercase text-brand-brown/70">Búsqueda libre
-        <input value={filter.search} onChange={event => update({ search: event.target.value })} placeholder="Buscar en todas las columnas..." className="mt-1 w-full rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" />
-      </label>
-      {categoryOptions.length > 0 && <label className="min-w-52 text-xs font-bold uppercase text-brand-brown/70">Categorías (multi-selección)
-        <select multiple value={filter.categories} onChange={event => update({ categories: [...event.target.selectedOptions].map(option => option.value) })} className="mt-1 h-20 w-full rounded-lg border border-brand-gold/30 bg-white px-2 py-1 text-sm" aria-label="Filtrar por categorías">
-          {categoryOptions.map(option => <option key={option} value={option}>{option}</option>)}
-        </select>
-      </label>}
-      {dateFields.length > 0 && <>
-        <label className="text-xs font-bold uppercase text-brand-brown/70">Desde<input type="date" value={filter.dateFrom} onChange={event => update({ dateFrom: event.target.value })} className="mt-1 block rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label>
-        <label className="text-xs font-bold uppercase text-brand-brown/70">Hasta<input type="date" value={filter.dateTo} onChange={event => update({ dateTo: event.target.value })} className="mt-1 block rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label>
-      </>}
+      <label className="min-w-56 flex-1 text-xs font-bold uppercase text-brand-brown/70">Búsqueda libre<input value={filter.search} onChange={event => update({ search: event.target.value })} placeholder="Buscar en todas las columnas..." className="mt-1 w-full rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label>
+      {categoryOptions.length > 0 && <details className="relative min-w-52"><summary className="cursor-pointer list-none rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-xs font-bold uppercase text-brand-brown">Categorías {filter.categories.length ? `(${filter.categories.length})` : ''}</summary><fieldset className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-brand-gold/30 bg-white p-3 shadow-xl"><legend className="sr-only">Seleccionar categorías</legend>{categoryOptions.map(option => <label key={option} className="flex cursor-pointer items-center gap-2 py-1 text-sm font-normal normal-case"><input type="checkbox" checked={filter.categories.includes(option)} onChange={() => setCategory(option)} />{option}</label>)}</fieldset></details>}
+      {dateFields.length > 0 && <><label className="text-xs font-bold uppercase text-brand-brown/70">Desde<input type="date" value={filter.dateFrom} onChange={event => update({ dateFrom: event.target.value, datePreset: 'custom' })} className="mt-1 block rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label><label className="text-xs font-bold uppercase text-brand-brown/70">Hasta<input type="date" value={filter.dateTo} onChange={event => update({ dateTo: event.target.value, datePreset: 'custom' })} className="mt-1 block rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label><div className="flex gap-1"><button type="button" onClick={() => setDatePreset('week')} className="rounded border border-brand-gold/30 bg-white px-2 py-2 text-xs">7 días</button><button type="button" onClick={() => setDatePreset('month')} className="rounded border border-brand-gold/30 bg-white px-2 py-2 text-xs">30 días</button><button type="button" onClick={() => setDatePreset('all')} className="rounded border border-brand-gold/30 bg-white px-2 py-2 text-xs">Todo</button></div></>}
       <button type="button" onClick={() => setFilter(EMPTY_FILTER)} className="rounded-lg border border-brand-brown/20 bg-white px-3 py-2 text-sm font-bold text-brand-brown">Limpiar</button>
     </div>
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-brand-gold/20 pt-3">
-      <span className="mr-2 text-xs font-bold text-brand-brown/70">{filteredRows.length} de {rows.length} registros</span>
-      {['pdf', 'excel', 'csv', 'json'].map(format => <button key={format} type="button" onClick={() => exportRows(format)} className="rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-brand-brown">Descargar {format.toUpperCase()}</button>)}
-    </div>
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-brand-gold/20 pt-3"><span className="mr-2 text-xs font-bold text-brand-brown/70">{filteredRows.length} de {rows.length} registros</span>{['pdf', 'excel', 'csv', 'json'].map(format => <button key={format} type="button" onClick={() => exportRows(format)} className="rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-brand-brown">Descargar {format.toUpperCase()}</button>)}</div>
   </div>;
 }
 
@@ -551,7 +551,7 @@ const confirmarReagendar = async (e) => {
   };
 
   const exportarReporteEstadisticas = (formato) => {
-    if (!estadisticas) return alert('No hay datos estadísticos cargados.');
+    if (!estadisticas) return alert('No hay datos estad��sticos cargados.');
     const nombreArchivo = `Reporte_Estadisticas_Liga_${temporadaFiltro}`;
 
     if (formato === 'json') {
@@ -613,6 +613,7 @@ const confirmarReagendar = async (e) => {
 
   const filasSedes = filteredRows('sedes', sedes, ['nombre'], []);
   const filasEquipos = filteredRows('equipos', equipos, ['categoria', 'tipo_genero'], []);
+  const filasNomina = filteredRows('nomina', jugadores, ['genero', 'sexo', 'tipo_genero', 'categoria'], ['fecha_nacimiento']);
   const filasCredenciales = filteredRows('credenciales', usuariosOperativos, ['rol'], []);
   const filasReglas = filteredRows('reglas', plantillasReglas, [], ['creado_en']);
   const filasTorneos = filteredRows('torneos', torneosList, ['categoria', 'tipo_genero', 'temporada'], ['fecha_inicio', 'fecha_fin']);
@@ -864,9 +865,10 @@ const confirmarReagendar = async (e) => {
                       <input type="text" placeholder="Buscar sede..." className="w-full pl-10 pr-4 py-2 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={busquedaSedes} onChange={e => setBusquedaSedes(e.target.value)} />
                     </div>
                   </div>
-                  <TableTools rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
-                  <div className="overflow-x-auto">
-                    <table className="tabla-admin">
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }, { key: 'estado', label: 'Estado' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename={`nomina_${equipoSeleccionado.nombre}_filtrada`} />
+                      <div className="overflow-x-auto">
+                        <table className="tabla-admin">
                       <thead>
                         <tr>
                           <th>Sede</th>
@@ -932,7 +934,7 @@ const confirmarReagendar = async (e) => {
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4">Plantillas Registradas</h3>
-                  <TableTools rows={plantillasReglas} filteredRows={filasReglas} filter={getFilter('reglas')} setFilter={setTableFilter('reglas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'descripcion', label: 'Descripción' }, { key: 'creado_en', label: 'Creado' }]} dateFields={["creado_en"]} filename="plantillas_reglas_filtradas" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={plantillasReglas} filteredRows={filasReglas} filter={getFilter('reglas')} setFilter={setTableFilter('reglas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'descripcion', label: 'Descripción' }, { key: 'creado_en', label: 'Creado' }]} dateFields={["creado_en"]} filename="plantillas_reglas_filtradas" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {plantillasReglas.length === 0 ? (
                       <div className="col-span-full text-center py-8 text-brand-brown/50">No hay plantillas registradas.</div>
@@ -1084,7 +1086,7 @@ const confirmarReagendar = async (e) => {
                                 No hay jugadores registrados en esta nómina.
                               </td>
                             </tr>
-                          ) : jugadores.map(j => (
+                          ) : filasNomina.map(j => (
                             <tr key={j.id} className={j.estado !== 'Activo' ? 'opacity-60 bg-gray-50' : ''}>
                               <td className="text-center font-bold text-brand-rust text-lg">#{j.numero_dorsal}</td>
                               <td>
@@ -1191,7 +1193,7 @@ const confirmarReagendar = async (e) => {
                       </div>
                     </div>
 
-                    <TableTools rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }]} categoryFields={["rol"]} filename="credenciales_filtradas" />
+                    <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }]} categoryFields={["rol"]} filename="credenciales_filtradas" />
                     <div className="overflow-x-auto border border-brand-gold/20 rounded-lg">
                       <table className="w-full text-left text-sm">
                         <thead className="bg-brand-cream text-brand-brown uppercase tracking-wider text-xs">
@@ -1294,7 +1296,7 @@ const confirmarReagendar = async (e) => {
                     <NavIcon pestanaId="historial" />
                     Archivo Documental y Resultados Finalizados
                   </h3>
-                  <TableTools rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }]} categoryFields={["estado", "fase"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }]} categoryFields={["estado", "fase"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
                   <div className="overflow-x-auto">
                     <table className="tabla-admin whitespace-nowrap">
                       <thead>
@@ -1363,7 +1365,7 @@ const confirmarReagendar = async (e) => {
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                             Partidos Suspendidos (Requieren Acción)
                           </h3>
-                          <TableTools rows={partidos.filter(p => p.estado === 'Suspendido')} filteredRows={filasSuspendidos} filter={getFilter('suspendidos')} setFilter={setTableFilter('suspendidos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'fase', label: 'Fase' }]} categoryFields={["fase", "estado"]} dateFields={["fecha_hora"]} filename="partidos_suspendidos_filtrados" />
+                          <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={partidos.filter(p => p.estado === 'Suspendido')} filteredRows={filasSuspendidos} filter={getFilter('suspendidos')} setFilter={setTableFilter('suspendidos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'fase', label: 'Fase' }]} categoryFields={["fase", "estado"]} dateFields={["fecha_hora"]} filename="partidos_suspendidos_filtrados" />
                           <div className="overflow-x-auto bg-white rounded-lg border border-red-100">
                             <table className="w-full text-left text-sm">
                               <thead className="bg-red-100 text-red-800">
@@ -1386,7 +1388,7 @@ const confirmarReagendar = async (e) => {
                         </div>
                       )}
 
-                      <TableTools rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
                       {filasTorneos.filter(t => t.fecha_fin >= hoyStr && t.reglas?.estado !== 'Suspendido').length === 0 ? (
                         <div className="text-center py-12 bg-brand-cream/10 rounded-xl border border-brand-gold/20">
                           <svg className="w-16 h-16 mx-auto text-brand-gold/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
