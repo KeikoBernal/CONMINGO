@@ -113,6 +113,19 @@ router.get('/bitacora', async (req, res) => {
     const { busqueda, accion, fecha_desde, fecha_hasta } = req.query;
     const params = [orgId];
     let sql = `SELECT a.id, a.accion, a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.fecha,
+      CASE
+        WHEN a.accion = 'GET /mi-organizacion' THEN 'Consultó la información de la organización y su membrete.'
+        WHEN a.accion = 'GET /partidos-finalizados' THEN 'Consultó el historial de partidos finalizados y sus actas.'
+        WHEN a.accion = 'GET /bitacora' THEN 'Consultó la bitácora de actividad de la organización.'
+        WHEN a.accion LIKE 'GET /%' THEN 'Consultó información de ' || REPLACE(REPLACE(SUBSTRING(a.accion FROM 6), '/', ' '), '-', ' ') || '.'
+        WHEN a.accion = 'CREAR_SEDE' THEN 'Registró una nueva sede deportiva.'
+        WHEN a.accion = 'EDITAR_SEDE' THEN 'Actualizó los datos de una sede deportiva.'
+        WHEN a.accion = 'ELIMINAR_SEDE' THEN 'Eliminó una sede deportiva.'
+        WHEN a.accion LIKE 'CREAR_%' THEN 'Creó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' ')) || '.'
+        WHEN a.accion LIKE 'EDITAR_%' OR a.accion LIKE 'ACTUALIZAR_%' THEN 'Actualizó un registro de ' || LOWER(REPLACE(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' '), 'actualizar ', '')) || '.'
+        WHEN a.accion LIKE 'ELIMINAR_%' THEN 'Eliminó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 9), '_', ' ')) || '.'
+        ELSE 'Realizó la acción: ' || REPLACE(a.accion, '_', ' ') || '.'
+      END AS accion_descripcion,
       u.email AS usuario_email, u.nombre AS usuario_nombre, u.apellido AS usuario_apellido, u.rol AS usuario_rol
       FROM public.audit_logs a
       LEFT JOIN public.usuarios u ON a.usuario_id = u.id
