@@ -97,6 +97,39 @@ const suspenderPartidosPasados = async (orgId) => {
 
 router.use(verificarToken, autorizarRoles('Administrador de Liga', 'Superadmin'));
 
+router.use((req, res, next) => {
+  if (req.path === '/bitacora') return next();
+  res.on('finish', async () => {
+    if (res.statusCode < 400) {
+      await registrarAuditoria(req.usuario?.id, `${req.method} ${req.path}`, 'admin-liga', null, { status: res.statusCode, parametros: req.params }, req.ip);
+    }
+  });
+  next();
+});
+
+router.get('/bitacora', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const { busqueda, accion, fecha_desde, fecha_hasta } = req.query;
+    const params = [orgId];
+    let sql = `SELECT a.id, a.accion, a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.fecha,
+      u.email AS usuario_email, u.nombre AS usuario_nombre, u.apellido AS usuario_apellido, u.rol AS usuario_rol
+      FROM public.audit_logs a
+      LEFT JOIN public.usuarios u ON a.usuario_id = u.id
+      WHERE u.organizacion_id = $1`;
+    if (busqueda) { params.push(`%${busqueda.trim()}%`); sql += ` AND (a.accion ILIKE $${params.length} OR a.tabla ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.nombre ILIKE $${params.length} OR u.apellido ILIKE $${params.length})`; }
+    if (accion) { params.push(accion); sql += ` AND a.accion = $${params.length}`; }
+    if (fecha_desde) { params.push(fecha_desde); sql += ` AND a.fecha >= $${params.length}::date`; }
+    if (fecha_hasta) { params.push(fecha_hasta); sql += ` AND a.fecha < ($${params.length}::date + INTERVAL '1 day')`; }
+    sql += ' ORDER BY a.fecha DESC LIMIT 500';
+    const resultado = await db.query(sql, params);
+    res.json(resultado.rows);
+  } catch (error) {
+    console.error('Error al consultar bitácora de la organización:', error);
+    res.status(500).json({ error: 'Error al consultar la bitácora.' });
+  }
+});
+
 router.put('/mi-organizacion/logo', async (req, res) => {
   const { logo_url } = req.body;
   try {

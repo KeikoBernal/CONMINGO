@@ -126,6 +126,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [estadisticas, setEstadisticas] = useState(null);
   const [partidos, setPartidos] = useState([]);
   const [torneosList, setTorneosList] = useState([]);
+  const [bitacora, setBitacora] = useState([]);
 
   const socketRef = useRef(null);
 
@@ -268,6 +269,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
         const res = await fetchConToken('/estadisticas'); if (res.ok) setEstadisticas(await res.json());
       } else if (pestana === 'historial') {
         const res = await fetchConToken('/partidos-finalizados'); if (res.ok) setPartidos(await res.json());
+      } else if (pestana === 'bitacora') {
+        const res = await fetchConToken('/bitacora'); if (res.ok) setBitacora(await res.json());
       }
     } catch (e) { setMensaje('Error cargando datos del servidor.'); }
   };
@@ -613,6 +616,7 @@ const confirmarReagendar = async (e) => {
       case 'torneos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>;
       case 'estadisticas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
       case 'historial': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+      case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5h6m-8 4h10m-10 4h6m-6 4h10M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>;
       default: return null;
     }
   };
@@ -637,6 +641,12 @@ const confirmarReagendar = async (e) => {
   }));
   const filasHistorial = filteredRows('historial', partidosFinalizados, ['torneo_nombre', 'local_nombre', 'visita_nombre', 'resultado_filtro'], ['fecha_hora']);
   const filasSuspendidos = filteredRows('suspendidos', partidos.filter(p => p.estado === 'Suspendido'), ['estado', 'fase'], ['fecha_hora']);
+  const bitacoraConTexto = bitacora.map(evento => ({
+    ...evento,
+    usuario: [evento.usuario_nombre, evento.usuario_apellido].filter(Boolean).join(' ') || evento.usuario_email || 'Usuario',
+    fecha_hora: evento.fecha,
+  }));
+  const filasBitacora = filteredRows('bitacora', bitacoraConTexto, ['accion', 'tabla', 'usuario_rol', 'usuario'], ['fecha_hora']);
 
   // Filtrado de delegados que ya están asignados a un equipo
   const delegadosOcupados = equipos.map(eq => String(eq.delegado_id_usuario)).filter(id => id !== 'null' && id !== 'undefined' && id !== '');
@@ -786,7 +796,8 @@ const confirmarReagendar = async (e) => {
                 { id: 'credenciales', label: 'Credenciales' },
                 { id: 'reglas', label: 'Plantillas y Reglas' },
                 { id: 'estadisticas', label: 'Estadísticas Globales' },
-                { id: 'historial', label: 'Historial / Archivo' }
+                { id: 'historial', label: 'Historial / Archivo' },
+                { id: 'bitacora', label: 'Bitácora de actividad' }
               ].map(item => {
                 const isAnimating = animandoBoton === item.id;
                 const isActive = pestana === item.id && !isAnimating;
@@ -1344,6 +1355,30 @@ const confirmarReagendar = async (e) => {
                             </td>
                           </tr>
                         ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* === VISTA: BITÁCORA DE ACTIVIDAD === */}
+            {pestana === 'bitacora' && (
+              <div className="space-y-8 animate-fade-in">
+                <div className="rounded-xl border border-brand-gold/20 bg-white p-6 shadow-sm">
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="flex items-center gap-2 text-lg font-bold text-brand-brown"><NavIcon pestanaId="bitacora" /> Bitácora de actividad</h3>
+                      <p className="mt-1 text-sm text-brand-brown/65">Registro de acciones realizadas por los usuarios de esta organización.</p>
+                    </div>
+                    <span className="rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-brown">Máximo 500 eventos recientes</span>
+                  </div>
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={bitacoraConTexto} filteredRows={filasBitacora} filter={getFilter('bitacora')} setFilter={setTableFilter('bitacora')} columns={[{ key: 'fecha_hora', label: 'Fecha y hora' }, { key: 'usuario', label: 'Usuario' }, { key: 'usuario_rol', label: 'Rol' }, { key: 'accion', label: 'Acción' }, { key: 'tabla', label: 'Recurso' }, { key: 'ip', label: 'IP' }]} categoryFields={["accion", "tabla", "usuario_rol", "usuario"]} dateFields={["fecha_hora"]} filename="bitacora_organizacion" />
+                  <div className="overflow-x-auto rounded-lg border border-brand-gold/15">
+                    <table className="tabla-admin min-w-[760px] whitespace-nowrap">
+                      <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Rol</th><th>Acción</th><th>Recurso</th><th>IP</th></tr></thead>
+                      <tbody>
+                        {filasBitacora.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay eventos que coincidan con los filtros.</td></tr> : filasBitacora.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="font-bold text-brand-rust">{evento.accion}</td><td>{evento.tabla || '—'}</td><td>{evento.ip || '—'}</td></tr>)}
                       </tbody>
                     </table>
                   </div>
