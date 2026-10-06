@@ -15,7 +15,10 @@ const normalizeValue = value => String(value ?? '').toLocaleLowerCase('es');
 const rowMatchesFilter = (row, filter, categoryFields = [], dateFields = []) => {
   const searchable = Object.values(row).map(normalizeValue).join(' ');
   const matchesSearch = !filter.search || searchable.includes(normalizeValue(filter.search));
-  const categoryValue = categoryFields.map(field => row[field]).filter(Boolean).map(normalizeValue);
+  const categoryValue = categoryFields.flatMap(field => {
+    const value = row[field];
+    return Array.isArray(value) ? value : [value];
+  }).filter(Boolean).map(normalizeValue);
   const matchesCategory = !filter.categories?.length || filter.categories.some(category => categoryValue.includes(normalizeValue(category)));
   const dates = dateFields.map(field => row[field]).filter(Boolean).map(value => new Date(value).getTime()).filter(Number.isFinite);
   const from = filter.dateFrom ? new Date(`${filter.dateFrom}T00:00:00`).getTime() : -Infinity;
@@ -25,7 +28,10 @@ const rowMatchesFilter = (row, filter, categoryFields = [], dateFields = []) => 
 };
 
 function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFields = [], dateFields = [], filename, reportContext = {} }) {
-  const categoryOptions = [...new Set(rows.flatMap(row => categoryFields.map(field => row[field]).filter(Boolean)))].sort();
+  const categoryOptions = [...new Set(rows.flatMap(row => categoryFields.flatMap(field => {
+    const value = row[field];
+    return Array.isArray(value) ? value : [value];
+  }).filter(Boolean)))].sort();
   const update = patch => setFilter({ ...filter, ...patch });
   const context = {
     modulo: 'Administrador de liga',
@@ -613,11 +619,23 @@ const confirmarReagendar = async (e) => {
 
   const filasSedes = filteredRows('sedes', sedes, ['nombre'], []);
   const filasEquipos = filteredRows('equipos', equipos, ['categoria', 'tipo_genero'], []);
-  const filasNomina = filteredRows('nomina', jugadores, ['genero', 'sexo', 'tipo_genero', 'categoria'], ['fecha_nacimiento']);
-  const filasCredenciales = filteredRows('credenciales', usuariosOperativos, ['rol'], []);
+  const filasNomina = filteredRows('nomina', jugadores, ['genero', 'sexo'], ['fecha_nacimiento']);
+  const credencialesConEquipo = usuariosOperativos.map(usuarioOperativo => ({
+    ...usuarioOperativo,
+    equipo_filtro: equipos.filter(equipo => String(equipo.delegado_id_usuario) === String(usuarioOperativo.id)).map(equipo => equipo.nombre),
+  }));
+  const filasCredenciales = filteredRows('credenciales', credencialesConEquipo, ['rol', 'equipo_filtro'], []);
   const filasReglas = filteredRows('reglas', plantillasReglas, [], ['creado_en']);
-  const filasTorneos = filteredRows('torneos', torneosList, ['categoria', 'tipo_genero', 'temporada'], ['fecha_inicio', 'fecha_fin']);
-  const filasHistorial = filteredRows('historial', partidos.filter(p => p.estado === 'Finalizado'), ['estado', 'fase'], ['fecha_hora']);
+  const torneosConEquipos = torneosList.map(torneo => ({
+    ...torneo,
+    equipos_filtro: [...new Set((torneo.partidos || []).flatMap(partido => [partido.local_nombre, partido.visita_nombre]).filter(Boolean))],
+  }));
+  const filasTorneos = filteredRows('torneos', torneosConEquipos, ['categoria', 'tipo_genero', 'temporada', 'equipos_filtro'], ['fecha_inicio', 'fecha_fin']);
+  const partidosFinalizados = partidos.filter(p => p.estado === 'Finalizado').map(partido => ({
+    ...partido,
+    resultado_filtro: partido.marcador_local === partido.marcador_visita ? 'Empate' : partido.marcador_local > partido.marcador_visita ? 'Ganador local' : 'Ganador visitante',
+  }));
+  const filasHistorial = filteredRows('historial', partidosFinalizados, ['torneo_nombre', 'local_nombre', 'visita_nombre', 'resultado_filtro'], ['fecha_hora']);
   const filasSuspendidos = filteredRows('suspendidos', partidos.filter(p => p.estado === 'Suspendido'), ['estado', 'fase'], ['fecha_hora']);
 
   // Filtrado de delegados que ya están asignados a un equipo
@@ -962,7 +980,7 @@ const confirmarReagendar = async (e) => {
                     <NavIcon pestanaId="equipos" />
                     Registrar Nuevo Equipo
                   </h3>
-                  <form onSubmit={guardarEquipo} className="flex flex-col sm:flex-row gap-4">
+                  <form onSubmit={guardarEquipo} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <input type="text" placeholder="Nombre Equipo" className="flex-1 p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={formEquipo.nombre} onChange={e => setFormEquipo({...formEquipo, nombre: e.target.value})} required />
                     <select className="p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={formEquipo.categoria} onChange={e => setFormEquipo({...formEquipo, categoria: e.target.value})}>
                       <option value="Pre-Infantil (<8)">Pre-Infantil (&lt;8)</option>
@@ -975,7 +993,7 @@ const confirmarReagendar = async (e) => {
                       <option value="Femenino">Femenino</option>
                       <option value="Masculino">Masculino</option>
                     </select>
-                    <button type="submit" className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md whitespace-nowrap">Guardar Equipo</button>
+                    <button type="submit" className="w-full min-w-0 bg-brand-rust text-white px-4 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md whitespace-normal sm:col-span-2 lg:col-span-1">Guardar Equipo</button>
                   </form>
                 </div>
 
@@ -1196,7 +1214,7 @@ const confirmarReagendar = async (e) => {
                       </div>
                     </div>
 
-                    <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }]} categoryFields={["rol"]} filename="credenciales_filtradas" />
+                    <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }, { key: 'equipo_filtro', label: 'Equipo' }]} categoryFields={["rol", "equipo_filtro"]} filename="credenciales_filtradas" />
                     <div className="overflow-x-auto border border-brand-gold/20 rounded-lg">
                       <table className="w-full text-left text-sm">
                         <thead className="bg-brand-cream text-brand-brown uppercase tracking-wider text-xs">
@@ -1208,7 +1226,7 @@ const confirmarReagendar = async (e) => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-brand-gold/20">
-                          {filasCredenciales.filter(u => `${u.nombre} ${u.apellido} ${u.cedula} ${u.email}`.toLowerCase().includes(busquedaCredenciales.toLowerCase())).map(u => (
+                          {filasCredenciales.filter(u => `${u.nombre} ${u.apellido} ${u.cedula} ${u.email} ${(u.equipo_filtro || []).join(' ')}`.toLowerCase().includes(busquedaCredenciales.toLowerCase())).map(u => (
                             <tr key={u.id} className="hover:bg-brand-cream/10">
                               <td className="p-3 font-bold text-brand-brown">{u.nombre} {u.apellido}</td>
                               <td className="p-3"><span className="px-2 py-1 bg-brand-blue/10 text-brand-blue rounded text-xs font-bold uppercase">{u.rol}</span></td>
@@ -1298,7 +1316,7 @@ const confirmarReagendar = async (e) => {
                     <NavIcon pestanaId="historial" />
                     Archivo Documental y Resultados Finalizados
                   </h3>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }]} categoryFields={["estado", "fase"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }, { key: 'resultado_filtro', label: 'Resultado' }]} categoryFields={["torneo_nombre", "local_nombre", "visita_nombre", "resultado_filtro"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
                   <div className="overflow-x-auto">
                     <table className="tabla-admin whitespace-nowrap">
                       <thead>
@@ -1390,7 +1408,7 @@ const confirmarReagendar = async (e) => {
                         </div>
                       )}
 
-                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'equipos_filtro', label: 'Equipos participantes' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada", "equipos_filtro"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
                       {filasTorneos.filter(t => t.fecha_fin >= hoyStr && t.reglas?.estado !== 'Suspendido').length === 0 ? (
                         <div className="text-center py-12 bg-brand-cream/10 rounded-xl border border-brand-gold/20">
                           <svg className="w-16 h-16 mx-auto text-brand-gold/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
