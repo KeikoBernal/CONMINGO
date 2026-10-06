@@ -60,13 +60,13 @@ function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFi
   const setCategory = option => update({ categories: filter.categories.includes(option) ? filter.categories.filter(value => value !== option) : [...filter.categories, option] });
   const setDatePreset = preset => { const today = new Date(); const from = new Date(today); if (preset === 'week') from.setDate(today.getDate() - 7); if (preset === 'month') from.setMonth(today.getMonth() - 1); update({ datePreset: preset, dateFrom: preset === 'all' ? '' : from.toISOString().slice(0, 10), dateTo: preset === 'all' ? '' : today.toISOString().slice(0, 10) }); };
   return <div className="mb-4 rounded-xl border border-brand-gold/30 bg-brand-cream/20 p-4">
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="min-w-56 flex-1 text-xs font-bold uppercase text-brand-brown/70">Búsqueda libre<input value={filter.search} onChange={event => update({ search: event.target.value })} placeholder="Buscar en todas las columnas..." className="mt-1 w-full rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label>
-      {categoryOptions.length > 0 && <details className="relative min-w-52"><summary className="cursor-pointer list-none rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-xs font-bold uppercase text-brand-brown">Categorías {filter.categories.length ? `(${filter.categories.length})` : ''}</summary><fieldset className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-brand-gold/30 bg-white p-3 shadow-xl"><legend className="sr-only">Seleccionar categorías</legend>{categoryOptions.map(option => <label key={option} className="flex cursor-pointer items-center gap-2 py-1 text-sm font-normal normal-case"><input type="checkbox" checked={filter.categories.includes(option)} onChange={() => setCategory(option)} />{option}</label>)}</fieldset></details>}
-      {dateFields.length > 0 && <><label className="text-xs font-bold uppercase text-brand-brown/70">Desde<input type="date" value={filter.dateFrom} onChange={event => update({ dateFrom: event.target.value, datePreset: 'custom' })} className="mt-1 block rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label><label className="text-xs font-bold uppercase text-brand-brown/70">Hasta<input type="date" value={filter.dateTo} onChange={event => update({ dateTo: event.target.value, datePreset: 'custom' })} className="mt-1 block rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label><div className="flex gap-1"><button type="button" onClick={() => setDatePreset('week')} className="rounded border border-brand-gold/30 bg-white px-2 py-2 text-xs">7 días</button><button type="button" onClick={() => setDatePreset('month')} className="rounded border border-brand-gold/30 bg-white px-2 py-2 text-xs">30 días</button><button type="button" onClick={() => setDatePreset('all')} className="rounded border border-brand-gold/30 bg-white px-2 py-2 text-xs">Todo</button></div></>}
-      <button type="button" onClick={() => setFilter(EMPTY_FILTER)} className="rounded-lg border border-brand-brown/20 bg-white px-3 py-2 text-sm font-bold text-brand-brown">Limpiar</button>
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+      <label className="min-w-0 flex-1 text-xs font-bold uppercase text-brand-brown/70">Búsqueda libre<input value={filter.search} onChange={event => update({ search: event.target.value })} placeholder="Buscar en todas las columnas..." className="mt-1 w-full rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-sm" /></label>
+      {categoryOptions.length > 0 && <details className="group relative min-w-0 lg:w-56"><summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-xs font-bold uppercase text-brand-brown"><span>Categorías {filter.categories.length ? `(${filter.categories.length})` : ''}</span><span aria-hidden="true" className="transition-transform group-open:rotate-180">⌄</span></summary><fieldset className="absolute left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-lg border border-brand-gold/30 bg-white p-3 shadow-xl"><legend className="sr-only">Seleccionar categorías</legend>{categoryOptions.map(option => <label key={option} className="flex cursor-pointer items-center gap-2 py-1 text-sm font-normal normal-case"><input type="checkbox" checked={filter.categories.includes(option)} onChange={() => setCategory(option)} />{option}</label>)}{filter.categories.length > 0 && <button type="button" onClick={() => update({ categories: [] })} className="mt-2 w-full border-t border-brand-gold/20 pt-2 text-left text-xs font-bold text-brand-rust">Quitar selección</button>}</fieldset></details>}
+      {dateFields.length > 0 && <details className="group relative min-w-0 lg:w-72"><summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-brand-gold/30 bg-white px-3 py-2 text-xs font-bold uppercase text-brand-brown"><span>Fecha {filter.dateFrom || filter.dateTo ? '· personalizada' : ''}</span><span aria-hidden="true" className="transition-transform group-open:rotate-180">⌄</span></summary><div className="absolute left-0 right-0 z-20 mt-1 rounded-lg border border-brand-gold/30 bg-white p-3 shadow-xl"><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="text-xs font-bold text-brand-brown/70">Desde<input type="date" value={filter.dateFrom} onChange={event => update({ dateFrom: event.target.value, datePreset: 'custom' })} className="mt-1 block w-full rounded-lg border border-brand-gold/30 bg-white px-2 py-2 text-sm" /></label><label className="text-xs font-bold text-brand-brown/70">Hasta<input type="date" value={filter.dateTo} onChange={event => update({ dateTo: event.target.value, datePreset: 'custom' })} className="mt-1 block w-full rounded-lg border border-brand-gold/30 bg-white px-2 py-2 text-sm" /></label></div><div className="mt-3 flex flex-wrap gap-1"><button type="button" onClick={() => setDatePreset('week')} className="rounded border border-brand-gold/30 bg-white px-2 py-1.5 text-xs">Últimos 7 días</button><button type="button" onClick={() => setDatePreset('month')} className="rounded border border-brand-gold/30 bg-white px-2 py-1.5 text-xs">Últimos 30 días</button><button type="button" onClick={() => setDatePreset('all')} className="rounded border border-brand-gold/30 bg-white px-2 py-1.5 text-xs">Todo</button></div></div></details>}
+      <button type="button" onClick={() => setFilter(EMPTY_FILTER)} className="w-full rounded-lg border border-brand-brown/20 bg-white px-3 py-2 text-sm font-bold text-brand-brown sm:w-auto">Limpiar filtros</button>
     </div>
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-brand-gold/20 pt-3"><span className="mr-2 text-xs font-bold text-brand-brown/70">{filteredRows.length} de {rows.length} registros</span>{['pdf', 'excel', 'csv', 'json'].map(format => <button key={format} type="button" onClick={() => exportRows(format)} className="rounded-lg bg-brand-blue px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-brand-brown">Descargar {format.toUpperCase()}</button>)}</div>
+    <div className="mt-3 flex flex-col gap-2 border-t border-brand-gold/20 pt-3 sm:flex-row sm:items-center sm:justify-between"><span className="text-xs font-bold text-brand-brown/70">{filteredRows.length} de {rows.length} registros</span><details className="group relative w-full sm:w-auto"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg bg-brand-blue px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-brown sm:min-w-44"><span>Descargar reporte</span><span aria-hidden="true" className="transition-transform group-open:rotate-180">⌄</span></summary><div className="absolute right-0 z-30 mt-1 w-full min-w-44 rounded-lg border border-brand-gold/30 bg-white p-1 shadow-xl sm:w-44">{[['pdf','PDF'],['excel','Excel'],['csv','CSV'],['json','JSON']].map(([format, label]) => <button key={format} type="button" onClick={() => exportRows(format)} className="block w-full rounded px-3 py-2 text-left text-xs font-bold text-brand-brown hover:bg-brand-cream">Descargar {label}</button>)}</div></details></div>
   </div>;
 }
 
@@ -987,8 +987,9 @@ const confirmarReagendar = async (e) => {
                       <input type="text" placeholder="Buscar equipo..." className="w-full pl-10 pr-4 py-2 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={busquedaEquipos} onChange={e => setBusquedaEquipos(e.target.value)} />
                     </div>
                   </div>
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {filasEquipos.filter(e => e.nombre.toLowerCase().includes(busquedaEquipos.toLowerCase())).map(e => (
                       <div key={e.id} className={`p-5 rounded-xl border transition-all ${equipoSeleccionado?.id === e.id ? 'border-brand-rust bg-brand-rust/5 shadow-md ring-1 ring-brand-rust' : 'border-brand-gold/30 bg-white hover:border-brand-blue hover:shadow-sm'}`}>
                         <div className="flex justify-between items-start mb-3">
@@ -1036,6 +1037,7 @@ const confirmarReagendar = async (e) => {
                         </label>
                       </div>
 
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename="nomina_filtrada" />
                       <form onSubmit={guardarJugador} className="bg-white p-5 rounded-lg border border-brand-gold/30 shadow-sm mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <input type="text" placeholder="Cédula (5-8 dígitos)" pattern="\d{5,8}" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.cedula} onChange={e => setFormJugador({...formJugador, cedula: e.target.value})} required />
                         <input type="text" placeholder="Nombre" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.nombre} onChange={e => setFormJugador({...formJugador, nombre: e.target.value})} required />
@@ -1113,13 +1115,15 @@ const confirmarReagendar = async (e) => {
                                   {j.estado}
                                 </span>
                               </td>
-                              <td className="flex justify-center gap-2">
-                                <button type="button" onClick={() => iniciarEdicionJugador(j)} className="px-3 py-1.5 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded text-xs font-bold transition-colors shadow-sm">
+                              <td className="p-2">
+                                <div className="flex flex-wrap justify-center gap-2">
+                                <button type="button" onClick={() => iniciarEdicionJugador(j)} className="min-w-0 flex-1 px-3 py-1.5 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded text-xs font-bold transition-colors shadow-sm sm:flex-none">
                                   Editar
                                 </button>
                                 <button type="button" onClick={() => cambiarEstadoJugador(j.id, j.estado)} className={`px-3 py-1.5 rounded text-xs font-bold transition-colors shadow-sm ${j.estado === 'Activo' ? 'bg-red-100 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-green-100 text-green-700 hover:bg-green-600 hover:text-white'}`}>
                                   {j.estado === 'Activo' ? 'Desactivar' : 'Activar'}
                                 </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1232,13 +1236,12 @@ const confirmarReagendar = async (e) => {
                     <NavIcon pestanaId="estadisticas" />
                     Panel Analítico Global
                   </h3>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="text-sm font-bold text-brand-brown self-center mr-2">Exportar:</span>
-                    <button onClick={() => exportarReporteEstadisticas('pdf')} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">PDF</button>
-                    <button onClick={() => exportarReporteEstadisticas('excel')} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">Excel</button>
-                    <button onClick={() => exportarReporteEstadisticas('csv')} className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">CSV</button>
-                    <button onClick={() => exportarReporteEstadisticas('json')} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">JSON</button>
-                  </div>
+                  <details className="group relative w-full sm:w-auto">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg bg-brand-blue px-3 py-2 text-sm font-bold text-white hover:bg-brand-brown sm:min-w-44"><span>Descargar reporte</span><span aria-hidden="true" className="transition-transform group-open:rotate-180">⌄</span></summary>
+                    <div className="absolute right-0 z-20 mt-1 w-full min-w-44 rounded-lg border border-brand-gold/30 bg-white p-1 shadow-xl sm:w-44">
+                      {['pdf', 'excel', 'csv', 'json'].map(format => <button key={format} type="button" onClick={() => exportarReporteEstadisticas(format)} className="block w-full rounded px-3 py-2 text-left text-xs font-bold text-brand-brown hover:bg-brand-cream">Descargar {format.toUpperCase()}</button>)}
+                    </div>
+                  </details>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
