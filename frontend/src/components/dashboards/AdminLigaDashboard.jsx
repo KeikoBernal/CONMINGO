@@ -641,10 +641,12 @@ const confirmarReagendar = async (e) => {
   }));
   const filasHistorial = filteredRows('historial', partidosFinalizados, ['torneo_nombre', 'local_nombre', 'visita_nombre', 'resultado_filtro'], ['fecha_hora']);
   const filasSuspendidos = filteredRows('suspendidos', partidos.filter(p => p.estado === 'Suspendido'), ['estado', 'fase'], ['fecha_hora']);
-  const bitacoraConTexto = bitacora.map(evento => ({
-    ...evento,
-    usuario: [evento.usuario_nombre, evento.usuario_apellido].filter(Boolean).join(' ') || evento.usuario_email || 'Usuario',
-    fecha_hora: evento.fecha,
+const bitacoraConTexto = bitacora.map(evento => ({
+  ...evento,
+  usuario: [evento.usuario_nombre, evento.usuario_apellido].filter(Boolean).join(' ') || evento.usuario_email || 'Usuario',
+  fecha_hora: evento.fecha,
+  accion_legible: evento.accion_descripcion || evento.accion || 'Acción no especificada',
+  recurso_legible: evento.tabla === 'admin-liga' ? 'Módulo administrador de liga' : (evento.tabla || 'No especificado'),
   }));
   const filasBitacora = filteredRows('bitacora', bitacoraConTexto, ['accion', 'tabla', 'usuario_rol', 'usuario'], ['fecha_hora']);
 
@@ -1376,9 +1378,9 @@ const confirmarReagendar = async (e) => {
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={bitacoraConTexto} filteredRows={filasBitacora} filter={getFilter('bitacora')} setFilter={setTableFilter('bitacora')} columns={[{ key: 'fecha_hora', label: 'Fecha y hora' }, { key: 'usuario', label: 'Usuario' }, { key: 'usuario_rol', label: 'Rol' }, { key: 'accion', label: 'Acción' }, { key: 'tabla', label: 'Recurso' }, { key: 'ip', label: 'IP' }]} categoryFields={["accion", "tabla", "usuario_rol", "usuario"]} dateFields={["fecha_hora"]} filename="bitacora_organizacion" />
                   <div className="overflow-x-auto rounded-lg border border-brand-gold/15">
                     <table className="tabla-admin min-w-[760px] whitespace-nowrap">
-                      <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Rol</th><th>Acción</th><th>Recurso</th><th>IP</th></tr></thead>
+                      <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Rol</th><th>Qué hizo</th><th>Recurso consultado</th><th>IP</th></tr></thead>
                       <tbody>
-                        {filasBitacora.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay eventos que coincidan con los filtros.</td></tr> : filasBitacora.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="font-bold text-brand-rust">{evento.accion}</td><td>{evento.tabla || '—'}</td><td>{evento.ip || '—'}</td></tr>)}
+                        {filasBitacora.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay eventos que coincidan con los filtros.</td></tr> : filasBitacora.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
                       </tbody>
                     </table>
                   </div>
