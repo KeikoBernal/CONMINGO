@@ -10,7 +10,9 @@ router.get('/contactos', async (req, res) => {
   try {
     const { id, rol } = req.usuario;
     // NUEVO: Filtro dinámico por liga
-    const organizacion_id_filtro = req.query.liga_id || req.usuario.organizacion_id;
+    // FIX #7 (IDOR): liga_id solo puede usarlo un Superadmin; el resto queda anclado a SU organización.
+    const esSuperadminMsg = (req.usuario.rol || '').toLowerCase() === 'superadmin';
+    const organizacion_id_filtro = esSuperadminMsg ? (req.query.liga_id || null) : req.usuario.organizacion_id;
     let query = '';
     let params = [];
 
@@ -56,7 +58,9 @@ router.get('/bandeja', async (req, res) => {
   try {
     const miId = req.usuario.id;
     // NUEVO: Filtro dinámico por liga
-    const organizacion_id_filtro = req.query.liga_id || req.usuario.organizacion_id;
+    // FIX #7 (IDOR): liga_id solo puede usarlo un Superadmin; el resto queda anclado a SU organización.
+    const esSuperadminMsg = (req.usuario.rol || '').toLowerCase() === 'superadmin';
+    const organizacion_id_filtro = esSuperadminMsg ? (req.query.liga_id || null) : req.usuario.organizacion_id;
 
     const { rows } = await db.query(`
       SELECT 

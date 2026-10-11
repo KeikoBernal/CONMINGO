@@ -41,7 +41,8 @@ export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
     if (!socketRef.current) {
       socketRef.current = io(SOCKET_URL, {
         transports: ['websocket'],
-        upgrade: false
+        upgrade: false,
+        auth: { token } // FIX #6: el servidor valida la identidad con este token
       });
       
       socketRef.current.on('connect', () => {

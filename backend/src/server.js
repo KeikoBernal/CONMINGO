@@ -7,6 +7,9 @@ const http = require('http');
 const { Server } = require('socket.io'); 
 
 const db = require('./config/db');
+const { createClient } = require('@supabase/supabase-js'); // FIX #6: validar tokens de sockets
+const { origenPermitido } = require('./config/corsOrigenes'); // FIX #9: lista blanca de orígenes
+const supabaseAuthSocket = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -18,7 +21,7 @@ app.set('trust proxy', 1);
 // ==========================================
 app.use(helmet());
 app.use(cors({
-  origin: '*', 
+  origin: origenPermitido, // FIX #9: lista blanca de orígenes CORS, 
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -49,7 +52,7 @@ const server = http.createServer(app);
 // Inicializar Socket.io con el servidor HTTP
 const io = new Server(server, {
   cors: {
-    origin: '*', 
+    origin: origenPermitido, // FIX #9: lista blanca de orígenes CORS, 
     methods: ['GET', 'POST']
   }
 });
@@ -98,48 +101,88 @@ app.use('/api/delegado', delegadoRoutes);
 // ==========================================
 const partidosEnMemoria = {};
 
+// ============================================================
+// FIX #6: Autenticación de WebSockets (io.use)
+// Valida el token de Supabase Auth y resuelve el rol desde la BD.
+// Sin token: conexión anónima (solo lectura de la planilla pública).
+// ============================================================
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth && socket.handshake.auth.token;
+    if (!token) {
+      socket.data.usuario = null; // Anónimo: solo puede unirse a salas de partido (planilla pública)
+      return next();
+    }
+    const { data, error } = await supabaseAuthSocket.auth.getUser(token);
+    if (error || !data || !data.user) return next(new Error('Token inválido o expirado.'));
+    const { rows } = await db.query(
+      'SELECT id, email, nombre, apellido, rol, organizacion_id FROM public.usuarios WHERE id = $1',
+      [data.user.id]
+    );
+    if (!rows.length) return next(new Error('Usuario no registrado en el sistema.'));
+    socket.data.usuario = rows[0];
+    socket.data.rolNormalizado = (rows[0].rol || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    next();
+  } catch (e) {
+    next(new Error('Error de autenticación del socket.'));
+  }
+});
+
 // ==========================================
 // LÓGICA DE WEBSOCKETS (TIEMPO REAL)
 // ==========================================
 io.on('connection', (socket) => {
-  console.log(`🟢 Nuevo cliente conectado: ${socket.id}`);
+  const usuario = socket.data.usuario || null; // FIX #6: identidad resuelta en io.use, nunca desde el cliente
+  const rolNorm = socket.data.rolNormalizado || null;
+  const ROLES_OPERATIVOS = ['arbitro', 'anotador', 'arbitro/anotador', 'administrador de liga', 'superadmin'];
+  const esOficial = () => !!usuario && ['arbitro', 'anotador', 'arbitro/anotador'].includes(rolNorm);
+  const puedeOperarPartido = () => !!usuario && ROLES_OPERATIVOS.includes(rolNorm);
+  console.log(`🟢 Nuevo cliente conectado: ${socket.id} ${usuario ? `(usuario ${usuario.id} · ${usuario.rol})` : '(anónimo, solo lectura pública)'}`);
 
-  // --- SISTEMA DE MENSAJERÍA JERÁRQUICA ---
-  socket.on('registrar_usuario_mensajeria', (data) => {
-    const { id, rol } = data;
-    if (id) socket.join(`usuario_${id}`);
-    
-    if (rol) {
-      const normalizedRol = rol.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      socket.join(`rol_${normalizedRol}`);
-      console.log(`💬 Cliente ${socket.id} registrado en mensajería como: usuario_${id} y rol_${normalizedRol}`);
-    }
+  // --- SISTEMA DE MENSAJERÍA JERÁRQUICA (FIX #6) ---
+  // La identidad la resuelve el servidor a partir del token verificado en io.use().
+  // El payload del cliente se ignora: nadie puede suplantar a otro usuario ni elegir su rol.
+  socket.on('registrar_usuario_mensajeria', () => {
+    if (!usuario) return;
+    socket.join(`usuario_${usuario.id}`);
+    socket.join(`rol_${rolNorm}`);
+    console.log(`💬 Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}`);
   });
 
   socket.on('enviar_mensaje', (data) => {
-    const { destinatario_sala, remitente, mensaje, timestamp, cc_admin } = data;
-    
-    if (Array.isArray(destinatario_sala)) {
-      destinatario_sala.forEach(sala => {
-        const nombreSala = (sala.startsWith('rol_') || sala.startsWith('usuario_')) ? sala : `usuario_${sala}`;
-        io.to(nombreSala).emit('nuevo_mensaje', { remitente, mensaje, timestamp, destinatario_sala: nombreSala, propio: false });
-      });
-    } else {
-      io.to(destinatario_sala).emit('nuevo_mensaje', { remitente, mensaje, timestamp, destinatario_sala, propio: false });
-    }
+    if (!usuario) return; // FIX #6: solo usuarios autenticados pueden enviar
 
-    if (cc_admin) {
-      io.to('rol_administrador de liga').emit('nuevo_mensaje', { 
-        remitente: remitente + ' (CC)', 
-        mensaje: mensaje, 
-        timestamp: timestamp, 
+    // FIX #6: el remitente lo construye el servidor desde la BD, nunca el cliente.
+    const remitente = `${(usuario.nombre || '') + (usuario.apellido ? ' ' + usuario.apellido : '')} (${usuario.rol})`.trim();
+    const mensaje = (typeof data.mensaje === 'string') ? data.mensaje.slice(0, 500) : undefined;
+    const timestamp = data.timestamp || new Date().toLocaleTimeString('es-VE', { timeZone: 'America/Caracas' });
+
+    const salas = Array.isArray(data.destinatario_sala)
+      ? data.destinatario_sala
+      : (data.destinatario_sala ? [data.destinatario_sala] : []);
+
+    salas.forEach(sala => {
+      const nombreSala = (String(sala).startsWith('rol_') || String(sala).startsWith('usuario_')) ? sala : `usuario_${sala}`;
+      io.to(nombreSala).emit('nuevo_mensaje', {
+        remitente, remitente_id: usuario.id, mensaje, timestamp,
+        destinatario_sala: nombreSala, propio: false
+      });
+    });
+
+    if (data.cc_admin) {
+      io.to('rol_administrador de liga').emit('nuevo_mensaje', {
+        remitente: remitente + ' (CC)',
+        remitente_id: usuario.id,
+        mensaje: mensaje,
+        timestamp: timestamp,
         destinatario_sala: 'rol_administrador de liga',
-        propio: false 
+        propio: false
       });
     }
   });
 
   socket.on('notificacion_oficiales_partido', (data) => {
+    if (!usuario) return; // FIX #6: requiere sesión
     if (data.arbitro_id) {
       io.to(`usuario_${data.arbitro_id}`).emit('nuevo_mensaje', {
         remitente: 'Sistema',
@@ -157,10 +200,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('sync_cronometro', (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
       io.to(`partido_${data.partido_id}`).emit('sincronizacion_cronometro', data);
     });
 
   socket.on('enviar_notificacion_admin', (data) => {
+    if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
     io.to('rol_administrador de liga').emit('nuevo_mensaje', {
       remitente: 'Sistema de Alertas Oficiales',
       mensaje: data.mensaje,
@@ -180,11 +225,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('presencia_oficial', (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     const { partidoId, rol, estado } = data;
     io.to(`partido_${partidoId}`).emit('presencia_actualizada', { rol, estado });
   });
 
   socket.on('proponer_jugada', (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     const { partido_id, jugador_id, mano_index, valor } = data;
     
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
@@ -196,6 +243,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('sincronizar_planilla_completa', (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     const { partido_id, efectividad, manualStats, tantosLocal, tantosVisita } = data;
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
     
@@ -208,6 +256,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('solicitar_revision_jugada', (data) => {
+    if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
     const { partido_id, jugador_id, mano_index, mensaje } = data;
     
     if (partidosEnMemoria[partido_id]?.efectividad[jugador_id]?.[mano_index]) {
@@ -219,6 +268,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('decision_arbitro', async (data) => {
+    if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
     try {
       await db.query(
         `INSERT INTO public.detalle_jugadas (mano_id, jugador_id, tipo_destreza, efectividad, minuto_registro)
@@ -232,6 +282,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('tarjeta_emitida', async (data) => {
+    if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
     try {
       await db.query(
         `INSERT INTO public.tarjetas (partido_id, jugador_id, color, minuto_registro)
@@ -245,6 +296,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('actualizar_stats_manuales', (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     const { partido_id, manualStats } = data;
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
     partidosEnMemoria[partido_id].manualStats = manualStats;
@@ -252,6 +304,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('tantos_asignados', async (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     const { partido_id, tantosLocal, tantosVisita } = data;
     
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
@@ -272,6 +325,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('partido_iniciado', (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'En Curso';
     partidosEnMemoria[data.partidoId].hora_inicio = data.hora_inicio;
@@ -279,6 +333,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('partido_finalizado', async (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Finalizado';
     partidosEnMemoria[data.partidoId].hora_final = data.hora_final;
@@ -286,6 +341,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('partido_suspendido', async (data) => {
+    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Suspendido';
     io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'Suspendido' });

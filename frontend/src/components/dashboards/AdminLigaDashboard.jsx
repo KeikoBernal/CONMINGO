@@ -275,12 +275,25 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     } catch (e) { setMensaje('Error cargando datos del servidor.'); }
   };
 
-  useEffect(() => {
-    socketRef.current = io(SOCKET_URL);
+    useEffect(() => {
+    // FIX #6: se conecta con el token de Supabase; el servidor valida la identidad.
+    let cancelado = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelado) return;
+      socketRef.current = io(SOCKET_URL, {
+        transports: ['websocket'],
+        upgrade: false,
+        auth: { token: session?.access_token }
+      });
+    })();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.user_metadata?.debe_cambiar_password) setDebeCambiarPass(true);
     });
-    return () => socketRef.current?.disconnect();
+    return () => {
+      cancelado = true;
+      socketRef.current?.disconnect();
+    };
   }, [usuario]);
 
   const [token, setToken] = useState(null);

@@ -11,7 +11,7 @@ const db = require('../config/db');
 router.get('/partidos-activos', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
+      SELECT p.id, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id, p.sede_id, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
              s.nombre as sede_nombre, o.nombre as organizacion_nombre
       FROM public.partidos p
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
@@ -33,7 +33,7 @@ router.get('/partidos-activos', async (req, res) => {
 router.get('/partidos/:id', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
+      SELECT p.id, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id, p.sede_id, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
              s.nombre as sede_nombre, o.nombre as organizacion_nombre
       FROM public.partidos p
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
@@ -57,7 +57,7 @@ router.get('/partidos/:id', async (req, res) => {
 router.get('/partidos/:id/nomina-publica', async (req, res) => {
   try {
     const resDb = await db.query(`
-      SELECT j.*, e.nombre AS equipo_nombre FROM public.jugadores j
+      SELECT j.id, j.equipo_id, j.numero_dorsal, j.nombre, j.apellido, j.foto_url, e.nombre AS equipo_nombre FROM public.jugadores j
       JOIN public.equipos e ON j.equipo_id = e.id
       JOIN public.partidos p ON (p.equipo_local_id = e.id OR p.equipo_visita_id = e.id)
       WHERE p.id = $1 AND j.estado = 'Activo' ORDER BY e.nombre, j.numero_dorsal ASC
@@ -76,10 +76,7 @@ const rateLimit = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-const supabaseAdminProxy = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-);
+const supabaseAdminProxy = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 
 const MAX_INTENTOS_LOGIN = 5;
 const MINUTOS_BLOQUEO_LOGIN = 15;

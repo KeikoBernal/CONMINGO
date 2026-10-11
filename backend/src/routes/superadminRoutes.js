@@ -4,10 +4,7 @@ const db = require('../config/db');
 const { createClient } = require('@supabase/supabase-js');
 const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware');
 
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-);
+const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const capitalizarTexto = (texto) => {

@@ -11,9 +11,23 @@ router.get('/partidos/:id', async (req, res) => {
     }
 
     const resDb = await db.query(`
-      SELECT p.*, 
+      SELECT p.id, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id,
+             TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
+             p.hora_inicio, p.hora_final,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
-// ... [Misma consulta SQL] ...
+             t.nombre AS torneo_nombre, o.nombre AS organizacion_nombre, s.nombre AS sede_nombre,
+             COALESCE(ua.nombre || ' ' || ua.apellido, '') AS arbitro_nombre,
+             COALESCE(un.nombre || ' ' || un.apellido, '') AS anotador_nombre,
+             COALESCE(jl.nombre || ' ' || jl.apellido, '') AS capitan_local_nombre,
+             COALESCE(jv.nombre || ' ' || jv.apellido, '') AS capitan_visita_nombre
+      FROM public.partidos p
+      LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
+      LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
+      LEFT JOIN public.torneos t ON p.torneo_id = t.id
+      LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id
+      LEFT JOIN public.sedes s ON p.sede_id = s.id
+      LEFT JOIN public.usuarios ua ON p.arbitro_id = ua.id
+      LEFT JOIN public.usuarios un ON p.anotador_id = un.id
       LEFT JOIN public.jugadores jl ON el.capitan_id = jl.id
       LEFT JOIN public.jugadores jv ON ev.capitan_id = jv.id
       WHERE p.id = $1
@@ -33,7 +47,7 @@ router.get('/partidos/:id/nomina', async (req, res) => {
     }
 
     const resDb = await db.query(`
-      SELECT j.*, e.nombre AS equipo_nombre
+      SELECT j.id, j.equipo_id, j.numero_dorsal, j.nombre, j.apellido, j.foto_url, e.nombre AS equipo_nombre
       FROM public.jugadores j
       JOIN public.equipos e ON j.equipo_id = e.id
       JOIN public.partidos p ON (p.equipo_local_id = e.id OR p.equipo_visita_id = e.id)
@@ -47,17 +61,17 @@ router.get('/partidos/:id/nomina', async (req, res) => {
 router.get('/partidos-activos', async (req, res) => {
   try {
     const resDb = await db.query(`
-      SELECT p.*, 
-             el.nombre AS local_nombre, 
-             ev.nombre AS visita_nombre, 
-             t.nombre AS torneo_nombre, 
-             o.nombre AS organizacion_nombre, 
-             s.nombre AS sede_nombre
+      SELECT p.id, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id,
+             TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
+             p.hora_inicio, p.hora_final,
+             el.nombre AS local_nombre, ev.nombre AS visita_nombre,
+             t.nombre AS torneo_nombre, o.nombre AS organizacion_nombre, s.nombre AS sede_nombre
       FROM public.partidos p
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
       LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
       LEFT JOIN public.torneos t ON p.torneo_id = t.id
       LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id
+      LEFT JOIN public.sedes s ON p.sede_id = s.id
       WHERE p.estado IN ('En Curso', 'Agendado')
       ORDER BY t.nombre ASC, p.fecha_hora ASC
     `);

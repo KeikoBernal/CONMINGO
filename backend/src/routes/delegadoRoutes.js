@@ -5,10 +5,7 @@ const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware
 const bcrypt = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-);
+const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 
 // Proteger todas las rutas de este archivo para que solo los Delegados y Superadmin accedan
 router.use(verificarToken, autorizarRoles('Delegado de Equipo', 'Superadmin'));
