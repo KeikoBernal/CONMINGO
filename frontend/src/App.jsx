@@ -26,7 +26,6 @@ export default function App() {
   const [rolUsuario, setRolUsuario] = useState('');
   const [cargando, setCargando] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [intentosFallidos, setIntentosFallidos] = useState(0);
   const [bloqueadoHasta, setBloqueadoHasta] = useState(null);
 
   const enProcesoLoginRef = useRef(false);
@@ -97,8 +96,8 @@ export default function App() {
     if (isSubmitting) return; 
 
     if (bloqueadoHasta && new Date() < bloqueadoHasta) {
-      const faltan = Math.ceil((bloqueadoHasta - new Date()) / 1000);
-      return setMensaje(`Demasiados intentos fallidos. Intenta de nuevo en ${faltan} segundos.`);
+      const faltan = Math.max(1, Math.ceil((bloqueadoHasta - new Date()) / 60000));
+      return setMensaje(`Demasiados intentos fallidos. Intenta de nuevo en ${faltan} minuto(s).`);
     }
 
     setMensaje('');
@@ -115,52 +114,82 @@ export default function App() {
       setMensaje('Validando credenciales...');
       enProcesoLoginRef.current = true;
 
-      const { data, error: errorPassword } = await supabase.auth.signInWithPassword({
-        email: emailLimpio,
-        password,
-      });
-
-      if (errorPassword) {
+      // LOGIN PROXY (hallazgo #18): el backend es el único que valida credenciales
+      // contra Supabase y aplica el bloqueo persistente (5 intentos → 15 minutos).
+      let respuestaLogin = {};
+      try {
+        const resLogin = await fetch(`${API_URL}/login-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailLimpio, password }),
+        });
+        respuestaLogin = await resLogin.json().catch(() => ({}));
+        respuestaLogin._status = resLogin.status;
+      } catch (err) {
         enProcesoLoginRef.current = false;
         setIsSubmitting(false);
-        const nuevosIntentos = intentosFallidos + 1;
-        setIntentosFallidos(nuevosIntentos);
-        
-        if (nuevosIntentos >= 3) {
-          setBloqueadoHasta(new Date(Date.now() + 60000)); // Bloquear por 60 segundos
-          setMensaje('Múltiples intentos fallidos. Por seguridad, espera 60 segundos.');
+        return setMensaje('Error de conexión con el servidor. Verifica tu conexión e intenta de nuevo.');
+      }
+
+      if (respuestaLogin._status !== 200) {
+        enProcesoLoginRef.current = false;
+        setIsSubmitting(false);
+        if (respuestaLogin._status === 429) {
+          const hasta = respuestaLogin.bloqueado_hasta
+            ? new Date(respuestaLogin.bloqueado_hasta)
+            : new Date(Date.now() + 15 * 60 * 1000);
+          setBloqueadoHasta(hasta);
+          const minutos = Math.max(1, Math.ceil((hasta - new Date()) / 60000));
+          setMensaje(respuestaLogin.error || `Cuenta bloqueada por seguridad. Espera ${minutos} minuto(s).`);
+        } else if (respuestaLogin._status === 401) {
+          const restantes = typeof respuestaLogin.intentos_restantes === 'number' ? respuestaLogin.intentos_restantes : null;
+          setMensaje(restantes !== null
+            ? `Credenciales incorrectas. Te queda${restantes === 1 ? '' : 'n'} ${restantes} intento${restantes === 1 ? '' : 's'}.`
+            : (respuestaLogin.error || 'Credenciales incorrectas.'));
         } else {
-          setMensaje(`Credenciales incorrectas. Intento ${nuevosIntentos} de 3.`);
+          setMensaje(respuestaLogin.error || 'No se pudo iniciar sesión. Intenta de nuevo.');
         }
         return;
       }
 
-      setIntentosFallidos(0); 
+      if (respuestaLogin.requiere_otp) {
+        // Superadmin: solicitar el código OTP también a través del proxy
+        let datosOtp = { _status: 0 };
+        try {
+          const resOtp = await fetch(`${API_URL}/login-proxy/otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailLimpio }),
+          });
+          datosOtp = await resOtp.json().catch(() => ({}));
+          datosOtp._status = resOtp.status;
+        } catch (err) {
+          datosOtp = { _status: 0 };
+        }
 
-      const rolBD = await obtenerRolBD(data.user.id);
-      setRolUsuario(rolBD);
-
-      if (rolBD.toLowerCase() === 'superadmin') {
-        await supabase.auth.signOut();
-        const { error: errorOtp } = await supabase.auth.signInWithOtp({
-          email: emailLimpio,
-          options: { shouldCreateUser: false },
-        });
-        
-        setIsSubmitting(false); 
-        if (errorOtp) {
+        setIsSubmitting(false);
+        if (datosOtp._status !== 200) {
           enProcesoLoginRef.current = false;
-          setMensaje(`Error al enviar código: ${errorOtp.message}`);
+          setMensaje(datosOtp.error || 'Error al enviar el código.');
         } else {
           setMensaje('Código de 6 dígitos enviado a tu correo.');
           setPaso(2);
         }
-      } else {
-        enProcesoLoginRef.current = false;
-        setIsSubmitting(false);
-        setUsuario(data.user);
-        setVista('dashboard');
+        return;
       }
+
+      // Login exitoso: cargar en el cliente la sesión entregada por el proxy
+      const sesionLogin = respuestaLogin.session;
+      await supabase.auth.setSession({
+        access_token: sesionLogin.access_token,
+        refresh_token: sesionLogin.refresh_token,
+      });
+      const rolBD = await obtenerRolBD(sesionLogin.user.id);
+      enProcesoLoginRef.current = false;
+      setIsSubmitting(false);
+      setRolUsuario(rolBD);
+      setUsuario(sesionLogin.user);
+      setVista('dashboard');
       return;
     }
 
@@ -171,21 +200,33 @@ export default function App() {
         return setMensaje('El código debe contener exactamente 6 dígitos numéricos.');
       }
 
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: emailLimpio,
-        token: otpLimpio,
-        type: 'email',
-      });
-      
-      setIsSubmitting(false);
-      if (error) {
-        setMensaje(`Código inválido: ${error.message}`);
-      } else {
-        enProcesoLoginRef.current = false;
-        const rolBD = await obtenerRolBD(data.user.id);
-        setRolUsuario(rolBD);
-        setUsuario(data.user);
-        setVista('dashboard');
+      // Verificación del código OTP a través del proxy del backend
+      try {
+        const resOtp = await fetch(`${API_URL}/login-proxy/verificar-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailLimpio, token: otpLimpio }),
+        });
+        const respuestaOtp = await resOtp.json().catch(() => ({}));
+
+        setIsSubmitting(false);
+        if (!resOtp.ok) {
+          setMensaje(respuestaOtp.error || 'Código inválido. Intenta de nuevo.');
+        } else {
+          enProcesoLoginRef.current = false;
+          const sesionOtp = respuestaOtp.session;
+          await supabase.auth.setSession({
+            access_token: sesionOtp.access_token,
+            refresh_token: sesionOtp.refresh_token,
+          });
+          const rolBD = await obtenerRolBD(sesionOtp.user.id);
+          setRolUsuario(rolBD);
+          setUsuario(sesionOtp.user);
+          setVista('dashboard');
+        }
+      } catch (err) {
+        setIsSubmitting(false);
+        setMensaje('Error de conexión con el servidor. Intenta de nuevo.');
       }
     }
   };
