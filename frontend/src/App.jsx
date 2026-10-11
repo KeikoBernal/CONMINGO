@@ -11,10 +11,8 @@ import PantallaPuntajes from './components/dashboards/PantallaPuntajes';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 export default function App() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('vista') === 'puntajes') {
-    return <PantallaPuntajes />;
-  }
+  // FIX #2: la vista pública '?vista=puntajes' se evalúa tras los hooks (ver más abajo),
+  // para cumplir las Rules of Hooks de React.
 
   const [vista, setVista] = useState('inicio');
   const [paso, setPaso] = useState(1);
@@ -88,6 +86,11 @@ export default function App() {
 
     return () => subscription?.unsubscribe();
   }, []);
+
+  // FIX #2: retorno temprano de la vista pública, ahora ubicado DESPUÉS de todos los hooks.
+  if (new URLSearchParams(window.location.search).get('vista') === 'puntajes') {
+    return <PantallaPuntajes />;
+  }
 
   const manejarLogin = async (e) => {
     e.preventDefault();

@@ -24,17 +24,12 @@ const verificarToken = async (req, res, next) => {
     );
 
     if (userQuery.rows.length === 0) {
-      // Si el usuario existe en Auth pero no en la tabla usuarios, intentamos extraer de metadata o crearlo si es necesario
-      req.usuario = {
-        id: user.id,
-        email: user.email,
-        rol: user.user_metadata?.rol || 'Administrador de Liga',
-        organizacion_id: user.user_metadata?.organizacion_id || null,
-        nombre: user.user_metadata?.nombre || ''
-      };
-    } else {
-      req.usuario = userQuery.rows[0];
+      // FIX #3: nunca confiar en user_metadata (la controla el cliente al registrarse).
+      // Sin registro en la tabla usuarios no hay rol confiable: se rechaza el acceso.
+      return res.status(403).json({ error: 'Usuario autenticado pero no registrado en el sistema. Contacta al administrador.' });
     }
+
+    req.usuario = userQuery.rows[0];
 
     next();
   } catch (err) {
@@ -43,9 +38,17 @@ const verificarToken = async (req, res, next) => {
   }
 };
 
+// FIX #10: normalización de roles (acentos, mayúsculas y espacios), igual que en mensajería,
+// para que 'Árbitro', 'Arbitro' y 'árbitro' sean equivalentes al autorizar.
+const normalizarRol = (rol) => (rol || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim();
+
 const autorizarRoles = (...rolesPermitidos) => {
   return (req, res, next) => {
-    if (!req.usuario || !rolesPermitidos.map(r => r.toLowerCase()).includes(req.usuario.rol?.toLowerCase())) {
+    if (!req.usuario || !rolesPermitidos.some(rol => normalizarRol(rol) === normalizarRol(req.usuario.rol))) {
       return res.status(403).json({ error: 'No tienes permisos para realizar esta acción.' });
     }
     next();

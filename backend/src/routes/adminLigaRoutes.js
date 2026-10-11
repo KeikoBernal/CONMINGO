@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const bcrypt = require('bcrypt'); // IMPORTACIÓN AÑADIDA PARA VALIDACIÓN DE ADMIN
+const bcrypt = require('bcryptjs'); // FIX #18: unificado a bcryptjs (misma API, sin compilación nativa) // IMPORTACIÓN AÑADIDA PARA VALIDACIÓN DE ADMIN
 const { createClient } = require('@supabase/supabase-js');
 const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware');
 
@@ -31,14 +31,20 @@ const obtenerOrgId = async (usuario) => {
 };
 
 const obtenerHoraCaracas = () => {
-  const dateStr = new Date().toLocaleString('en-US', { timeZone: 'America/Caracas' });
-  const cDate = new Date(dateStr);
-  const anio = cDate.getFullYear();
-  const mes = String(cDate.getMonth() + 1).padStart(2, '0');
-  const dia = String(cDate.getDate()).padStart(2, '0');
-  const hora = String(cDate.getHours()).padStart(2, '0');
-  const minuto = String(cDate.getMinutes()).padStart(2, '0');
-  return `\({anio}-\){mes}-\({dia}T\){hora}:${minuto}`;
+  // FIX #1: se reemplazó la interpolación rota por Intl.DateTimeFormat con zona horaria explícita.
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Caracas',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const partes = Object.fromEntries(
+    formatter.formatToParts(new Date()).map(p => [p.type, p.value])
+  );
+  return `${partes.year}-${partes.month}-${partes.day}T${partes.hour}:${partes.minute}`;
 };
 
 const validarConflictos = async (fecha_hora, eqLocal, eqVisita, arbitro, anotador, partidoIgnorado = null) => {
