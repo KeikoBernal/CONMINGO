@@ -12,7 +12,7 @@ router.get('/mis-partidos', async (req, res) => {
     const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
 
     let query = `
-      SELECT p.*, 
+      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
              t.organizacion_id,
              COALESCE(o.nombre, 'Partidos Independientes') as organizacion_nombre,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
@@ -65,7 +65,7 @@ router.get('/mis-ligas', async (req, res) => {
 router.get('/partidos-publicos/:id', async (req, res) => {
   try {
     const resDb = await db.query(`
-      SELECT p.*, 
+      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
              t.nombre AS torneo_nombre, s.nombre AS sede_nombre,
              COALESCE(ua.nombre || ' ' || ua.apellido, 'Por definir') AS arbitro_nombre,
@@ -95,7 +95,7 @@ router.get('/partidos-publicos/:id', async (req, res) => {
 router.get('/partidos-activos', async (req, res) => {
   try {
     const resDb = await db.query(`
-      SELECT p.*, 
+      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
              t.nombre AS torneo_nombre, s.nombre AS sede_nombre
       FROM public.partidos p

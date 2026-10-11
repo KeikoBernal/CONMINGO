@@ -61,7 +61,7 @@ router.get('/mis-partidos', async (req, res) => {
 
     const partidosRes = await db.query(`
       SELECT 
-        p.id, p.fecha_hora, p.estado, p.fase, 
+        p.id, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, p.estado, p.fase, 
         el.nombre as local_nombre, ev.nombre as visita_nombre, 
         s.nombre as sede_nombre
       FROM public.partidos p
@@ -96,7 +96,7 @@ router.get('/partidos/:id/planilla', async (req, res) => {
     const equipoId = equipoRes.rows[0].id;
 
     const partidoRes = await db.query(`
-      SELECT p.*, 
+      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
              s.nombre AS sede_nombre,
              COALESCE(ua.nombre || ' ' || ua.apellido, 'Por definir') AS arbitro_nombre,
