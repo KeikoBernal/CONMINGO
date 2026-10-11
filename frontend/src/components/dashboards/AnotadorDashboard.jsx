@@ -87,16 +87,23 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  useEffect(() => { 
-    socketRef.current = io(SOCKET_URL, {
-      transports: ['websocket'],
-      upgrade: false
-    });
-    
-    cargarDatosOficial(); 
-    
+    useEffect(() => {
+    // FIX #6: se conecta con el token de Supabase; el servidor valida la identidad.
+    let cancelado = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelado) return;
+      socketRef.current = io(SOCKET_URL, {
+        transports: ['websocket'],
+        upgrade: false,
+        auth: { token: session?.access_token }
+      });
+      cargarDatosOficial();
+    })();
+
     return () => {
-      if (socketRef.current) socketRef.current.disconnect(); 
+      cancelado = true;
+      if (socketRef.current) socketRef.current.disconnect();
     };
   }, []);
 
