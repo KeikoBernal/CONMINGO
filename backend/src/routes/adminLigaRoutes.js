@@ -47,6 +47,18 @@ const obtenerHoraCaracas = () => {
   return `${partes.year}-${partes.month}-${partes.day}T${partes.hour}:${partes.minute}`;
 };
 
+// Devuelve la fecha/hora guardada (hora de Venezuela, sin zona horaria) formateada tal cual,
+// sin pasar por new Date(): eso provoca conversión UTC -> Caracas que desplaza la hora 4 horas.
+const formatearFechaLocal = (fechaStr) => {
+  if (!fechaStr) return 'fecha por confirmar';
+  const m = String(fechaStr).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return String(fechaStr);
+  let hh = parseInt(m[4], 10);
+  const sufijo = hh >= 12 ? 'pm' : 'am';
+  hh = hh % 12 || 12;
+  return `${m[3]}/${m[2]}/${m[1]}, ${hh}:${m[5]} ${sufijo}`;
+};
+
 const validarConflictos = async (fecha_hora, eqLocal, eqVisita, arbitro, anotador, partidoIgnorado = null) => {
   // Buscamos jugadores de los equipos local y visitante para verificar que no jueguen en paralelo
   const obtenerJugadores = async (eId) => {
@@ -209,7 +221,7 @@ const notificarInvolucrados = async (partidos, orgId, adminId) => {
       );
       delDb.rows.forEach(r => { if(r.delegado_id) usuariosAnotificar.add(r.delegado_id) });
 
-      const msj = `Has sido programado para un encuentro el ${new Date(p.fecha_hora).toLocaleString('es-VE')}. Fase: ${p.fase || 'Regular'}`;
+      const msj = `Has sido programado para un encuentro el ${formatearFechaLocal(p.fecha_hora)}. Fase: ${p.fase || 'Regular'}`;
       
       for(let uid of usuariosAnotificar) {
         notificaciones.push(
@@ -807,7 +819,7 @@ if (fecha_fin < fecha_inicio) {
 
     for (const p of partidos_iniciales) {
       if (await validarConflictos(p.fecha_hora, p.local_id, p.visita_id, p.arbitro_id, p.anotador_id)) {
-        return res.status(400).json({ error: `Conflicto de Horario: Existen personas u equipos ocupados cerca de la fecha ${new Date(p.fecha_hora).toLocaleString()} (±2 horas).` });
+        return res.status(400).json({ error: `Conflicto de Horario: Existen personas u equipos ocupados cerca de la fecha ${formatearFechaLocal(p.fecha_hora)} (±2 horas).` });
       }
     }
 

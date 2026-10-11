@@ -11,7 +11,7 @@ const db = require('../config/db');
 router.get('/partidos-activos', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT p.*, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
+      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
              s.nombre as sede_nombre, o.nombre as organizacion_nombre
       FROM public.partidos p
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
@@ -33,7 +33,7 @@ router.get('/partidos-activos', async (req, res) => {
 router.get('/partidos/:id', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT p.*, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
+      SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
              s.nombre as sede_nombre, o.nombre as organizacion_nombre
       FROM public.partidos p
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
