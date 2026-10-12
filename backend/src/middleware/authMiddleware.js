@@ -1,4 +1,8 @@
 const db = require('../config/db');
+const { createClient } = require('@supabase/supabase-js');
+// FIX #13: un único cliente de Supabase para todo el middleware (antes se creaba
+// uno nuevo en cada petición, lo que desperdicia recursos en cada request).
+const supabaseAuthMW = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const verificarToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -8,9 +12,8 @@ const verificarToken = async (req, res, next) => {
 
   const token = authHeader.split(' ')[1];
   try {
-    // Validar token con Supabase o decodificar según implementes
-    const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    // FIX #13: se reutiliza el cliente único creado al cargar el módulo.
+    const supabase = supabaseAuthMW;
     
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) {

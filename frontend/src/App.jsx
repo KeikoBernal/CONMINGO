@@ -39,15 +39,18 @@ export default function App() {
     }
   }, [vista]);
 
+    // FIX #12: el rol se consulta al backend (/api/mi-perfil) con el token de la sesión;
+  // el navegador ya no lee la tabla usuarios directamente (independiente del RLS de Supabase).
   const obtenerRolBD = async (userId) => {
     try {
-      const { data: datosBD, error } = await supabase
-        .from('usuarios')
-        .select('rol')
-        .eq('id', userId)
-        .single();
-      if (error) return 'Usuario';
-      return datosBD?.rol || 'Usuario';
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return 'Usuario';
+      const res = await fetch(`${API_URL}/mi-perfil`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) return 'Usuario';
+      const datosPerfil = await res.json();
+      return datosPerfil?.rol || 'Usuario';
     } catch (err) {
       return 'Usuario';
     }

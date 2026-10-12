@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const { verificarToken } = require('../middleware/authMiddleware'); // FIX #12: rol resuelto siempre en el servidor
 
 // FIX #4: se eliminó el endpoint POST /login (JWT propio + fallback 'secreto_desarrollo').
 // Era código muerto e inseguro: el frontend autentica con Supabase Auth y
@@ -104,6 +105,22 @@ const otpLimiter = rateLimit({
 });
 
 // Paso 1: verificación de email + contraseña (bloqueo persistente por correo)
+// FIX #12: el dashboard ya NO consulta la tabla usuarios desde el navegador (eso dependía
+// del RLS de Supabase y exponía la lectura al cliente). El rol se resuelve aquí,
+// con el token verificado, igual que en el resto de la API.
+router.get('/mi-perfil', verificarToken, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT id, email, nombre, apellido, rol, organizacion_id FROM public.usuarios WHERE id = $1',
+      [req.usuario.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Usuario no registrado en el sistema.' });
+    res.json(rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener el perfil.' });
+  }
+});
+
 router.post('/login-proxy', loginLimiter, async (req, res) => {
   const email = normalizarEmailLogin(req.body?.email);
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
