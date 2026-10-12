@@ -28,10 +28,12 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Configuración del Rate Limiter: Máximo 100 peticiones por IP cada 10 minutos
+// FIX #17: límite general ampliado (600 por IP / 10 min) para que un dashboard que carga
+// varias peticiones no agote el cupo. El blindaje estricto contra fuerza bruta sigue en
+// login-proxy (loginLimiter y otpLimiter), que es donde de verdad se necesita.
 const apiLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutos
-  max: 100, // Límite de 100 peticiones por IP en esa ventana de tiempo
+  max: 600, // FIX #17: 600 peticiones por IP / 10 min — frena abuso sin bloquear el uso normal
   message: { 
     error: '🚨 Hemos detectado un exceso de peticiones desde tu red. Por medidas de seguridad, por favor espera 10 minutos antes de volver a intentarlo.' 
   },
@@ -100,6 +102,35 @@ app.use('/api/delegado', delegadoRoutes);
 // ESTADO EN MEMORIA PARA LA PLANILLA EN VIVO
 // ==========================================
 const partidosEnMemoria = {};
+
+// ============================================================
+// FIX #16: persistencia del estado de la planilla en la base de datos.
+// El backend corre en Render (proceso persistente), así que Socket.io funciona;
+// pero cada reinicio/redeploy pierde partidosEnMemoria. Con esta persistencia
+// el estado se recupera solo (tabla public.planilla_estado, ver migración SQL).
+// Si la tabla todavía no existe, nada se rompe: solo queda un log.
+// ============================================================
+const persistirPlanilla = (partidoId) => {
+  const estado = partidosEnMemoria[partidoId];
+  if (!estado) return;
+  db.query(
+    'INSERT INTO public.planilla_estado (partido_id, datos) VALUES ($1, $2) ON CONFLICT (partido_id) DO UPDATE SET datos = EXCLUDED.datos, updated_at = now()',
+    [partidoId, JSON.stringify(estado)]
+  ).catch((e) => console.error('❌ [planilla] No se pudo persistir el estado:', e?.message || e));
+};
+
+const cargarPlanilla = async (partidoId) => {
+  try {
+    const { rows } = await db.query('SELECT datos FROM public.planilla_estado WHERE partido_id = $1', [partidoId]);
+    if (rows.length && rows[0].datos) {
+      partidosEnMemoria[partidoId] = rows[0].datos;
+      return rows[0].datos;
+    }
+  } catch (e) {
+    console.warn('⚠️ [planilla] Tabla planilla_estado no disponible (¿falta ejecutar la migración?):', e?.message || e);
+  }
+  return null;
+};
 
 // ============================================================
 // FIX #6: Autenticación de WebSockets (io.use)
@@ -214,13 +245,18 @@ io.on('connection', (socket) => {
   });
 
   // 1. Salas por partido
-  socket.on('unirse_partido', (partidoId) => {
-    const sala = `partido_${partidoId}`;
+    socket.on('unirse_partido', async (partidoId) => {
+    const pid = parseInt(partidoId, 10); // FIX #16: normaliza el ID (antes llegaba mezclado como texto/número)
+    const sala = `partido_${pid}`;
     socket.join(sala);
     console.log(`👤 Cliente ${socket.id} se unió a la sala: ${sala}`);
-    
-    if (partidosEnMemoria[partidoId]) {
-      socket.emit('actualizar_planilla', partidosEnMemoria[partidoId]);
+
+    // FIX #16: si el servidor se reinició (redeploy de Render), el estado se recupera desde la BD.
+    if (!isNaN(pid) && !partidosEnMemoria[pid]) {
+      await cargarPlanilla(pid);
+    }
+    if (partidosEnMemoria[pid]) {
+      socket.emit('actualizar_planilla', partidosEnMemoria[pid]);
     }
   });
 
@@ -239,7 +275,7 @@ io.on('connection', (socket) => {
     
     partidosEnMemoria[partido_id].efectividad[jugador_id][mano_index] = { valor: valor, estado: 'validado' };
     
-    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]);
+    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
   });
 
   socket.on('sincronizar_planilla_completa', (data) => {
@@ -252,7 +288,7 @@ io.on('connection', (socket) => {
     partidosEnMemoria[partido_id].tantosLocal = tantosLocal || Array(20).fill('');
     partidosEnMemoria[partido_id].tantosVisita = tantosVisita || Array(20).fill('');
     
-    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]);
+    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
   });
 
   socket.on('solicitar_revision_jugada', (data) => {
@@ -262,7 +298,7 @@ io.on('connection', (socket) => {
     if (partidosEnMemoria[partido_id]?.efectividad[jugador_id]?.[mano_index]) {
       partidosEnMemoria[partido_id].efectividad[jugador_id][mano_index].estado = 'rechazado';
       
-      io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]);
+      io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
       io.to(`partido_${partido_id}`).emit('alerta_revision', mensaje);
     }
   });
@@ -300,7 +336,7 @@ io.on('connection', (socket) => {
     const { partido_id, manualStats } = data;
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
     partidosEnMemoria[partido_id].manualStats = manualStats;
-    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]);
+    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
   });
 
   socket.on('tantos_asignados', async (data) => {
@@ -310,7 +346,7 @@ io.on('connection', (socket) => {
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
     partidosEnMemoria[partido_id].tantosLocal = tantosLocal;
     partidosEnMemoria[partido_id].tantosVisita = tantosVisita;
-    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]);
+    io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
 
     try {
       await db.query(
@@ -329,7 +365,7 @@ io.on('connection', (socket) => {
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'En Curso';
     partidosEnMemoria[data.partidoId].hora_inicio = data.hora_inicio;
-    io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'En Curso', hora_inicio: data.hora_inicio });
+    io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'En Curso', hora_inicio: data.hora_inicio }); persistirPlanilla(data.partidoId); // FIX #16
   });
 
   socket.on('partido_finalizado', async (data) => {
@@ -337,14 +373,14 @@ io.on('connection', (socket) => {
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Finalizado';
     partidosEnMemoria[data.partidoId].hora_final = data.hora_final;
-    io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'Finalizado', hora_final: data.hora_final });
+    io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'Finalizado', hora_final: data.hora_final }); persistirPlanilla(data.partidoId); // FIX #16
   });
 
   socket.on('partido_suspendido', async (data) => {
     if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Suspendido';
-    io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'Suspendido' });
+    io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'Suspendido' }); persistirPlanilla(data.partidoId); // FIX #16
   });
 
   socket.on('disconnect', () => {
