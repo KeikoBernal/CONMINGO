@@ -263,10 +263,12 @@ router.post('/sedes', async (req, res) => {
 router.put('/sedes/:id', async (req, res) => {
   const { nombre, direccion } = req.body;
   try {
+    const orgId = await obtenerOrgId(req.usuario);
     const resDb = await db.query(
-      `UPDATE public.sedes SET nombre = $1, direccion = $2 WHERE id = $3 RETURNING *`,
-      [formatearTexto(nombre), direccion ? direccion.trim() : null, req.params.id]
+      `UPDATE public.sedes SET nombre = $1, direccion = $2 WHERE id = $3 AND ($4::uuid IS NULL OR organizacion_id = $4) RETURNING *`,
+      [formatearTexto(nombre), direccion ? direccion.trim() : null, req.params.id, orgId]
     );
+    if (resDb.rows.length === 0) return res.status(404).json({ error: 'Sede no encontrada en tu organización.' });
     await registrarAuditoria(req.usuario.id, 'EDITAR_SEDE', 'sedes', null, resDb.rows[0], req.ip);
     res.json({ mensaje: 'Sede actualizada con éxito.', sede: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar sede.' }); }
@@ -274,7 +276,9 @@ router.put('/sedes/:id', async (req, res) => {
 
 router.delete('/sedes/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM public.sedes WHERE id = $1', [req.params.id]);
+    const orgId = await obtenerOrgId(req.usuario);
+    const resDb = await db.query('DELETE FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) RETURNING id', [req.params.id, orgId]);
+    if (resDb.rows.length === 0) return res.status(404).json({ error: 'Sede no encontrada en tu organización.' });
     await registrarAuditoria(req.usuario.id, 'ELIMINAR_SEDE', 'sedes', { id: req.params.id }, null, req.ip);
     res.json({ mensaje: 'Sede eliminada con éxito.' });
   } catch (error) { res.status(500).json({ error: 'Error al eliminar sede.' }); }
@@ -346,8 +350,11 @@ router.delete('/equipos/:id', async (req, res) => {
 
 router.get('/equipos/:equipo_id/jugadores', async (req, res) => {
   try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const eqRes = await db.query('SELECT id FROM public.equipos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [req.params.equipo_id, orgId]);
+    if (eqRes.rows.length === 0) return res.status(404).json({ error: 'Equipo no encontrado en tu organización.' });
     const resDb = await db.query(
-      `SELECT * FROM public.jugadores WHERE equipo_id = $1 ORDER BY CASE WHEN estado = 'Activo' THEN 1 ELSE 2 END, numero_dorsal ASC`, 
+      `SELECT * FROM public.jugadores WHERE equipo_id = $1 ORDER BY CASE WHEN estado = 'Activo' THEN 1 ELSE 2 END, numero_dorsal ASC`,
       [req.params.equipo_id]
     );
     res.json(resDb.rows);
@@ -365,7 +372,8 @@ router.post('/jugadores', async (req, res) => {
   }
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const eqRes = await db.query('SELECT categoria FROM public.equipos WHERE id = $1', [equipo_id]);
+    const eqRes = await db.query('SELECT id, categoria FROM public.equipos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [equipo_id, orgId]);
+    if (eqRes.rows.length === 0) return res.status(404).json({ error: 'El equipo indicado no existe en tu organización.' });
 
     if (eqRes.rows.length > 0) {
       const categoriaEq = eqRes.rows[0].categoria;
@@ -401,6 +409,9 @@ router.post('/jugadores', async (req, res) => {
 router.post('/jugadores/batch-fotos', async (req, res) => {
   const { batch, equipo_id } = req.body; 
   try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const eqRes = await db.query('SELECT id FROM public.equipos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [equipo_id, orgId]);
+    if (eqRes.rows.length === 0) return res.status(404).json({ error: 'El equipo indicado no existe en tu organización.' });
     let actualizados = 0;
     for(let item of batch) {
       const resp = await db.query(`UPDATE public.jugadores SET foto_url = $1 WHERE cedula = $2 AND equipo_id = $3 RETURNING id`, [item.foto_url, item.cedula, equipo_id]);
@@ -420,7 +431,8 @@ router.put('/jugadores/:id', async (req, res) => {
   
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const jugadorPrevio = await db.query('SELECT equipo_id FROM public.jugadores WHERE id = $1', [id]);
+    const jugadorPrevio = await db.query(`SELECT j.equipo_id FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)`, [id, orgId]);
+    if (jugadorPrevio.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado en tu organización.' });
     if (jugadorPrevio.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado.' });
     
     const equipoId = jugadorPrevio.rows[0].equipo_id;
@@ -490,7 +502,8 @@ router.put('/jugadores/:id/estado', async (req, res) => {
   const { estado, nuevo_capitan_id, equipo_id } = req.body;
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const resDb = await db.query(`UPDATE public.jugadores SET estado = $1 WHERE id = $2 RETURNING *`, [estado, req.params.id]);
+    const resDb = await db.query(`UPDATE public.jugadores j SET estado = $1 FROM public.equipos e WHERE j.equipo_id = e.id AND ($2::uuid IS NULL OR e.organizacion_id = $2) AND j.id = $3 RETURNING j.*`, [estado, orgId, req.params.id]);
+    if (resDb.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado en tu organización.' });
     if (estado !== 'Activo') {
       await db.query(`UPDATE public.equipos SET capitan_id = NULL WHERE capitan_id = $1`, [req.params.id]);
     }
@@ -510,7 +523,8 @@ router.put('/jugadores/:id/estado', async (req, res) => {
 // Ruta para verificar si la cédula ya existe en todo el sistema
 router.get('/verificar-cedula/:cedula', async (req, res) => {
   try {
-    const user = await db.query('SELECT id, nombre, apellido, email FROM public.usuarios WHERE cedula = $1', [req.params.cedula]);
+    const orgId = await obtenerOrgId(req.usuario);
+    const user = await db.query(`SELECT id, nombre, apellido, email FROM public.usuarios WHERE cedula = $1 AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))`, [req.params.cedula, orgId]);
     if (user.rows.length > 0) res.json({ existe: true, usuario: user.rows[0] });
     else res.json({ existe: false });
   } catch (e) { res.status(500).json({ error: 'Error verificando cédula' }); }
@@ -550,7 +564,7 @@ router.post('/crear-credencial', async (req, res) => {
         [usuarioId, orgId, rol]
       );
       if (rol.toLowerCase() === 'delegado de equipo' && equipo_id) {
-        await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2`, [usuarioId, equipo_id]);
+        await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2 AND ($3::uuid IS NULL OR organizacion_id = $3)`, [usuarioId, equipo_id, orgId]);
       }
       return res.status(200).json({ mensaje: 'El usuario ya existía y ha sido asociado a tu liga exitosamente.' });
     }
@@ -577,7 +591,7 @@ router.post('/crear-credencial', async (req, res) => {
     await db.query(`INSERT INTO public.usuario_organizaciones (usuario_id, organizacion_id, rol) VALUES ($1, $2, $3)`, [authUser.user.id, orgId, rol]);
 
     if (rol.toLowerCase() === 'delegado de equipo' && equipo_id) {
-      await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2`, [authUser.user.id, equipo_id]);
+      await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2 AND ($3::uuid IS NULL OR organizacion_id = $3)`, [authUser.user.id, equipo_id, orgId]);
     }
 
     res.status(201).json({ mensaje: `Credencial creada con éxito. Clave temporal: ${passwordInicial}` });
@@ -628,7 +642,9 @@ router.delete('/remover-credencial/:id', async (req, res) => {
 
 router.post('/usuarios/:id/reset-password', async (req, res) => {
   try {
-    const userDb = await db.query('SELECT email, cedula, nombre FROM public.usuarios WHERE id = $1', [req.params.id]);
+    const orgId = await obtenerOrgId(req.usuario);
+    const userDb = await db.query(`SELECT email, cedula, nombre FROM public.usuarios WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))`, [req.params.id, orgId]);
+    if (userDb.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado en tu organización.' });
     if (userDb.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' });
     
     const { cedula, nombre } = userDb.rows[0];
@@ -650,7 +666,9 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
 router.put('/equipos/:id/delegado', async (req, res) => {
   const { delegado_id } = req.body;
   try {
-    await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2`, [delegado_id, req.params.id]);
+    const orgId = await obtenerOrgId(req.usuario);
+    const resDb = await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2 AND ($3::uuid IS NULL OR organizacion_id = $3) RETURNING *`, [delegado_id, req.params.id, orgId]);
+    if (resDb.rows.length === 0) return res.status(404).json({ error: 'Equipo no encontrado en tu organización.' });
     res.json({ mensaje: 'Delegado reasignado con éxito.' });
   } catch (error) { res.status(500).json({ error: 'Error al reasignar delegado.' }); }
 });
@@ -816,6 +834,23 @@ if (fecha_fin < fecha_inicio) {
   }
 
   try {
+    // LOTE C: validar que equipos, sedes y oficiales pertenezcan a la organización del admin.
+    const idsEquiposT = [...new Set(partidos_iniciales.flatMap(p => [p.local_id, p.visita_id]).filter(Boolean))];
+    const idsSedesT = [...new Set(partidos_iniciales.flatMap(p => [p.sede_id]).filter(Boolean))];
+    const idsOficialesT = [...new Set(partidos_iniciales.flatMap(p => [p.arbitro_id, p.anotador_id]).filter(Boolean))];
+
+    if (idsEquiposT.length > 0) {
+      const eqChk = await db.query('SELECT COUNT(*) as n FROM public.equipos WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2)', [idsEquiposT.map(String), orgId]);
+      if (parseInt(eqChk.rows[0].n) !== idsEquiposT.length) return res.status(400).json({ error: 'Uno o más equipos indicados no pertenecen a tu organización.' });
+    }
+    if (idsSedesT.length > 0) {
+      const sedeChk = await db.query('SELECT COUNT(*) as n FROM public.sedes WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2)', [idsSedesT.map(String), orgId]);
+      if (parseInt(sedeChk.rows[0].n) !== idsSedesT.length) return res.status(400).json({ error: 'Una o más sedes indicadas no pertenecen a tu organización.' });
+    }
+    if (idsOficialesT.length > 0) {
+      const ofChk = await db.query('SELECT COUNT(*) as n FROM public.usuarios WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))', [idsOficialesT.map(String), orgId]);
+      if (parseInt(ofChk.rows[0].n) !== idsOficialesT.length) return res.status(400).json({ error: 'Uno o más oficiales indicados no pertenecen a tu organización.' });
+    }
 
     for (const p of partidos_iniciales) {
       if (await validarConflictos(p.fecha_hora, p.local_id, p.visita_id, p.arbitro_id, p.anotador_id)) {
@@ -823,8 +858,9 @@ if (fecha_fin < fecha_inicio) {
       }
     }
 
-const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1', [plantilla_id]);
+const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2 OR organizacion_id IS NULL)', [plantilla_id, orgId]);
     let reglasJson = reglaDb.rows.length > 0 ? reglaDb.rows[0].reglas : {};
+    if (reglaDb.rows.length === 0) return res.status(400).json({ error: 'La plantilla de reglas seleccionada no existe o no pertenece a tu organización.' });
     reglasJson.estado = 'Activo';
 
     const ahoraLocalIso = obtenerHoraCaracas(); // <-- Corrección de zona horaria
@@ -864,15 +900,17 @@ router.put('/torneos/:id', async (req, res) => {
   const { id } = req.params;
   const { nombre, fecha_inicio, fecha_fin, estado } = req.body;
   try {
-    const torPrevia = await db.query('SELECT reglas FROM public.torneos WHERE id = $1', [id]);
+    const orgId = await obtenerOrgId(req.usuario);
+    const torPrevia = await db.query(`SELECT reglas FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)`, [id, orgId]);
+    if (torPrevia.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
     if (torPrevia.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado.' });
 
     let reglasActuales = torPrevia.rows[0].reglas || {};
     if (estado) reglasActuales.estado = estado;
 
     const resDb = await db.query(
-      `UPDATE public.torneos SET nombre = COALESCE($1, nombre), fecha_inicio = COALESCE($2, fecha_inicio), fecha_fin = COALESCE($3, fecha_fin), reglas = $4 WHERE id = $5 RETURNING *`,
-      [nombre ? formatearTexto(nombre) : null, fecha_inicio, fecha_fin, JSON.stringify(reglasActuales), id]
+      `UPDATE public.torneos SET nombre = COALESCE($1, nombre), fecha_inicio = COALESCE($2, fecha_inicio), fecha_fin = COALESCE($3, fecha_fin), reglas = $4 WHERE id = $5 AND ($6::uuid IS NULL OR organizacion_id = $6) RETURNING *`,
+      [nombre ? formatearTexto(nombre) : null, fecha_inicio, fecha_fin, JSON.stringify(reglasActuales), id, orgId]
     );
     res.json({ mensaje: 'Torneo actualizado con éxito.', torneo: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar torneo.' }); }
@@ -934,6 +972,9 @@ router.get('/torneos/:torneo_id/posiciones', async (req, res) => {
   const { grupo } = req.query;
 
   try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const torneoChk = await db.query('SELECT id FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [torneo_id, orgId]);
+    if (torneoChk.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
     const query = `
       WITH ResultadosEquipos AS (
           SELECT 
@@ -977,8 +1018,9 @@ router.get('/torneos/:torneo_id/posiciones', async (req, res) => {
 });
 
 router.get('/acumulado-temporada', async (req, res) => {
-  const { organizacion_id, temporada } = req.query;
+  const { temporada } = req.query;
   try {
+    const organizacion_id = await obtenerOrgId(req.usuario);
     const query = `
       WITH TorneosTemporada AS (
           SELECT id FROM public.torneos WHERE organizacion_id = $1 AND temporada = $2
@@ -1035,7 +1077,23 @@ router.post('/partidos-sueltos', async (req, res) => {
 
     const orgId = await obtenerOrgId(req.usuario);
 
-    const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1', [plantilla_id]);
+    // LOTE C: validar que equipos, sede y oficiales pertenezcan a la organización del admin.
+    const idsEq = [equipo_local_id, equipo_visita_id].filter(Boolean);
+    if (idsEq.length > 0) {
+      const eqChk = await db.query('SELECT COUNT(*) as n FROM public.equipos WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2)', [idsEq.map(String), orgId]);
+      if (parseInt(eqChk.rows[0].n) !== idsEq.length) return res.status(400).json({ error: 'Uno o más equipos indicados no pertenecen a tu organización.' });
+    }
+    if (sede_id) {
+      const sedeChk = await db.query('SELECT id FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [sede_id, orgId]);
+      if (sedeChk.rows.length === 0) return res.status(400).json({ error: 'La sede indicada no pertenece a tu organización.' });
+    }
+    const idsOf = [arbitro_id, anotador_id].filter(Boolean);
+    if (idsOf.length > 0) {
+      const ofChk = await db.query('SELECT COUNT(*) as n FROM public.usuarios WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))', [idsOf.map(String), orgId]);
+      if (parseInt(ofChk.rows[0].n) !== idsOf.length) return res.status(400).json({ error: 'Uno o más oficiales indicados no pertenecen a tu organización.' });
+    }
+
+    const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2 OR organizacion_id IS NULL)', [plantilla_id, orgId]);
     if (reglaDb.rows.length === 0) return res.status(400).json({ error: 'La plantilla seleccionada no existe.' });
     
     let reglasJson = reglaDb.rows[0].reglas;
@@ -1085,6 +1143,9 @@ router.put('/partidos/:id/reagendar', async (req, res) => {
       return res.status(400).json({ error: 'No se puede reagendar el partido a una fecha y hora que ya pasó.' });
     }
 
+    const orgId = await obtenerOrgId(req.usuario);
+    const permChk = await db.query('SELECT p.id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [id, orgId]);
+    if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
     const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [id]);
     const pInfo = partidoInfo.rows[0];
 
@@ -1106,6 +1167,18 @@ router.put('/partidos/:id/editar-oficiales', async (req, res) => {
       return res.status(400).json({ error: 'No se puede modificar la fecha del partido hacia el pasado.' });
     }
 
+    const orgId = await obtenerOrgId(req.usuario);
+    const permChk = await db.query('SELECT p.id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [id, orgId]);
+    if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+    if (sede_id) {
+      const sedeChk = await db.query('SELECT id FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [sede_id, orgId]);
+      if (sedeChk.rows.length === 0) return res.status(400).json({ error: 'La sede indicada no pertenece a tu organización.' });
+    }
+    const idsOf = [arbitro_id, anotador_id].filter(Boolean);
+    if (idsOf.length > 0) {
+      const ofChk = await db.query('SELECT COUNT(*) as n FROM public.usuarios WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))', [idsOf.map(String), orgId]);
+      if (parseInt(ofChk.rows[0].n) !== idsOf.length) return res.status(400).json({ error: 'Uno o más oficiales indicados no pertenecen a tu organización.' });
+    }
     const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [id]);
     const pInfo = partidoInfo.rows[0];
 
@@ -1120,7 +1193,9 @@ router.put('/partidos/:id/editar-oficiales', async (req, res) => {
 
 router.put('/partidos/:id/cancelar', async (req, res) => {
   try {
-    await db.query(`UPDATE public.partidos SET estado = 'Cancelado' WHERE id = $1`, [req.params.id]);
+    const orgId = await obtenerOrgId(req.usuario);
+    const resDb = await db.query(`UPDATE public.partidos p SET estado = 'Cancelado' FROM public.torneos t WHERE p.torneo_id = t.id AND p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2) RETURNING p.id`, [req.params.id, orgId]);
+    if (resDb.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
     res.json({ mensaje: 'Partido cancelado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al cancelar partido.' }); }
 })
@@ -1131,6 +1206,11 @@ router.post('/partidos/:id/forzar-ganador', async (req, res) => {
   const adminId = req.usuario.id; 
 
   try {
+    // LOTE C: el partido debe pertenecer a la organización del administrador.
+    const orgId = await obtenerOrgId(req.usuario);
+    const permChk = await db.query('SELECT p.id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [partidoId, orgId]);
+    if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+
     // 1. Obtener el hash de la contraseña del administrador desde la base de datos
     const resultAdmin = await db.query(
       'SELECT password_hash FROM public.usuarios WHERE id = $1',

@@ -107,6 +107,43 @@ app.use('/api/delegado', delegadoRoutes);
 const partidosEnMemoria = {};
 
 // ============================================================
+// LOTE C/D: verificación de asignación del oficial al partido.
+// Un árbitro/anotador autenticado solo puede operar el partido que tiene
+// asignado; el administrador de liga solo partidos de SU organización;
+// el superadmin mantiene acceso global. Consulta a BD con caché corto.
+// ============================================================
+const cachePermisoPartido = new Map(); // clave usuarioId:partidoId -> { ts, ok }
+const puedeOperarPartidoEnBD = async (usuario, rolNorm, partidoId) => {
+  if (!usuario || !partidoId) return false;
+  if (rolNorm === 'superadmin') return true;
+  const pid = parseInt(partidoId, 10);
+  if (isNaN(pid)) return false;
+  const clave = `${usuario.id}:${pid}`;
+  const enCache = cachePermisoPartido.get(clave);
+  if (enCache && (Date.now() - enCache.ts) < 60000) return enCache.ok;
+  let ok = false;
+  try {
+    const { rows } = await db.query(
+      'SELECT p.arbitro_id, p.anotador_id, t.organizacion_id FROM public.partidos p LEFT JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1',
+      [pid]
+    );
+    if (rows.length === 1) {
+      if (rolNorm === 'administrador de liga') {
+        ok = rows[0].organizacion_id === usuario.organizacion_id;
+      } else if (rolNorm === 'arbitro' || rolNorm === 'anotador' || rolNorm === 'arbitro/anotador') {
+        ok = rows[0].arbitro_id === usuario.id || rows[0].anotador_id === usuario.id;
+      }
+    }
+  } catch (e) {
+    console.error('Error al verificar la asignación del partido:', e?.message || e);
+    return false;
+  }
+  if (cachePermisoPartido.size > 20000) cachePermisoPartido.clear();
+  cachePermisoPartido.set(clave, { ts: Date.now(), ok });
+  return ok;
+};
+
+// ============================================================
 // FIX #16: persistencia del estado de la planilla en la base de datos.
 // El backend corre en Render (proceso persistente), así que Socket.io funciona;
 // pero cada reinicio/redeploy pierde partidosEnMemoria. Con esta persistencia
@@ -170,7 +207,12 @@ io.on('connection', (socket) => {
   const rolNorm = socket.data.rolNormalizado || null;
   const ROLES_OPERATIVOS = ['arbitro', 'anotador', 'arbitro/anotador', 'administrador de liga', 'superadmin'];
   const esOficial = () => !!usuario && ['arbitro', 'anotador', 'arbitro/anotador'].includes(rolNorm);
-  const puedeOperarPartido = () => !!usuario && ROLES_OPERATIVOS.includes(rolNorm);
+  // LOTE C/D: además del rol, se verifica en BD que el oficial esté asignado a ESTE
+  // partido (o que el admin de liga pertenezca a la organización del partido).
+  const puedeOperarPartido = async (partidoId) => {
+    if (!usuario || !ROLES_OPERATIVOS.includes(rolNorm)) return false;
+    return puedeOperarPartidoEnBD(usuario, rolNorm, partidoId);
+  };
   console.log(`🟢 Nuevo cliente conectado: ${socket.id} ${usuario ? `(usuario ${usuario.id} · ${usuario.rol})` : '(anónimo, solo lectura pública)'}`);
 
   // --- SISTEMA DE MENSAJERÍA JERÁRQUICA (FIX #6) ---
@@ -233,8 +275,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('sync_cronometro', (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+  socket.on('sync_cronometro', async (data) => {
+    if (!(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: verificación de asignación al partido
       io.to(`partido_${data.partido_id}`).emit('sincronizacion_cronometro', data);
     });
 
@@ -263,14 +305,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('presencia_oficial', (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+  socket.on('presencia_oficial', async (data) => {
+    if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
     const { partidoId, rol, estado } = data;
     io.to(`partido_${partidoId}`).emit('presencia_actualizada', { rol, estado });
   });
 
-  socket.on('proponer_jugada', (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+  socket.on('proponer_jugada', async (data) => {
+    if (!(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: verificación de asignación al partido
     const { partido_id, jugador_id, mano_index, valor } = data;
     
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
@@ -281,8 +323,8 @@ io.on('connection', (socket) => {
     io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
   });
 
-  socket.on('sincronizar_planilla_completa', (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+  socket.on('sincronizar_planilla_completa', async (data) => {
+    if (!(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: verificación de asignación al partido
     const { partido_id, efectividad, manualStats, tantosLocal, tantosVisita } = data;
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
     
@@ -294,8 +336,8 @@ io.on('connection', (socket) => {
     io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
   });
 
-  socket.on('solicitar_revision_jugada', (data) => {
-    if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
+  socket.on('solicitar_revision_jugada', async (data) => {
+    if (!esOficial() || !(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: debe ser oficial asignado a este partido
     const { partido_id, jugador_id, mano_index, mensaje } = data;
     
     if (partidosEnMemoria[partido_id]?.efectividad[jugador_id]?.[mano_index]) {
@@ -307,7 +349,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('decision_arbitro', async (data) => {
-    if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
+    if (!esOficial() || !(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: debe ser oficial asignado a este partido
     try {
       await db.query(
         `INSERT INTO public.detalle_jugadas (mano_id, jugador_id, tipo_destreza, efectividad, minuto_registro)
@@ -321,7 +363,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('tarjeta_emitida', async (data) => {
-    if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
+    if (!esOficial() || !(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: debe ser oficial asignado a este partido
     try {
       await db.query(
         `INSERT INTO public.tarjetas (partido_id, jugador_id, color, minuto_registro)
@@ -334,8 +376,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('actualizar_stats_manuales', (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+  socket.on('actualizar_stats_manuales', async (data) => {
+    if (!(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: verificación de asignación al partido
     const { partido_id, manualStats } = data;
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
     partidosEnMemoria[partido_id].manualStats = manualStats;
@@ -343,7 +385,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('tantos_asignados', async (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+    if (!(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: verificación de asignación al partido
     const { partido_id, tantosLocal, tantosVisita } = data;
     
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
@@ -363,8 +405,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('partido_iniciado', (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+  socket.on('partido_iniciado', async (data) => {
+    if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'En Curso';
     partidosEnMemoria[data.partidoId].hora_inicio = data.hora_inicio;
@@ -372,7 +414,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('partido_finalizado', async (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+    if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Finalizado';
     partidosEnMemoria[data.partidoId].hora_final = data.hora_final;
@@ -380,7 +422,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('partido_suspendido', async (data) => {
-    if (!puedeOperarPartido()) return; // FIX #6: solo roles operativos autenticados
+    if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Suspendido';
     io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'Suspendido' }); persistirPlanilla(data.partidoId); // FIX #16

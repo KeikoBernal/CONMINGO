@@ -5,11 +5,41 @@ const { verificarToken } = require('../middleware/authMiddleware');
 
 router.use(verificarToken);
 
+// ============================================================
+// LOTE C/D: verificación de acceso a un partido según rol y organización.
+// Superadmin: global. Administrador de Liga: partidos de su organización.
+// Árbitro/Anotador: solo el partido que tiene asignado.
+// ============================================================
+const puedeAccederPartido = async (req, partidoId) => {
+  const rolNorm = (req.usuario.rol || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  try {
+    const { rows } = await db.query(
+      'SELECT p.arbitro_id, p.anotador_id, t.organizacion_id FROM public.partidos p LEFT JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1',
+      [partidoId]
+    );
+    if (rows.length === 0) return { ok: false, status: 404, error: 'Partido no encontrado.' };
+    const fila = rows[0];
+    if (rolNorm === 'superadmin') return { ok: true };
+    if (rolNorm === 'administrador de liga') {
+      if (fila.organizacion_id && fila.organizacion_id === req.usuario.organizacion_id) return { ok: true };
+      return { ok: false, status: 403, error: 'Este partido no pertenece a tu organización.' };
+    }
+    if (rolNorm === 'arbitro' || rolNorm === 'anotador' || rolNorm === 'arbitro/anotador') {
+      if (fila.arbitro_id === req.usuario.id || fila.anotador_id === req.usuario.id) return { ok: true };
+      return { ok: false, status: 403, error: 'Acceso denegado. No eres oficial asignado a este encuentro.' };
+    }
+    return { ok: false, status: 403, error: 'No tienes permisos para operar este partido.' };
+  } catch (e) {
+    return { ok: false, status: 500, error: 'Error al verificar el acceso al partido.' };
+  }
+};
+
 // 1. OBTENER MIS PARTIDOS (CORREGIDO)
 router.get('/mis-partidos', async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
-    const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
+    const rolNorm = (req.usuario.rol || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const esAdmin = rolNorm === 'administrador de liga' || rolNorm === 'superadmin';
 
     let query = `
       SELECT p.*, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
@@ -34,10 +64,16 @@ router.get('/mis-partidos', async (req, res) => {
     `;
     
     const params = [];
-    if (!esAdmin) { 
+    if (rolNorm === 'superadmin') {
+      // El superadmin ve todos los partidos de todas las organizaciones.
+    } else if (esAdmin && req.usuario.organizacion_id) {
+      // LOTE C: el administrador de liga solo ve partidos de SU organización.
+      query += ` WHERE t.organizacion_id = $1::uuid `;
+      params.push(req.usuario.organizacion_id);
+    } else {
       // Es vital el casting ::uuid para que PostgreSQL no arroje error
-      query += ` WHERE p.arbitro_id = $1::uuid OR p.anotador_id = $1::uuid `; 
-      params.push(usuarioId); 
+      query += ` WHERE p.arbitro_id = $1::uuid OR p.anotador_id = $1::uuid `;
+      params.push(usuarioId);
     }
     query += ` ORDER BY p.fecha_hora ASC `;
 
@@ -116,13 +152,10 @@ router.get('/partidos-activos', async (req, res) => {
 router.put('/partidos/:id/iniciar', async (req, res) => {
   try {
     // INSERCIÓN: Validación estricta de rol y flujo de estado
-    const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
-    const chk = await db.query('SELECT estado, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [req.params.id]);
-    if (chk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
-    
-    if (!esAdmin && chk.rows[0].arbitro_id !== req.usuario.id && chk.rows[0].anotador_id !== req.usuario.id) {
-      return res.status(403).json({ error: 'Acceso denegado. No eres oficial asignado a este encuentro.' });
-    }
+    // LOTE C/D: aislamiento por organización y verificación de oficial asignado.
+    const acceso = await puedeAccederPartido(req, req.params.id);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    const chk = await db.query('SELECT estado FROM public.partidos WHERE id = $1', [req.params.id]);
     if (chk.rows[0].estado !== 'Agendado') {
       return res.status(400).json({ error: `Solo se pueden iniciar partidos en estado 'Agendado'. Estado actual: ${chk.rows[0].estado}` });
     }
@@ -140,13 +173,10 @@ router.put('/partidos/:id/iniciar', async (req, res) => {
 router.put('/partidos/:id/finalizar', async (req, res) => {
   try {
     // INSERCIÓN: Validación estricta de rol y flujo de estado
-    const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
-    const chk = await db.query('SELECT estado, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [req.params.id]);
-    if (chk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
-    
-    if (!esAdmin && chk.rows[0].arbitro_id !== req.usuario.id && chk.rows[0].anotador_id !== req.usuario.id) {
-      return res.status(403).json({ error: 'Acceso denegado. No eres oficial asignado a este encuentro.' });
-    }
+    // LOTE C/D: aislamiento por organización y verificación de oficial asignado.
+    const acceso = await puedeAccederPartido(req, req.params.id);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    const chk = await db.query('SELECT estado FROM public.partidos WHERE id = $1', [req.params.id]);
     if (chk.rows[0].estado !== 'En Curso') {
       return res.status(400).json({ error: `El partido debe estar 'En Curso' para finalizarlo. Estado actual: ${chk.rows[0].estado}` });
     }
@@ -164,13 +194,10 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
 router.put('/partidos/:id/suspender', async (req, res) => {
   try {
     // INSERCIÓN: Evitar suspender partidos que ya finalizaron
-    const esAdmin = ['Administrador de Liga', 'Superadmin'].includes(req.usuario.rol || '');
-    const chk = await db.query('SELECT estado, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [req.params.id]);
-    if (chk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
-    
-    if (!esAdmin && chk.rows[0].arbitro_id !== req.usuario.id && chk.rows[0].anotador_id !== req.usuario.id) {
-      return res.status(403).json({ error: 'Acceso denegado. No eres oficial asignado a este encuentro.' });
-    }
+    // LOTE C/D: aislamiento por organización y verificación de oficial asignado.
+    const acceso = await puedeAccederPartido(req, req.params.id);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    const chk = await db.query('SELECT estado FROM public.partidos WHERE id = $1', [req.params.id]);
     if (chk.rows[0].estado === 'Finalizado') {
       return res.status(400).json({ error: 'No se puede suspender un partido que ya ha sido finalizado y cerrado.' });
     }
@@ -183,6 +210,8 @@ router.put('/partidos/:id/suspender', async (req, res) => {
 // 5. REGISTRAR SORTEO
 router.put('/partidos/:id/sorteo', async (req, res) => {
   try {
+    const acceso = await puedeAccederPartido(req, req.params.id);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
     const { sorteo } = req.body;
     const resDb = await db.query(`UPDATE public.partidos SET sorteo_data = $1 WHERE id = $2 RETURNING *`, [JSON.stringify({ resultado: sorteo }), req.params.id]);
     res.json({ mensaje: 'Sorteo registrado.', partido: resDb.rows[0] });
@@ -192,6 +221,8 @@ router.put('/partidos/:id/sorteo', async (req, res) => {
 // 6. NÓMINA DEL PARTIDO
 router.get('/partidos/:id/nomina', async (req, res) => {
   try {
+    const acceso = await puedeAccederPartido(req, req.params.id);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
     const resDb = await db.query(`
       SELECT j.*, e.nombre AS equipo_nombre
       FROM public.jugadores j
@@ -215,6 +246,8 @@ router.post('/partidos/:id/manos', async (req, res) => {
   
   try {
     // Extraer configuración del torneo (Regla 1 y 4)
+    const acceso = await puedeAccederPartido(req, partidoId);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
     const torneoRes = await db.query(`
       SELECT t.reglas FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1
     `, [partidoId]);
@@ -304,6 +337,8 @@ router.post('/partidos/:id/sanciones', async (req, res) => {
   const partidoId = req.params.id;
   
   try {
+    const acceso = await puedeAccederPartido(req, partidoId);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
     const coloresValidos = ['Amarilla', 'Azul', 'Roja'];
     const colorNormalizado = coloresValidos.find(c => c.toLowerCase() === String(tipo_tarjeta || '').trim().toLowerCase());
     if (!colorNormalizado) {
