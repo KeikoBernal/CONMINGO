@@ -23,23 +23,24 @@ router.get('/contactos', async (req, res) => {
         SELECT u.id, u.nombre, u.apellido, u.rol, u.organizacion_id, COALESCE(o.nombre, 'Sin Liga') as organizacion_nombre 
         FROM public.usuarios u
         LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id
-        WHERE u.id != $1 
+        WHERE u.id != $1 AND COALESCE(u.estado, 'Activo') <> 'Inactivo'
         ORDER BY o.nombre, u.rol, u.nombre
       `;
       params = [id];
     } else if (rolNormalizado === 'administrador de liga') {
-      query = `SELECT id, nombre, apellido, rol FROM public.usuarios WHERE organizacion_id = $2 AND id != $1 ORDER BY rol, nombre`;
+      query = `SELECT id, nombre, apellido, rol FROM public.usuarios WHERE organizacion_id = $2 AND id != $1 AND COALESCE(estado, 'Activo') <> 'Inactivo' ORDER BY rol, nombre`;
       params = [id, organizacion_id_filtro];
     } else if (rolNormalizado === 'arbitro' || rolNormalizado === 'anotador') {
       query = `
         SELECT id, nombre, apellido, rol FROM public.usuarios 
-        WHERE organizacion_id = $2 AND id != $1 
-        AND LOWER(rol) IN ('administrador de liga', 'arbitro', 'árbitro', 'anotador') 
+        WHERE organizacion_id = $2 AND id != $1
+        AND COALESCE(estado, 'Activo') <> 'Inactivo'
+        AND LOWER(rol) IN ('administrador de liga', 'arbitro', 'árbitro', 'anotador')
         ORDER BY rol, nombre
       `;
       params = [id, organizacion_id_filtro];
     } else if (rolNormalizado === 'delegado de equipo') {
-      query = `SELECT id, nombre, apellido, rol FROM public.usuarios WHERE organizacion_id = $2 AND id != $1 AND LOWER(rol) = 'administrador de liga'`;
+      query = `SELECT id, nombre, apellido, rol FROM public.usuarios WHERE organizacion_id = $2 AND id != $1 AND LOWER(rol) = 'administrador de liga' AND COALESCE(estado, 'Activo') <> 'Inactivo'`;
       params = [id, organizacion_id_filtro];
     } else {
       return res.json([]);
@@ -145,7 +146,8 @@ router.post('/enviar', async (req, res) => {
     if (destinatario_rol) {
       // LOGICA DE ENVÍO MASIVO
       // 1. Identificar a todos los usuarios de ese rol permitidos para el remitente
-      let queryStr = `SELECT id, organizacion_id FROM public.usuarios WHERE rol = $1 AND id != $2`;
+      // LOTE F: los usuarios desactivados (estado='Inactivo') no reciben envíos masivos
+      let queryStr = `SELECT id, organizacion_id FROM public.usuarios WHERE rol = $1 AND id != $2 AND COALESCE(estado, 'Activo') <> 'Inactivo'`;
       let params = [destinatario_rol, remitente_id];
 
       if (miRol !== 'Superadmin') {
@@ -181,9 +183,9 @@ router.post('/enviar', async (req, res) => {
       
     // LÓGICA DE ENVÍO INDIVIDUAL (1 a 1)
       
-      const queryDest = miRol === 'Superadmin' 
-        ? `SELECT id, organizacion_id FROM public.usuarios WHERE id = $1`
-        : `SELECT id, organizacion_id FROM public.usuarios WHERE id = $1 AND organizacion_id = $2`;
+      const queryDest = miRol === 'Superadmin'
+        ? `SELECT id, organizacion_id FROM public.usuarios WHERE id = $1 AND COALESCE(estado, 'Activo') <> 'Inactivo'`
+        : `SELECT id, organizacion_id FROM public.usuarios WHERE id = $1 AND organizacion_id = $2 AND COALESCE(estado, 'Activo') <> 'Inactivo'`;
       
       const paramsDest = miRol === 'Superadmin' ? [destinatario_id] : [destinatario_id, organizacion_id];
       const checkDest = await db.query(queryDest, paramsDest);
