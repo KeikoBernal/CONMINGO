@@ -116,8 +116,8 @@ router.get('/partidos/:id/planilla', async (req, res) => {
     }
     const partido = partidoRes.rows[0];
 
-    const estadosValidos = ['Agendado', 'En curso', 'Finalizado'];
-    if (!estadosValidos.includes(partido.estado)) {
+    const estadosValidos = ['agendado', 'en curso', 'finalizado'];
+    if (!estadosValidos.includes((partido.estado || '').toLowerCase())) {
       return res.status(400).json({ error: `No se pueden consultar detalles. El partido se encuentra en estado: ${partido.estado}` });
     }
 

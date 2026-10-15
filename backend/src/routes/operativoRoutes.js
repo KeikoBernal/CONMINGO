@@ -290,7 +290,12 @@ router.post('/partidos/:id/manos', async (req, res) => {
     }
     
     res.json({ mensaje: 'Mano registrada.', mano: manoDb.rows[0], partido_finalizado: partidoFinalizado });
-  } catch (error) { res.status(500).json({ error: 'Error al registrar la mano.' }); }
+  } catch (error) {
+    if (error && error.code === '23505') {
+      return res.status(409).json({ error: 'Esa mano ya fue registrada para este partido.' });
+    }
+    res.status(500).json({ error: 'Error al registrar la mano.' });
+  }
 });
 
 // Regla 3: Aplicación automática de sanciones
@@ -299,13 +304,18 @@ router.post('/partidos/:id/sanciones', async (req, res) => {
   const partidoId = req.params.id;
   
   try {
+    const coloresValidos = ['Amarilla', 'Azul', 'Roja'];
+    const colorNormalizado = coloresValidos.find(c => c.toLowerCase() === String(tipo_tarjeta || '').trim().toLowerCase());
+    if (!colorNormalizado) {
+      return res.status(400).json({ error: `Color de tarjeta inválido. Debe ser uno de: ${coloresValidos.join(', ')}.` });
+    }
     const tarjetaDb = await db.query(
-      `INSERT INTO public.tarjetas (partido_id, jugador_id, tipo, motivo) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [partidoId, jugador_id, tipo_tarjeta, motivo]
+      `INSERT INTO public.tarjetas (partido_id, jugador_id, color, motivo) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [partidoId, jugador_id, colorNormalizado, motivo || null]
     );
     
     // Bloquear participación futura si es Tarjeta Roja
-    if (tipo_tarjeta === 'Roja') {
+    if (colorNormalizado === 'Roja') {
       await db.query(`UPDATE public.jugadores SET estado = 'Suspendido' WHERE id = $1`, [jugador_id]);
       // Quitar capitanía si la tuviera
       await db.query(`UPDATE public.equipos SET capitan_id = NULL WHERE capitan_id = $1`, [jugador_id]);
