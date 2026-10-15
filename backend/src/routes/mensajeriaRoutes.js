@@ -83,7 +83,7 @@ router.get('/bandeja', async (req, res) => {
           remitente_id
         FROM public.notificaciones
         WHERE (remitente_id = $1 OR destinatario_id = $1)
-          AND organizacion_id = $2 -- FILTRO APLICADO EN LA BD
+          AND ($2::uuid IS NULL OR organizacion_id = $2)
         ORDER BY 
           CASE WHEN remitente_id = $1 THEN destinatario_id ELSE remitente_id END, 
           hora_envio DESC
@@ -145,7 +145,7 @@ router.post('/enviar', async (req, res) => {
     if (destinatario_rol) {
       // LOGICA DE ENVÍO MASIVO
       // 1. Identificar a todos los usuarios de ese rol permitidos para el remitente
-      let queryStr = `SELECT id FROM public.usuarios WHERE rol = $1 AND id != $2`;
+      let queryStr = `SELECT id, organizacion_id FROM public.usuarios WHERE rol = $1 AND id != $2`;
       let params = [destinatario_rol, remitente_id];
 
       if (miRol !== 'Superadmin') {
@@ -165,7 +165,7 @@ router.post('/enviar', async (req, res) => {
           INSERT INTO public.notificaciones 
           (organizacion_id, remitente_id, destinatario_id, titulo, mensaje) 
           VALUES ($1, $2, $3, 'Anuncio Oficial', $4) RETURNING *
-        `, [organizacion_id, remitente_id, u.id, mensaje.trim()])
+        `, [u.organizacion_id || organizacion_id, remitente_id, u.id, mensaje.trim()])
       );
 
       const resultados = await Promise.all(promises);
@@ -182,8 +182,8 @@ router.post('/enviar', async (req, res) => {
     // LÓGICA DE ENVÍO INDIVIDUAL (1 a 1)
       
       const queryDest = miRol === 'Superadmin' 
-        ? `SELECT id FROM public.usuarios WHERE id = $1`
-        : `SELECT id FROM public.usuarios WHERE id = $1 AND organizacion_id = $2`;
+        ? `SELECT id, organizacion_id FROM public.usuarios WHERE id = $1`
+        : `SELECT id, organizacion_id FROM public.usuarios WHERE id = $1 AND organizacion_id = $2`;
       
       const paramsDest = miRol === 'Superadmin' ? [destinatario_id] : [destinatario_id, organizacion_id];
       const checkDest = await db.query(queryDest, paramsDest);
@@ -196,7 +196,7 @@ router.post('/enviar', async (req, res) => {
         INSERT INTO public.notificaciones 
         (organizacion_id, remitente_id, destinatario_id, titulo, mensaje) 
         VALUES ($1, $2, $3, 'Mensaje Directo', $4) RETURNING *
-      `, [organizacion_id, remitente_id, destinatario_id, mensaje.trim()]);
+      `, [checkDest.rows[0].organizacion_id || organizacion_id, remitente_id, destinatario_id, mensaje.trim()]);
 
       res.status(201).json({ esMasivo: false, mensaje: rows[0] });
     }

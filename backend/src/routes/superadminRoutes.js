@@ -210,7 +210,21 @@ router.post('/usuarios', async (req, res) => {
     });
     if (authError) return res.status(400).json({ error: authError.message });
 
-    const resDb = await db.query(`UPDATE public.usuarios SET rol = $1, nombre = $2, apellido = $3, cedula = $4, organizacion_id = $5, debe_cambiar_password = true WHERE id = $6 RETURNING *`, [rol, nombreCap, apellidoCap, cedulaLimpia, organizacion_id || null, authUser.user.id]);
+    const resDb = await db.query(
+      `INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, debe_cambiar_password)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+       ON CONFLICT (id) DO UPDATE SET rol = $3, nombre = $4, apellido = $5, cedula = $6, organizacion_id = $7, debe_cambiar_password = true
+       RETURNING *`,
+      [authUser.user.id, email.trim().toLowerCase(), rol, nombreCap, apellidoCap, cedulaLimpia, organizacion_id || null]
+    );
+
+    if (organizacion_id) {
+      await db.query(
+        `INSERT INTO public.usuario_organizaciones (usuario_id, organizacion_id, rol) VALUES ($1, $2, $3)
+         ON CONFLICT (usuario_id, organizacion_id) DO UPDATE SET rol = $3`,
+        [authUser.user.id, organizacion_id, rol]
+      );
+    }
     
     if (rol.toLowerCase() === 'delegado de equipo' && equipo_id) {
       await db.query('UPDATE public.equipos SET delegado_id = $1 WHERE id = $2', [authUser.user.id, equipo_id]);
@@ -218,7 +232,12 @@ router.post('/usuarios', async (req, res) => {
 
     await registrarAuditoria(req.usuario.id, 'CREAR_USUARIO', 'usuarios', null, resDb.rows[0], req.ip);
     res.status(201).json({ mensaje: `Usuario creado. Contraseña inicial: ${passwordInicial}`, usuario: resDb.rows[0] });
-  } catch (error) { res.status(500).json({ error: 'Error al registrar usuario.' }); }
+  } catch (error) {
+    if (error && error.code === '23505') {
+      return res.status(400).json({ error: 'Ya existe otro usuario con ese correo o cédula.' });
+    }
+    res.status(500).json({ error: 'Error al registrar usuario.' });
+  }
 });
 
 router.put('/usuarios/:id', async (req, res) => {
@@ -288,17 +307,18 @@ router.get('/usuarios/:id/verificar-eliminacion', async (req, res) => {
 // ==========================================
 router.delete('/usuarios/:id', async (req, res) => {
   const { id } = req.params;
+  if (id === req.usuario.id) {
+    return res.status(400).json({ error: 'No puedes desactivar tu propia cuenta.' });
+  }
   try {
-    const orgId = await obtenerOrgId(req.usuario);
-
-    // 1. Verificar que el usuario pertenezca a la liga del administrador
+    // 1. Verificar que el usuario exista (el Superadmin gestiona todas las ligas)
     const userQuery = await db.query(
-      'SELECT * FROM public.usuarios WHERE id = $1 AND organizacion_id = $2',
-      [id, orgId]
+      'SELECT * FROM public.usuarios WHERE id = $1',
+      [id]
     );
 
     if (userQuery.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuario no encontrado o no pertenece a tu organización.' });
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
     }
 
     const usuarioAEliminar = userQuery.rows[0];

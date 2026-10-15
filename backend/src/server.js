@@ -59,6 +59,9 @@ const io = new Server(server, {
   }
 });
 
+// LOTE B: exponer la instancia de Socket.io para que las rutas puedan emitir eventos
+app.set('io', io);
+
 // Ruta de prueba para verificar que el servidor y la BD responden
 app.get('/api/health', async (req, res) => {
   try {
@@ -352,7 +355,7 @@ io.on('connection', (socket) => {
       await db.query(
         `INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET equipo_ganador_id = $3, tantos_anotados = $4`,
+         ON CONFLICT (partido_id, numero_mano) DO UPDATE SET equipo_ganador_id = $3, tantos_anotados = $4`,
         [data.partido_id, data.mano_id, data.equipo_ganador_id, data.tantos_anotados]
       );
     } catch (error) {

@@ -993,11 +993,16 @@ router.get('/acumulado-temporada', async (req, res) => {
           GROUP BY te.equipo_id
       ),
       PuntosAcumulados AS (
-          SELECT pe.equipo_id, SUM(COALESCE(te.puntos_obtenidos, 0)) as total_puntos
+          SELECT pe.equipo_id, COALESCE(g.total_puntos, 0) as total_puntos
           FROM ParticipacionEquipos pe
-          JOIN public.torneo_equipos te ON pe.equipo_id = te.equipo_id
-          JOIN TorneosTemporada tt ON te.torneo_id = tt.id
-          GROUP BY pe.equipo_id
+          LEFT JOIN (
+              SELECT r.equipo_ganador_id AS equipo_id, COUNT(*) * 3 as total_puntos
+              FROM public.partidos p
+              JOIN TorneosTemporada tt ON p.torneo_id = tt.id
+              JOIN public.resultados r ON r.partido_id = p.id
+              WHERE r.equipo_ganador_id IS NOT NULL
+              GROUP BY r.equipo_ganador_id
+          ) g ON g.equipo_id = pe.equipo_id
       )
       SELECT e.nombre, pa.total_puntos, pe.torneos_jugados, tt.total as total_torneos_temporada
       FROM PuntosAcumulados pa
