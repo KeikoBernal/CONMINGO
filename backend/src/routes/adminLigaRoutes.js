@@ -858,6 +858,10 @@ const sedeChk = await db.query(`SELECT COUNT(*) as n FROM public.sedes WHERE id:
     }
 
     for (const p of partidos_iniciales) {
+      // LOTE G: un partido no puede enfrentar a un equipo contra sí mismo
+      if (p.local_id && String(p.local_id) === String(p.visita_id)) {
+        return res.status(400).json({ error: 'Un partido no puede enfrentar a un equipo contra sí mismo.' });
+      }
       if (await validarConflictos(p.fecha_hora, p.local_id, p.visita_id, p.arbitro_id, p.anotador_id)) {
         return res.status(400).json({ error: `Conflicto de Horario: Existen personas u equipos ocupados cerca de la fecha ${formatearFechaLocal(p.fecha_hora)} (±2 horas).` });
       }
@@ -909,6 +913,11 @@ router.put('/torneos/:id', async (req, res) => {
     const torPrevia = await db.query(`SELECT reglas FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)`, [id, orgId]);
     if (torPrevia.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
 
+    // LOTE G: validar coherencia de fechas combinando valores previos y nuevos
+    const chkFechas = await db.query(`SELECT (COALESCE($1::date, fecha_inicio) > COALESCE($2::date, fecha_fin)) as invalido FROM public.torneos WHERE id = $3`, [fecha_inicio || null, fecha_fin || null, id]);
+    if (chkFechas.rows.length > 0 && chkFechas.rows[0].invalido === true) {
+      return res.status(400).json({ error: 'La fecha de fin no puede ser anterior a la fecha de inicio del torneo.' });
+    }
     let reglasActuales = torPrevia.rows[0].reglas || {};
     if (estado) reglasActuales.estado = estado;
 
@@ -1079,6 +1088,11 @@ router.post('/partidos-sueltos', async (req, res) => {
       return res.status(400).json({ error: 'Es obligatorio seleccionar una plantilla de reglas para el partido.' });
     }
 
+    // LOTE G: un partido no puede enfrentar a un equipo contra sí mismo
+    if (equipo_local_id && String(equipo_local_id) === String(equipo_visita_id)) {
+      return res.status(400).json({ error: 'Un partido no puede enfrentar a un equipo contra sí mismo.' });
+    }
+
     const orgId = await obtenerOrgId(req.usuario);
 
     // LOTE C: validar que equipos, sede y oficiales pertenezcan a la organización del admin.
@@ -1148,8 +1162,12 @@ router.put('/partidos/:id/reagendar', async (req, res) => {
     }
 
     const orgId = await obtenerOrgId(req.usuario);
-    const permChk = await db.query('SELECT p.id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [id, orgId]);
+    const permChk = await db.query('SELECT p.id, p.estado FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [id, orgId]);
     if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+    // LOTE G: no reagendar partidos finalizados o cancelados
+    if (permChk.rows[0].estado === 'Finalizado' || permChk.rows[0].estado === 'Cancelado') {
+      return res.status(400).json({ error: 'No se puede reagendar un partido finalizado o cancelado.' });
+    }
     const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [id]);
     const pInfo = partidoInfo.rows[0];
 
@@ -1172,8 +1190,12 @@ router.put('/partidos/:id/editar-oficiales', async (req, res) => {
     }
 
     const orgId = await obtenerOrgId(req.usuario);
-    const permChk = await db.query('SELECT p.id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [id, orgId]);
+    const permChk = await db.query('SELECT p.id, p.estado FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [id, orgId]);
     if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+    // LOTE G: no modificar oficiales de partidos finalizados o cancelados
+    if (permChk.rows[0].estado === 'Finalizado' || permChk.rows[0].estado === 'Cancelado') {
+      return res.status(400).json({ error: 'No se pueden modificar los oficiales de un partido finalizado o cancelado.' });
+    }
     if (sede_id) {
 const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) AND estado = 'Activo'`, [sede_id, orgId]);
       if (sedeChk.rows.length === 0) return res.status(400).json({ error: 'La sede indicada no pertenece a tu organización.' });
@@ -1198,6 +1220,12 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
 router.put('/partidos/:id/cancelar', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    const existe = await db.query(`SELECT p.id, p.estado FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)`, [req.params.id, orgId]);
+    if (existe.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+    // LOTE G: solo se pueden cancelar partidos agendados o suspendidos
+    if (existe.rows[0].estado !== 'Agendado' && existe.rows[0].estado !== 'Suspendido') {
+      return res.status(400).json({ error: `No se puede cancelar el partido porque su estado actual es '${existe.rows[0].estado}'.` });
+    }
     const resDb = await db.query(`UPDATE public.partidos p SET estado = 'Cancelado' FROM public.torneos t WHERE p.torneo_id = t.id AND p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2) RETURNING p.id`, [req.params.id, orgId]);
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
     res.json({ mensaje: 'Partido cancelado exitosamente.' });
@@ -1212,8 +1240,18 @@ router.post('/partidos/:id/forzar-ganador', async (req, res) => {
   try {
     // LOTE C: el partido debe pertenecer a la organización del administrador.
     const orgId = await obtenerOrgId(req.usuario);
-    const permChk = await db.query('SELECT p.id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [partidoId, orgId]);
+    const permChk = await db.query('SELECT p.id, p.estado, p.equipo_local_id, p.equipo_visita_id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [partidoId, orgId]);
     if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+    // LOTE G: bloquear partidos cancelados y validar que el ganador pertenezca al partido
+    if (permChk.rows[0].estado === 'Cancelado') {
+      return res.status(400).json({ error: 'No se puede forzar el resultado de un partido cancelado.' });
+    }
+    if (ganador_id) {
+      const ganadorNorm = String(ganador_id).trim().toLowerCase();
+      if (ganadorNorm !== String(permChk.rows[0].equipo_local_id) && ganadorNorm !== String(permChk.rows[0].equipo_visita_id)) {
+        return res.status(400).json({ error: 'El equipo ganador indicado no participa en este partido.' });
+      }
+    }
 
     // 1. Obtener el hash de la contraseña del administrador desde la base de datos
     const resultAdmin = await db.query(

@@ -212,6 +212,12 @@ router.put('/partidos/:id/sorteo', async (req, res) => {
   try {
     const acceso = await puedeAccederPartido(req, req.params.id);
     if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    // LOTE G: no permitir registrar el sorteo de partidos finalizados o cancelados
+    const estadoSorteoRes = await db.query(`SELECT estado FROM public.partidos WHERE id = $1`, [req.params.id]);
+    if (estadoSorteoRes.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    if (estadoSorteoRes.rows[0].estado === 'Finalizado' || estadoSorteoRes.rows[0].estado === 'Cancelado') {
+      return res.status(400).json({ error: 'No se puede registrar el sorteo de un partido finalizado o cancelado.' });
+    }
     const { sorteo } = req.body;
     const resDb = await db.query(`UPDATE public.partidos SET sorteo_data = $1 WHERE id = $2 RETURNING *`, [JSON.stringify({ resultado: sorteo }), req.params.id]);
     res.json({ mensaje: 'Sorteo registrado.', partido: resDb.rows[0] });
@@ -249,7 +255,7 @@ router.post('/partidos/:id/manos', async (req, res) => {
     const acceso = await puedeAccederPartido(req, partidoId);
     if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
     const torneoRes = await db.query(`
-      SELECT t.reglas FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1
+      SELECT t.reglas, p.estado, p.equipo_local_id, p.equipo_visita_id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1
     `, [partidoId]);
     
     if (torneoRes.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
@@ -257,6 +263,24 @@ router.post('/partidos/:id/manos', async (req, res) => {
     const reglas = torneoRes.rows[0].reglas || {};
     const metaPuntos = reglas.meta_puntos || 15;
     const limiteEsferas = reglas.esferas_por_equipo || 8; 
+
+    // LOTE G: Validaciones de integridad del partido y sanitización de entradas
+    const filaPartido = torneoRes.rows[0];
+    const equiposDelPartido = [filaPartido.equipo_local_id, filaPartido.equipo_visita_id].map(String);
+    const numeroMano = Number(numero_mano);
+    const tantosValor = Number(tantos_anotados);
+    if (filaPartido.estado === 'Finalizado' || filaPartido.estado === 'Cancelado') {
+      return res.status(400).json({ error: 'No se pueden registrar manos en un partido finalizado o cancelado.' });
+    }
+    if (!Number.isInteger(numeroMano) || numeroMano < 1) {
+      return res.status(400).json({ error: 'El número de mano debe ser un entero mayor o igual a 1.' });
+    }
+    if (equipo_ganador_id && !equiposDelPartido.includes(String(equipo_ganador_id).trim().toLowerCase())) {
+      return res.status(400).json({ error: 'El equipo ganador indicado no participa en este partido.' });
+    }
+    if (!Number.isInteger(tantosValor) || tantosValor < 0 || tantosValor > 6) {
+      return res.status(400).json({ error: 'Los tantos anotados deben ser un entero entre 0 y 6.' });
+    }
     
     // Validaciones 2 y 4: Control de Esferas y Coherencia Matemática
     if (detalle_jugadas && detalle_jugadas.length > 0) {
@@ -266,6 +290,14 @@ router.post('/partidos/:id/manos', async (req, res) => {
       const jugadoresIds = detalle_jugadas.map(dj => dj.jugador_id);
       const eqJugRes = await db.query(`SELECT id, equipo_id FROM public.jugadores WHERE id = ANY($1::int[])`, [jugadoresIds]);
       eqJugRes.rows.forEach(r => mapJugadorEquipo[r.id] = r.equipo_id);
+
+      // LOTE G: los jugadores del detalle deben pertenecer a los equipos del partido
+      for (const dj of detalle_jugadas) {
+        const eqDelJugador = mapJugadorEquipo[dj.jugador_id];
+        if (!eqDelJugador || !equiposDelPartido.includes(String(eqDelJugador))) {
+          return res.status(400).json({ error: 'El detalle de jugadas incluye jugadores que no pertenecen a los equipos del partido.' });
+        }
+      }
       
       let esferasExitosasGanador = 0;
       
@@ -286,20 +318,20 @@ router.post('/partidos/:id/manos', async (req, res) => {
       // Regla 4: Validar límite de lanzamientos
       for (const [eq, count] of Object.entries(jugadasPorEquipo)) {
         if (count > limiteEsferas) {
-          return res.status(400).json({ error: `El equipo superó el límite de \({limiteEsferas} esferas permitidas por mano. Registró:\){count}.` });
+          return res.status(400).json({ error: `El equipo superó el límite de ${limiteEsferas} esferas permitidas por mano. Registró: ${count}.` });
         }
       }
       
       // Regla 2: Coherencia de tantos
-      if (tantos_anotados > esferasExitosasGanador) {
-         return res.status(400).json({ error: `Incongruencia: Se intentan asignar \({tantos_anotados} tantos, pero el equipo ganador solo tiene\){esferasExitosasGanador} esferas más cerca del mingo marcadas como efectivas.` });
+      if (tantosValor > esferasExitosasGanador) {
+         return res.status(400).json({ error: `Incongruencia: Se intentan asignar ${tantosValor} tantos, pero el equipo ganador solo tiene ${esferasExitosasGanador} esferas más cerca del mingo marcadas como efectivas.` });
       }
     }
     
     // Insertar la mano en BD
     const manoDb = await db.query(
       `INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [partidoId, numero_mano, equipo_ganador_id, tantos_anotados]
+      [partidoId, numeroMano, equipo_ganador_id || null, tantosValor]
     );
     
     // Regla 1: Comprobar límite de puntuación global para Finalización Automática
@@ -344,9 +376,27 @@ router.post('/partidos/:id/sanciones', async (req, res) => {
     if (!colorNormalizado) {
       return res.status(400).json({ error: `Color de tarjeta inválido. Debe ser uno de: ${coloresValidos.join(', ')}.` });
     }
+    // LOTE G: validar estado del partido y que el jugador sancionado pertenezca a sus equipos
+    const jugadorIdNum = Number(jugador_id);
+    if (!Number.isInteger(jugadorIdNum) || jugadorIdNum < 1) {
+      return res.status(400).json({ error: 'Debe indicar el jugador sancionado.' });
+    }
+    const partidoSancionRes = await db.query(`SELECT estado, equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1`, [partidoId]);
+    if (partidoSancionRes.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    const filaSancion = partidoSancionRes.rows[0];
+    if (filaSancion.estado === 'Finalizado' || filaSancion.estado === 'Cancelado') {
+      return res.status(400).json({ error: 'No se pueden registrar sanciones en un partido finalizado o cancelado.' });
+    }
+    const jugadorSancionRes = await db.query(`SELECT equipo_id FROM public.jugadores WHERE id = $1`, [jugadorIdNum]);
+    if (jugadorSancionRes.rows.length === 0) {
+      return res.status(400).json({ error: 'El jugador sancionado no existe.' });
+    }
+    if (String(jugadorSancionRes.rows[0].equipo_id) !== String(filaSancion.equipo_local_id) && String(jugadorSancionRes.rows[0].equipo_id) !== String(filaSancion.equipo_visita_id)) {
+      return res.status(400).json({ error: 'El jugador sancionado no pertenece a los equipos del partido.' });
+    }
     const tarjetaDb = await db.query(
       `INSERT INTO public.tarjetas (partido_id, jugador_id, color, motivo) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [partidoId, jugador_id, colorNormalizado, motivo || null]
+      [partidoId, jugadorIdNum, colorNormalizado, motivo || null]
     );
     
     // Bloquear participación futura si es Tarjeta Roja
