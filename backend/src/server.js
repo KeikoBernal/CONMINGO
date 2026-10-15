@@ -144,6 +144,38 @@ const puedeOperarPartidoEnBD = async (usuario, rolNorm, partidoId) => {
 };
 
 // ============================================================
+// LOTE F: mensajería multi-liga. Las salas de rol dejan de ser globales:
+// ahora son "rol_<rol>__org_<uuid de la organización>" para que los
+// mensajes de rol no crucen entre ligas (el superadmin mantiene las
+// salas globales "rol_<rol>"). Helper con caché corta (60 s) que resuelve
+// la organización y el estado de un usuario, para validar destinos.
+// ============================================================
+const cacheUsuarioMensajeria = new Map(); // clave usuarioId -> { ts, organizacion_id, activo }
+const datosUsuarioMensajeria = async (usuarioId) => {
+  if (!usuarioId) return null;
+  const enCache = cacheUsuarioMensajeria.get(usuarioId);
+  if (enCache && (Date.now() - enCache.ts) < 60000) return enCache;
+  try {
+    const { rows } = await db.query(
+      'SELECT organizacion_id, estado FROM public.usuarios WHERE id = $1',
+      [usuarioId]
+    );
+    if (!rows.length) return null;
+    const info = {
+      ts: Date.now(),
+      organizacion_id: rows[0].organizacion_id,
+      activo: (rows[0].estado || 'Activo') !== 'Inactivo'
+    };
+    if (cacheUsuarioMensajeria.size > 20000) cacheUsuarioMensajeria.clear();
+    cacheUsuarioMensajeria.set(usuarioId, info);
+    return info;
+  } catch (e) {
+    console.error('Error al resolver datos de mensajería:', e?.message || e);
+    return null;
+  }
+};
+
+// ============================================================
 // FIX #16: persistencia del estado de la planilla en la base de datos.
 // El backend corre en Render (proceso persistente), así que Socket.io funciona;
 // pero cada reinicio/redeploy pierde partidosEnMemoria. Con esta persistencia
@@ -221,12 +253,20 @@ io.on('connection', (socket) => {
   socket.on('registrar_usuario_mensajeria', () => {
     if (!usuario) return;
     socket.join(`usuario_${usuario.id}`);
-    socket.join(`rol_${rolNorm}`);
-    console.log(`💬 Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}`);
+    // LOTE F: salas de rol acotadas por organización (el superadmin mantiene la sala global)
+    if (rolNorm === 'superadmin') {
+      socket.join(`rol_${rolNorm}`);
+      console.log(`💬 Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}`);
+    } else if (usuario.organizacion_id) {
+      socket.join(`rol_${rolNorm}__org_${usuario.organizacion_id}`);
+      console.log(`💬 Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}__org_${usuario.organizacion_id}`);
+    }
   });
 
-  socket.on('enviar_mensaje', (data) => {
+  socket.on('enviar_mensaje', async (data) => { // LOTE F: validación de destinos en BD (async)
     if (!usuario) return; // FIX #6: solo usuarios autenticados pueden enviar
+    const esSuperadminLocal = rolNorm === 'superadmin';
+    const miOrg = usuario.organizacion_id || null;
 
     // FIX #6: el remitente lo construye el servidor desde la BD, nunca el cliente.
     const remitente = `${(usuario.nombre || '') + (usuario.apellido ? ' ' + usuario.apellido : '')} (${usuario.rol})`.trim();
@@ -237,36 +277,73 @@ io.on('connection', (socket) => {
       ? data.destinatario_sala
       : (data.destinatario_sala ? [data.destinatario_sala] : []);
 
-    salas.forEach(sala => {
+    // LOTE F: el cliente ya no elige libremente la sala de destino:
+    // - las salas de rol se remapean a la organización del remitente
+    //   ("rol_<rol>__org_<uuid>"); el superadmin mantiene las salas globales;
+    // - las salas de usuario se validan en BD: que el destinatario exista,
+    //   esté activo y pertenezca a la misma organización del remitente.
+    for (const sala of salas) {
       const nombreSala = (String(sala).startsWith('rol_') || String(sala).startsWith('usuario_')) ? sala : `usuario_${sala}`;
+      if (String(nombreSala).startsWith('rol_')) {
+        if (!esSuperadminLocal && !miOrg) continue;
+        const salaDestino = esSuperadminLocal ? nombreSala : `${nombreSala}__org_${miOrg}`;
+        io.to(salaDestino).emit('nuevo_mensaje', {
+          remitente, remitente_id: usuario.id, mensaje, timestamp,
+          destinatario_sala: nombreSala, propio: false
+        });
+        continue;
+      }
+      const otroId = String(nombreSala).slice('usuario_'.length);
+      if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(otroId)) continue; // LOTE F: UUID estricto
+      if (!esSuperadminLocal) {
+        const otro = await datosUsuarioMensajeria(otroId);
+        if (!otro || !otro.activo || !miOrg || otro.organizacion_id !== miOrg) continue;
+      }
       io.to(nombreSala).emit('nuevo_mensaje', {
         remitente, remitente_id: usuario.id, mensaje, timestamp,
         destinatario_sala: nombreSala, propio: false
       });
-    });
+    }
 
     if (data.cc_admin) {
-      io.to('rol_administrador de liga').emit('nuevo_mensaje', {
+      // LOTE F: el CC solo llega a los administradores de la liga del remitente
+      if (!esSuperadminLocal && !miOrg) return;
+      const salaAdmin = esSuperadminLocal ? 'rol_administrador de liga' : `rol_administrador de liga__org_${miOrg}`;
+      io.to(salaAdmin).emit('nuevo_mensaje', {
         remitente: remitente + ' (CC)',
         remitente_id: usuario.id,
         mensaje: mensaje,
         timestamp: timestamp,
-        destinatario_sala: 'rol_administrador de liga',
+        destinatario_sala: 'rol_administrador de liga', // LOTE F: nombre original para compatibilidad del frontend
         propio: false
       });
     }
   });
 
-  socket.on('notificacion_oficiales_partido', (data) => {
+  // LOTE F: antes cualquier usuario autenticado podía notificar a cualquier
+  // oficial de cualquier liga suplantando al "Sistema". Ahora solo el
+  // administrador de liga (o el superadmin) puede usarlo, y los oficiales
+  // deben pertenecer a SU organización.
+  socket.on('notificacion_oficiales_partido', async (data) => {
     if (!usuario) return; // FIX #6: requiere sesión
-    if (data.arbitro_id) {
+    const esSuperadminLocal = rolNorm === 'superadmin';
+    if (!esSuperadminLocal && rolNorm !== 'administrador de liga') return;
+    const miOrg = usuario.organizacion_id || null;
+    const oficialPermitido = async (oficialId) => {
+      if (!oficialId) return false;
+      if (esSuperadminLocal) return true;
+      if (!miOrg) return false;
+      const otro = await datosUsuarioMensajeria(oficialId);
+      return !!otro && otro.activo && otro.organizacion_id === miOrg;
+    };
+    if (await oficialPermitido(data.arbitro_id)) {
       io.to(`usuario_${data.arbitro_id}`).emit('nuevo_mensaje', {
         remitente: 'Sistema',
         mensaje: data.mensaje,
         timestamp: new Date().toLocaleTimeString()
       });
     }
-    if (data.anotador_id) {
+    if (await oficialPermitido(data.anotador_id)) {
       io.to(`usuario_${data.anotador_id}`).emit('nuevo_mensaje', {
         remitente: 'Sistema',
         mensaje: data.mensaje,
@@ -282,7 +359,10 @@ io.on('connection', (socket) => {
 
   socket.on('enviar_notificacion_admin', (data) => {
     if (!esOficial()) return; // FIX #6: solo árbitros/anotadores autenticados
-    io.to('rol_administrador de liga').emit('nuevo_mensaje', {
+    // LOTE F: la alerta solo llega a los administradores de la liga del oficial
+    const miOrg = usuario.organizacion_id || null;
+    if (!miOrg) return;
+    io.to(`rol_administrador de liga__org_${miOrg}`).emit('nuevo_mensaje', {
       remitente: 'Sistema de Alertas Oficiales',
       mensaje: data.mensaje,
       timestamp: new Date().toLocaleTimeString()
