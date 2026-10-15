@@ -152,7 +152,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     });
 
     socketRef.current.on('partido_finalizado_auto', (data) => {
-      alert(`🏆 ¡META ALCANZADA! El partido ha finalizado automáticamente porque se alcanzó el límite de tantos configurado.\nMarcador Final registrado: \({data.marcador_local} -\){data.marcador_visita}`);
+      alert(`🏆 ¡META ALCANZADA! El partido ha finalizado automáticamente porque se alcanzó el límite de tantos configurado.\nMarcador Final registrado: ${data.marcador_local} - ${data.marcador_visita}`);
       setPartidoActivo(prev => prev ? ({ ...prev, estado: 'Finalizado', hora_final: data.hora_final }) : null);
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
       localStorage.removeItem(`backup_partido_${data.partido_id}`); 
