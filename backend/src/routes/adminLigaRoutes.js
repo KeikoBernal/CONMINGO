@@ -242,7 +242,7 @@ const notificarInvolucrados = async (partidos, orgId, adminId) => {
 router.get('/sedes', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const resultado = await db.query('SELECT * FROM public.sedes WHERE organizacion_id = $1 ORDER BY nombre ASC', [orgId]);
+const resultado = await db.query(`SELECT * FROM public.sedes WHERE organizacion_id = $1 AND estado = 'Activo' ORDER BY nombre ASC`, [orgId]);
     res.json(resultado.rows);
   } catch (error) { res.status(500).json({ error: 'Error al obtener sedes.' }); }
 });
@@ -277,7 +277,13 @@ router.put('/sedes/:id', async (req, res) => {
 router.delete('/sedes/:id', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const resDb = await db.query('DELETE FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) RETURNING id', [req.params.id, orgId]);
+    // LOTE E: soft-delete — una sede referenciada por partidos no se borra físicamente
+    // (rompería el FK y el historial); una sede vigente no se puede desactivar.
+    const enUso = await db.query(`SELECT id FROM public.partidos WHERE sede_id = $1 AND estado IN ('Agendado', 'En Curso') LIMIT 1`, [req.params.id]);
+    if (enUso.rows.length > 0) {
+      return res.status(400).json({ error: 'No se puede eliminar una sede con partidos agendados o en curso. Reasigna esos partidos primero.' });
+    }
+    const resDb = await db.query(`UPDATE public.sedes SET estado = 'Inactivo' WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) RETURNING id`, [req.params.id, orgId]);
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Sede no encontrada en tu organización.' });
     await registrarAuditoria(req.usuario.id, 'ELIMINAR_SEDE', 'sedes', { id: req.params.id }, null, req.ip);
     res.json({ mensaje: 'Sede eliminada con éxito.' });
@@ -297,7 +303,7 @@ router.get('/equipos', async (req, res) => {
        LEFT JOIN public.usuarios u ON e.delegado_id = u.id
        LEFT JOIN public.jugadores j ON e.capitan_id = j.id
        LEFT JOIN public.jugadores j_todos ON j_todos.equipo_id = e.id AND j_todos.estado = 'Activo'
-       WHERE e.organizacion_id = $1 OR $1 IS NULL
+WHERE (e.organizacion_id = $1 OR $1 IS NULL) AND e.estado = 'Activo'
        GROUP BY e.id, u.email, u.id, j.nombre, j.apellido, j.cedula, j.correo ORDER BY e.nombre ASC`,
       [orgId]
     );
@@ -334,12 +340,13 @@ router.delete('/equipos/:id', async (req, res) => {
       });
     }
 
-    // 2. Si no tiene partidos, procedemos a limpiar sus dependencias
-    await db.query('DELETE FROM public.jugadores WHERE equipo_id = $1', [equipoId]);
-    await db.query('DELETE FROM public.torneo_equipos WHERE equipo_id = $1', [equipoId]);
-    
-    // 3. Finalmente eliminamos el equipo
-    await db.query('DELETE FROM public.equipos WHERE id = $1 AND organizacion_id = $2', [equipoId, orgId]);
+    // 2. LOTE E: soft-delete — se inactiva la nómina; NO se borra ninguna fila
+    //    (se preserva el historial deportivo y las relaciones de los equipos).
+    await db.query(`UPDATE public.jugadores SET estado = 'Inactivo' WHERE equipo_id = $1`, [equipoId]);
+
+    // 3. Finalmente inactivamos el equipo (soft delete con filtro de organización)
+    const resDel = await db.query(`UPDATE public.equipos SET estado = 'Inactivo' WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) RETURNING id`, [equipoId, orgId]);
+    if (resDel.rows.length === 0) return res.status(404).json({ error: 'Equipo no encontrado en tu organización.' });
 
     res.json({ mensaje: 'Equipo y su nómina han sido eliminados con éxito.' });
   } catch (error) {
@@ -433,7 +440,6 @@ router.put('/jugadores/:id', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const jugadorPrevio = await db.query(`SELECT j.equipo_id FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)`, [id, orgId]);
     if (jugadorPrevio.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado en tu organización.' });
-    if (jugadorPrevio.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado.' });
     
     const equipoId = jugadorPrevio.rows[0].equipo_id;
     
@@ -645,7 +651,6 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const userDb = await db.query(`SELECT email, cedula, nombre FROM public.usuarios WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))`, [req.params.id, orgId]);
     if (userDb.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado en tu organización.' });
-    if (userDb.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' });
     
     const { cedula, nombre } = userDb.rows[0];
     const primerNombre = nombre ? nombre.trim().split(' ')[0] : 'User';
@@ -798,7 +803,7 @@ router.get('/torneos/recursos', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
     await suspenderPartidosPasados(orgId);
-    const sedes = await db.query('SELECT * FROM public.sedes WHERE organizacion_id = $1', [orgId]);
+const sedes = await db.query(`SELECT * FROM public.sedes WHERE organizacion_id = $1 AND estado = 'Activo'`, [orgId]);
     const arbitros = await db.query(`SELECT id, nombre, apellido FROM public.usuarios WHERE (LOWER(rol) = 'arbitro' OR LOWER(rol) = 'árbitro') AND organizacion_id = $1`, [orgId]);
     const anotadores = await db.query(`SELECT id, nombre, apellido FROM public.usuarios WHERE LOWER(rol) = 'anotador' AND organizacion_id = $1`, [orgId]);
     
@@ -807,7 +812,7 @@ router.get('/torneos/recursos', async (req, res) => {
              COUNT(j.id) as total_jugadores_activos
       FROM public.equipos e
       LEFT JOIN public.jugadores j ON j.equipo_id = e.id AND j.estado = 'Activo'
-      WHERE e.organizacion_id = $1
+WHERE e.organizacion_id = $1 AND e.estado = 'Activo'
       GROUP BY e.id, e.nombre, e.categoria, e.tipo_genero
     `, [orgId]);
 
@@ -840,11 +845,11 @@ if (fecha_fin < fecha_inicio) {
     const idsOficialesT = [...new Set(partidos_iniciales.flatMap(p => [p.arbitro_id, p.anotador_id]).filter(Boolean))];
 
     if (idsEquiposT.length > 0) {
-      const eqChk = await db.query('SELECT COUNT(*) as n FROM public.equipos WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2)', [idsEquiposT.map(String), orgId]);
+const eqChk = await db.query(`SELECT COUNT(*) as n FROM public.equipos WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2) AND estado = 'Activo'`, [idsEquiposT.map(String), orgId]);
       if (parseInt(eqChk.rows[0].n) !== idsEquiposT.length) return res.status(400).json({ error: 'Uno o más equipos indicados no pertenecen a tu organización.' });
     }
     if (idsSedesT.length > 0) {
-      const sedeChk = await db.query('SELECT COUNT(*) as n FROM public.sedes WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2)', [idsSedesT.map(String), orgId]);
+const sedeChk = await db.query(`SELECT COUNT(*) as n FROM public.sedes WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2) AND estado = 'Activo'`, [idsSedesT.map(String), orgId]);
       if (parseInt(sedeChk.rows[0].n) !== idsSedesT.length) return res.status(400).json({ error: 'Una o más sedes indicadas no pertenecen a tu organización.' });
     }
     if (idsOficialesT.length > 0) {
@@ -903,7 +908,6 @@ router.put('/torneos/:id', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const torPrevia = await db.query(`SELECT reglas FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)`, [id, orgId]);
     if (torPrevia.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
-    if (torPrevia.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado.' });
 
     let reglasActuales = torPrevia.rows[0].reglas || {};
     if (estado) reglasActuales.estado = estado;
@@ -921,8 +925,8 @@ router.get('/estadisticas', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const partidosJugados = await db.query(`SELECT COUNT(*) FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE t.organizacion_id = $1 AND p.estado = 'Finalizado'`, [orgId]);
     const totalTorneos = await db.query(`SELECT COUNT(*) FROM public.torneos WHERE organizacion_id = $1`, [orgId]);
-    const totalEquipos = await db.query(`SELECT COUNT(*) FROM public.equipos WHERE organizacion_id = $1`, [orgId]);
-    const totalJugadores = await db.query(`SELECT COUNT(j.id) FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE e.organizacion_id = $1 AND j.estado = 'Activo'`, [orgId]);
+const totalEquipos = await db.query(`SELECT COUNT(*) FROM public.equipos WHERE organizacion_id = $1 AND estado = 'Activo'`, [orgId]);
+const totalJugadores = await db.query(`SELECT COUNT(j.id) FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE e.organizacion_id = $1 AND e.estado = 'Activo' AND j.estado = 'Activo'`, [orgId]);
     const totalTarjetas = await db.query(`SELECT COUNT(tr.id) FROM public.tarjetas tr JOIN public.partidos p ON tr.partido_id = p.id JOIN public.torneos t ON p.torneo_id = t.id WHERE t.organizacion_id = $1`, [orgId]);
 
     const mejoresJugadores = await db.query(`
@@ -1005,7 +1009,7 @@ router.get('/torneos/:torneo_id/posiciones', async (req, res) => {
       FROM public.torneo_equipos te
       JOIN public.equipos e ON te.equipo_id = e.id
       LEFT JOIN ResultadosEquipos re ON re.equipo_id = e.id
-      WHERE te.torneo_id = $1 AND ($2::VARCHAR IS NULL OR te.grupo = $2)
+WHERE te.torneo_id = $1 AND ($2::VARCHAR IS NULL OR te.grupo = $2) AND e.estado = 'Activo'
       GROUP BY e.id, e.nombre
       ORDER BY total_puntos DESC, diff_tantos DESC;
     `;
@@ -1080,11 +1084,11 @@ router.post('/partidos-sueltos', async (req, res) => {
     // LOTE C: validar que equipos, sede y oficiales pertenezcan a la organización del admin.
     const idsEq = [equipo_local_id, equipo_visita_id].filter(Boolean);
     if (idsEq.length > 0) {
-      const eqChk = await db.query('SELECT COUNT(*) as n FROM public.equipos WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2)', [idsEq.map(String), orgId]);
+const eqChk = await db.query(`SELECT COUNT(*) as n FROM public.equipos WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2) AND estado = 'Activo'`, [idsEq.map(String), orgId]);
       if (parseInt(eqChk.rows[0].n) !== idsEq.length) return res.status(400).json({ error: 'Uno o más equipos indicados no pertenecen a tu organización.' });
     }
     if (sede_id) {
-      const sedeChk = await db.query('SELECT id FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [sede_id, orgId]);
+const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) AND estado = 'Activo'`, [sede_id, orgId]);
       if (sedeChk.rows.length === 0) return res.status(400).json({ error: 'La sede indicada no pertenece a tu organización.' });
     }
     const idsOf = [arbitro_id, anotador_id].filter(Boolean);
@@ -1171,7 +1175,7 @@ router.put('/partidos/:id/editar-oficiales', async (req, res) => {
     const permChk = await db.query('SELECT p.id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [id, orgId]);
     if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
     if (sede_id) {
-      const sedeChk = await db.query('SELECT id FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [sede_id, orgId]);
+const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) AND estado = 'Activo'`, [sede_id, orgId]);
       if (sedeChk.rows.length === 0) return res.status(400).json({ error: 'La sede indicada no pertenece a tu organización.' });
     }
     const idsOf = [arbitro_id, anotador_id].filter(Boolean);

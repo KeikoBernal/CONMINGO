@@ -161,10 +161,17 @@ router.delete('/ligas/:id', async (req, res) => {
 
   try {
     const previa = await db.query('SELECT * FROM public.organizaciones WHERE id = $1', [id]);
-    await db.query('DELETE FROM public.organizaciones WHERE id = $1', [id]);
-    await registrarAuditoria(req.usuario.id, 'ELIMINAR_LIGA', 'organizaciones', previa.rows[0], null, req.ip);
-    res.json({ mensaje: 'Liga eliminada con éxito.' });
-  } catch (error) { res.status(500).json({ error: 'Error al eliminar liga.' }); }
+    if (previa.rows.length === 0) return res.status(404).json({ error: 'Liga no encontrada.' });
+
+    // LOTE E: soft-delete — NO se borra la fila (dejaría huérfanos a sus usuarios,
+    // equipos, sedes, torneos y partidos). Se desactiva la liga y se bloquea en
+    // Supabase Auth a los usuarios cuya organización principal es esta liga.
+    const resDb = await db.query(`UPDATE public.organizaciones SET estado_activa = false WHERE id = $1 RETURNING *`, [id]);
+    const usuariosLiga = await db.query('SELECT id FROM public.usuarios WHERE organizacion_id = $1', [id]);
+    for (const u of usuariosLiga.rows) { await supabaseAdmin.auth.admin.updateUserById(u.id, { ban_duration: '876000h' }); }
+    await registrarAuditoria(req.usuario.id, 'DESACTIVAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip);
+    res.json({ mensaje: 'Liga desactivada con éxito. Sus usuarios pierden acceso y sus datos históricos se preservan.' });
+  } catch (error) { res.status(500).json({ error: 'Error al desactivar la liga.' }); }
 });
 
 router.get('/equipos', async (req, res) => {
