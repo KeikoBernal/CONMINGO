@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-sintaxis:
+    name: Backend - sintaxis (node --check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verificar sintaxis de todos los .js del backend
+        run: |
+          total=0
+          fallos=0
+          while IFS= read -r -d "" f; do
+            total=$((total+1))
+            if ! node --check "$f"; then
+              echo "::error file=$f::Error de sintaxis detectado por node --check"
+              fallos=$((fallos+1))
+            fi
+          done < <(find backend -name "*.js" -type f -print0)
+          echo "Archivos verificados: $total"
+          if [ "$fallos" -ne 0 ]; then
+            echo "::error::Hay $fallos archivo(s) con errores de sintaxis"
+            exit 1
+          fi
+
+  plantillas-literales:
+    name: Plantillas literales rotas
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Buscar artefactos de interpolacion rota en .js/.jsx
+        run: |
+          if grep -rn --include='*.js' --include='*.jsx' -F '\({' backend frontend; then
+            echo '::error::Se encontro una plantilla literal rota: en template literals se debe usar ${...} y no \(...\)'
+            exit 1
+          fi
+          echo 'OK: no hay plantillas literales rotas'
+
+  frontend-build:
+    name: Frontend - build de Vite
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar el frontend
+        run: npm run build
