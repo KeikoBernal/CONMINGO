@@ -19,11 +19,21 @@ app.set('trust proxy', 1);
 // ==========================================
 // MIDDLEWARES DE SEGURIDAD Y RATE LIMITING
 // ==========================================
-app.use(helmet());
+// LOTE H: helmet con configuración explícita para un API que solo sirve JSON
+app.use(helmet({
+  contentSecurityPolicy: false, // el API no sirve HTML: la CSP no aplica aquí
+  crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: 'no-referrer' }, // no filtrar URLs internas al navegador
+  frameguard: { action: 'deny' }, // el API nunca debe embeberse en un iframe
+  strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true } // HSTS: 1 año
+}));
 app.use(cors({
   origin: origenPermitido, // FIX #9: lista blanca de orígenes CORS, 
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false, // LOTE H: el API autentica por Bearer token, nunca por cookies
+  maxAge: 7200, // LOTE H: el navegador cachea los preflights 2 horas
+  exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'] // LOTE H: el frontend puede leer el cupo restante
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -45,6 +55,78 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 // ==========================================
+// LOTE H: LÍMITES ESTRICTOS POR FAMILIA DE RUTAS SENSIBLES
+// ==========================================
+// Complementan el límite general (600/10 min) y el blindaje de login-proxy.
+// Los dashboards hacen ráfagas de GET al cargar, así que los límites de
+// escritura solo se aplican a los métodos que modifican datos.
+const soloEscrituras = (limiter) => (req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  return limiter(req, res, next);
+};
+
+// Superadmin: crear usuarios, reset de passwords, borrar ligas (50 escrituras / 15 min)
+const escriturasCriticasLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas operaciones sensibles en poco tiempo. Por seguridad, espera 15 minutos.' }
+});
+
+// Admin de liga: CRUD de sedes/equipos/jugadores y cambio de password (200 escrituras / 15 min)
+const escriturasAdminLigaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas operaciones de administración. Espera unos minutos antes de continuar.' }
+});
+
+// Operativo (árbitro/anotador): manos y sanciones durante un partido (200 escrituras / 10 min)
+const escriturasOperativoLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas jugadas registradas en poco tiempo. Espera un momento.' }
+});
+
+// Mensajería: envío de mensajes/notificaciones, vector de spam (60 envíos / 5 min)
+const escriturasMensajeriaLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Estás enviando demasiados mensajes. Espera unos minutos.' }
+});
+
+// Delegado: cambio de password propio (30 escrituras / 15 min)
+const escriturasDelegadoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas operaciones. Espera 15 minutos.' }
+});
+
+// Lecturas públicas sin autenticación: la superficie más expuesta, frenar scraping (120 / min)
+const lecturasPublicasLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas consultas. Espera un momento antes de recargar.' }
+});
+
+app.use('/api/superadmin', soloEscrituras(escriturasCriticasLimiter));
+app.use('/api/admin-liga', soloEscrituras(escriturasAdminLigaLimiter));
+app.use('/api/operativo', soloEscrituras(escriturasOperativoLimiter));
+app.use('/api/mensajeria', soloEscrituras(escriturasMensajeriaLimiter));
+app.use('/api/delegado', soloEscrituras(escriturasDelegadoLimiter));
+app.use('/api/publico', lecturasPublicasLimiter);
+
+// ==========================================
 // CONFIGURACIÓN DEL SERVIDOR HTTP Y SOCKETS
 // ==========================================
 
@@ -55,7 +137,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: origenPermitido, // FIX #9: lista blanca de orígenes CORS, 
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
+    credentials: false // LOTE H: Socket.io tampoco usa cookies
   }
 });
 
