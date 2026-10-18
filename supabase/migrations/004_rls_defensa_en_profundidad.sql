@@ -30,6 +30,7 @@
 -- 2. Confirmar que la verificación (sección 3) devuelve rowsecurity = true.
 -- 3. Probar la app de punta a punta: login, dashboards, planilla en vivo.
 --
+-- v2: corregido error 42703 (alias del record inconsistente: tabla/tablename).
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -49,7 +50,7 @@ declare
   r record;
 begin
   for r in
-    select c.relname as tabla
+    select c.relname as tablename
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
@@ -86,10 +87,10 @@ alter default privileges in schema public
 -- do $$
 -- declare r record;
 -- begin
---   for r in select c.relname from pg_class c
+--   for r in select c.relname as tablename from pg_class c
 --            join pg_namespace n on n.oid = c.relnamespace
 --            where n.nspname = 'public' and c.relkind = 'r' loop
---     execute format('alter table public.%I disable row level security;', r.relname);
+--     execute format('alter table public.%I disable row level security;', r.tablename);
 --   end loop;
 -- end $$;
 --
