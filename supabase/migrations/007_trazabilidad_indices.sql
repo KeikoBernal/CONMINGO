@@ -28,6 +28,7 @@ WHERE a.usuario_id = u.id
 -- organizacion_id. Sin ese dato el middleware no resuelve su liga y la
 -- bitácora los excluye. Se rellena desde el equipo que delegan y, si no,
 -- desde usuario_organizaciones cuando solo pertenecen a una liga.
+-- NOTA: el MIN lleva cast ::text porque Postgres no define el agregado min(uuid).
 -- ----------------------------------------------------------------------------
 UPDATE public.usuarios us
 SET organizacion_id = e.organizacion_id
@@ -39,7 +40,7 @@ WHERE e.delegado_id = us.id
 UPDATE public.usuarios us
 SET organizacion_id = uo.organizacion_id
 FROM (
-  SELECT usuario_id, MIN(organizacion_id) AS organizacion_id, COUNT(DISTINCT organizacion_id) AS n
+  SELECT usuario_id, MIN(organizacion_id::text)::uuid AS organizacion_id, COUNT(DISTINCT organizacion_id) AS n
   FROM public.usuario_organizaciones
   GROUP BY usuario_id
 ) uo
