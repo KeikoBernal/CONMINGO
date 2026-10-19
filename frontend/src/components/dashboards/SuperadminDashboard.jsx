@@ -39,6 +39,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [busquedaBitacora, setBusquedaBitacora] = useState('');
   const [filtroRol, setFiltroRol] = useState('');
   const [filtroUsuarioId, setFiltroUsuarioId] = useState('');
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -96,13 +98,13 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       } else if (pestana === 'bitacora') {
         const resUsers = await fetchConToken('/usuarios');
         if (resUsers.ok) setUsuariosList(await resUsers.json());
-        const res = await fetchConToken(`/bitacora?rol=${filtroRol}&usuario_id=${filtroUsuarioId}&busqueda=${encodeURIComponent(busquedaBitacora)}`);
+        const res = await fetchConToken(`/bitacora?rol=${filtroRol}&usuario_id=${filtroUsuarioId}&fecha_desde=${filtroFechaDesde}&fecha_hasta=${filtroFechaHasta}&busqueda=${encodeURIComponent(busquedaBitacora)}`);
         if (res.ok) setBitacora(await res.json());
       }
     } catch (err) { setMensaje({ texto: 'Error conectando con el servidor.', tipo: 'error' }); }
   };
 
-  useEffect(() => { cargarDatosPestana(); }, [pestana, filtroRol, filtroUsuarioId, busquedaBitacora]);
+  useEffect(() => { cargarDatosPestana(); }, [pestana, filtroRol, filtroUsuarioId, filtroFechaDesde, filtroFechaHasta, busquedaBitacora]);
 
   useEffect(() => {
     if (formUser.rol.toLowerCase() === 'delegado de equipo' && formUser.organizacion_id && token) {
@@ -905,24 +907,27 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                 <select value={filtroRol} onChange={(e) => setFiltroRol(e.target.value)} className="w-full md:w-64 p-2 border border-brand-gold/40 rounded-lg bg-white text-sm outline-none focus:ring-1 focus:ring-brand-rust text-brand-brown">
                   <option value="">Todos los Roles</option><option value="Superadmin">Superadmin</option><option value="administrador de liga">Admin de Liga</option><option value="arbitro">Árbitro</option>
                 </select>
+                <input type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} className="w-full md:w-44 p-2 border border-brand-gold/40 rounded-lg bg-white text-sm outline-none focus:ring-1 focus:ring-brand-rust text-brand-brown" title="Desde" />
+                <input type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} className="w-full md:w-44 p-2 border border-brand-gold/40 rounded-lg bg-white text-sm outline-none focus:ring-1 focus:ring-brand-rust text-brand-brown" title="Hasta" />
               </div>
 
               <div className="overflow-x-auto hide-scrollbar max-h-[60vh]">
                 <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-xs font-bold sticky top-0">
-                    <tr><th className="p-4 border-b border-brand-gold/30">Fecha</th><th className="p-4 border-b border-brand-gold/30">Usuario</th><th className="p-4 border-b border-brand-gold/30">Rol</th><th className="p-4 border-b border-brand-gold/30">Acción</th><th className="p-4 border-b border-brand-gold/30">Tabla</th></tr>
+                    <tr><th className="p-4 border-b border-brand-gold/30">Fecha</th><th className="p-4 border-b border-brand-gold/30">Usuario</th><th className="p-4 border-b border-brand-gold/30">Rol</th><th className="p-4 border-b border-brand-gold/30">Acción</th><th className="p-4 border-b border-brand-gold/30">Tabla</th><th className="p-4 border-b border-brand-gold/30">Liga</th></tr>
                   </thead>
                   <tbody className="divide-y divide-brand-gold/10 text-brand-brown font-medium">
                     {bitacora.length === 0 ? (
-                      <tr><td colSpan={5} className="p-8 text-center text-brand-brown/50">No hay registros de auditoría para estos filtros.</td></tr>
+                      <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay registros de auditoría para estos filtros.</td></tr>
                     ) : (
                       bitacora.map(b => (
                         <tr key={b.id} className="hover:bg-brand-cream/5 transition-colors">
                           <td className="p-4 text-xs text-brand-brown/70">{new Date(b.fecha).toLocaleString('es-VE')}</td>
                           <td className="p-4">{b.usuario_email}</td>
                           <td className="p-4"><span className="bg-brand-cream/50 px-2 py-0.5 rounded text-[0.7rem] font-bold border border-brand-gold/20">{b.usuario_rol}</span></td>
-                          <td className="p-4 font-bold text-brand-blue">{b.accion}</td>
+                          <td className="p-4 font-bold text-brand-blue">{b.accion_descripcion || b.accion}</td>
                           <td className="p-4 text-brand-brown/70">{b.tabla}</td>
+                          <td className="p-4 text-brand-brown/70">{b.organizacion_nombre || '—'}</td>
                         </tr>
                       ))
                     )}

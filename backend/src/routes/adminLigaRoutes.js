@@ -7,11 +7,11 @@ const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware
 
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 
-const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null) => {
+const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
   try {
     await db.query(
-      `INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip]
+      `INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip, organizacion_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip, organizacionId]
     );
   } catch (error) {
     // FIX #15: la auditoría no debe fallar en silencio; se registra el error con contexto.
@@ -119,7 +119,7 @@ router.use((req, res, next) => {
   if (req.path === '/bitacora') return next();
   res.on('finish', async () => {
     if (res.statusCode < 400) {
-      await registrarAuditoria(req.usuario?.id, `${req.method} ${req.path}`, 'admin-liga', null, { status: res.statusCode, parametros: req.params }, req.ip);
+      await registrarAuditoria(req.usuario?.id, `${req.method} ${req.path}`, 'admin-liga', null, { status: res.statusCode, parametros: req.params }, req.ip, req.usuario?.organizacion_id || null);
     }
   });
   next();
@@ -140,6 +140,27 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'EDITAR_SEDE' THEN 'Actualizó los datos de una sede deportiva.'
         WHEN a.accion = 'ELIMINAR_SEDE' THEN 'Eliminó una sede deportiva.'
         WHEN a.accion = 'TRANSFERIR_JUGADOR' THEN 'Transfirió un jugador entre equipos de la organización.'
+        WHEN a.accion = 'ACTUALIZAR_LOGO' THEN 'Actualizó el logo de la organización.'
+        WHEN a.accion = 'CREAR_EQUIPO' THEN 'Registró un equipo nuevo.'
+        WHEN a.accion = 'ELIMINAR_EQUIPO' THEN 'Eliminó un equipo y su nómina (baja lógica).'
+        WHEN a.accion = 'CREAR_JUGADOR' THEN 'Registró un jugador nuevo.'
+        WHEN a.accion = 'EDITAR_JUGADOR' THEN 'Actualizó los datos de un jugador.'
+        WHEN a.accion = 'CAMBIAR_ESTADO_JUGADOR' THEN 'Cambió el estado de un jugador.'
+        WHEN a.accion = 'CAMBIAR_PASSWORD_PROPIO' THEN 'Cambió su propia contraseña.'
+        WHEN a.accion = 'ASOCIAR_CREDENCIAL' THEN 'Asoció un usuario existente a su liga.'
+        WHEN a.accion = 'CREAR_CREDENCIAL' THEN 'Creó una credencial de usuario operativo.'
+        WHEN a.accion = 'DESACTIVAR_CREDENCIAL' THEN 'Desactivó permanentemente una credencial.'
+        WHEN a.accion = 'REVOCAR_CREDENCIAL' THEN 'Revocó el acceso de un usuario a su liga.'
+        WHEN a.accion = 'RESET_PASSWORD_OPERATIVO' THEN 'Restableció la contraseña de un usuario operativo.'
+        WHEN a.accion = 'ASIGNAR_DELEGADO' THEN 'Reasignó el delegado de un equipo.'
+        WHEN a.accion = 'GUARDAR_PLANTILLAS' THEN 'Guardó una plantilla de reglas.'
+        WHEN a.accion = 'CREAR_TORNEO' THEN 'Creó un torneo con su calendario de partidos.'
+        WHEN a.accion = 'EDITAR_TORNEO' THEN 'Actualizó un torneo.'
+        WHEN a.accion = 'CREAR_PARTIDO_SUELTO' THEN 'Agendó un partido suelto.'
+        WHEN a.accion = 'REAGENDAR_PARTIDO' THEN 'Reagendó un partido.'
+        WHEN a.accion = 'EDITAR_OFICIALES_PARTIDO' THEN 'Modificó los oficiales o la sede de un partido.'
+        WHEN a.accion = 'CANCELAR_PARTIDO' THEN 'Canceló un partido.'
+        WHEN a.accion = 'FORZAR_RESULTADO' THEN 'Forzó el resultado de un partido.'
         WHEN a.accion LIKE 'CREAR_%' THEN 'Creó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' ')) || '.'
         WHEN a.accion LIKE 'EDITAR_%' OR a.accion LIKE 'ACTUALIZAR_%' THEN 'Actualizó un registro de ' || LOWER(REPLACE(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' '), 'actualizar ', '')) || '.'
         WHEN a.accion LIKE 'ELIMINAR_%' THEN 'Eliminó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 9), '_', ' ')) || '.'
@@ -148,7 +169,7 @@ router.get('/bitacora', async (req, res) => {
       u.email AS usuario_email, u.nombre AS usuario_nombre, u.apellido AS usuario_apellido, u.rol AS usuario_rol
       FROM public.audit_logs a
       LEFT JOIN public.usuarios u ON a.usuario_id = u.id
-      WHERE u.organizacion_id = $1`;
+      WHERE (a.organizacion_id = $1 OR (a.organizacion_id IS NULL AND u.organizacion_id = $1))`;
     if (busqueda) { params.push(`%${busqueda.trim()}%`); sql += ` AND (a.accion ILIKE $${params.length} OR a.tabla ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.nombre ILIKE $${params.length} OR u.apellido ILIKE $${params.length})`; }
     if (accion) { params.push(accion); sql += ` AND a.accion = $${params.length}`; }
     if (fecha_desde) { params.push(fecha_desde); sql += ` AND a.fecha >= $${params.length}::date`; }
@@ -167,6 +188,7 @@ router.put('/mi-organizacion/logo', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
     await db.query(`UPDATE public.organizaciones SET logo_url = $1 WHERE id = $2`, [logo_url, orgId]);
+    await registrarAuditoria(req.usuario.id, 'ACTUALIZAR_LOGO', 'organizaciones', null, { logo_url }, req.ip, orgId);
     res.json({ mensaje: 'Logo de la organización actualizado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar el logo.' }); }
 });
@@ -201,6 +223,7 @@ router.post('/cambiar-password-obligatorio', async (req, res) => {
     // Si estás manejando un hash dual, idealmente guardarías el bcrypt hash aquí.
     // Para simplificar según la arquitectura, lo dejamos como en tu original.
     await db.query('UPDATE public.usuarios SET debe_cambiar_password = false WHERE id = $1', [req.usuario.id]);
+    await registrarAuditoria(req.usuario.id, 'CAMBIAR_PASSWORD_PROPIO', 'usuarios', null, { id: req.usuario.id }, req.ip, req.usuario?.organizacion_id || null);
     res.json({ mensaje: 'Contraseña actualizada con éxito.' });
   } catch (error) {
     res.status(500).json({ error: 'Error al cambiar la contraseña.' });
@@ -256,7 +279,7 @@ router.post('/sedes', async (req, res) => {
       `INSERT INTO public.sedes (organizacion_id, nombre, direccion) VALUES ($1, $2, $3) RETURNING *`,
       [orgId, formatearTexto(nombre), direccion ? direccion.trim() : null]
     );
-    await registrarAuditoria(req.usuario.id, 'CREAR_SEDE', 'sedes', null, resDb.rows[0], req.ip);
+    await registrarAuditoria(req.usuario.id, 'CREAR_SEDE', 'sedes', null, resDb.rows[0], req.ip, orgId);
     res.status(201).json({ mensaje: 'Sede registrada con éxito.', sede: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error registrando sede.' }); }
 });
@@ -270,7 +293,7 @@ router.put('/sedes/:id', async (req, res) => {
       [formatearTexto(nombre), direccion ? direccion.trim() : null, req.params.id, orgId]
     );
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Sede no encontrada en tu organización.' });
-    await registrarAuditoria(req.usuario.id, 'EDITAR_SEDE', 'sedes', null, resDb.rows[0], req.ip);
+    await registrarAuditoria(req.usuario.id, 'EDITAR_SEDE', 'sedes', null, resDb.rows[0], req.ip, orgId);
     res.json({ mensaje: 'Sede actualizada con éxito.', sede: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar sede.' }); }
 });
@@ -286,7 +309,7 @@ router.delete('/sedes/:id', async (req, res) => {
     }
     const resDb = await db.query(`UPDATE public.sedes SET estado = 'Inactivo' WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) RETURNING id`, [req.params.id, orgId]);
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Sede no encontrada en tu organización.' });
-    await registrarAuditoria(req.usuario.id, 'ELIMINAR_SEDE', 'sedes', { id: req.params.id }, null, req.ip);
+    await registrarAuditoria(req.usuario.id, 'ELIMINAR_SEDE', 'sedes', { id: req.params.id }, null, req.ip, orgId);
     res.json({ mensaje: 'Sede eliminada con éxito.' });
   } catch (error) { res.status(500).json({ error: 'Error al eliminar sede.' }); }
 });
@@ -320,6 +343,7 @@ router.post('/equipos', async (req, res) => {
       `INSERT INTO public.equipos (nombre, categoria, tipo_genero, logo_url, organizacion_id) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [formatearTexto(nombre), categoria, tipo_genero || 'Mixto', logo_url || null, orgId]
     );
+    await registrarAuditoria(req.usuario.id, 'CREAR_EQUIPO', 'equipos', null, resDb.rows[0], req.ip, orgId);
     res.status(201).json({ mensaje: 'Equipo registrado.', equipo: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error registrando equipo.' }); }
 });
@@ -349,6 +373,7 @@ router.delete('/equipos/:id', async (req, res) => {
     const resDel = await db.query(`UPDATE public.equipos SET estado = 'Inactivo' WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) RETURNING id`, [equipoId, orgId]);
     if (resDel.rows.length === 0) return res.status(404).json({ error: 'Equipo no encontrado en tu organización.' });
 
+    await registrarAuditoria(req.usuario.id, 'ELIMINAR_EQUIPO', 'equipos', { id: equipoId }, { estado: 'Inactivo' }, req.ip, orgId);
     res.json({ mensaje: 'Equipo y su nómina han sido eliminados con éxito.' });
   } catch (error) {
     console.error('Error al eliminar equipo:', error);
@@ -410,6 +435,7 @@ router.post('/jugadores', async (req, res) => {
       await db.query(`UPDATE public.equipos SET capitan_id = $1 WHERE id = $2`, [jugadorId, equipo_id]);
       mensajeDelegado = await gestionarDelegadoPorCapitan(equipo_id, jugadorId, orgId);
     }
+    await registrarAuditoria(req.usuario.id, 'CREAR_JUGADOR', 'jugadores', null, resDb.rows[0], req.ip, orgId);
     res.status(201).json({ mensaje: `Jugador registrado.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al registrar el jugador.' }); }
 });
@@ -501,6 +527,7 @@ router.put('/jugadores/:id', async (req, res) => {
     } else {
       await db.query(`UPDATE public.equipos SET capitan_id = NULL WHERE id = $1 AND capitan_id = $2`, [equipoId, id]);
     }
+    await registrarAuditoria(req.usuario.id, 'EDITAR_JUGADOR', 'jugadores', { id: parseInt(id) }, resDb.rows[0], req.ip, orgId);
     res.json({ mensaje: `Jugador y capitanía actualizados con éxito.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error actualizando jugador.' }); }
 });
@@ -520,6 +547,7 @@ router.put('/jugadores/:id/estado', async (req, res) => {
       mensajeDelegado = await gestionarDelegadoPorCapitan(equipo_id, nuevo_capitan_id, orgId);
     }
     
+    await registrarAuditoria(req.usuario.id, 'CAMBIAR_ESTADO_JUGADOR', 'jugadores', { id: req.params.id }, { estado }, req.ip, orgId);
     res.json({ mensaje: `Jugador ${estado.toLowerCase()} con éxito.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al cambiar estado del jugador.' }); }
 });
@@ -594,7 +622,7 @@ router.post('/jugadores/:id/transferencia', async (req, res) => {
       req.usuario.id, 'TRANSFERIR_JUGADOR', 'jugadores',
       { jugador_id: parseInt(id), equipo_origen_id: jugador.equipo_id, equipo_origen_nombre: jugador.equipo_nombre, dorsal_anterior: jugador.numero_dorsal },
       { equipo_destino_id: destino.id, equipo_destino_nombre: destino.nombre, dorsal_nuevo: dorsalNum, motivo: motivo ? String(motivo).trim().slice(0, 255) : null },
-      req.ip
+      req.ip, orgId
     );
 
     res.json({ mensaje: 'Jugador transferido a ' + destino.nombre + ' con éxito.', jugador: resDb.rows[0] });
@@ -661,6 +689,10 @@ router.post('/crear-credencial', async (req, res) => {
       if (rol.toLowerCase() === 'delegado de equipo' && equipo_id) {
         await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2 AND ($3::uuid IS NULL OR organizacion_id = $3)`, [usuarioId, equipo_id, orgId]);
       }
+      // LOTE O: FIX DELEGADOS — al asociar un usuario existente, consolidar su organizacion_id
+      // si quedó nulo (delegados creados antes de este lote no tenían organización asignada).
+      await db.query('UPDATE public.usuarios SET organizacion_id = $1 WHERE id = $2 AND organizacion_id IS NULL', [orgId, usuarioId]);
+      await registrarAuditoria(req.usuario.id, 'ASOCIAR_CREDENCIAL', 'usuario_organizaciones', { usuario_id: usuarioId }, { organizacion_id: orgId, rol }, req.ip, orgId);
       return res.status(200).json({ mensaje: 'El usuario ya existía y ha sido asociado a tu liga exitosamente.' });
     }
 
@@ -689,6 +721,7 @@ router.post('/crear-credencial', async (req, res) => {
       await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2 AND ($3::uuid IS NULL OR organizacion_id = $3)`, [authUser.user.id, equipo_id, orgId]);
     }
 
+    await registrarAuditoria(req.usuario.id, 'CREAR_CREDENCIAL', 'usuarios', null, { id: authUser.user.id, rol, email: emailReal }, req.ip, orgId);
     res.status(201).json({ mensaje: `Credencial creada con éxito. Clave temporal: ${passwordInicial}` });
   } catch (error) {
     // LOTE J: sin este log, la causa real del 500 era invisible en Render.
@@ -729,9 +762,11 @@ router.delete('/remover-credencial/:id', async (req, res) => {
       // Supabase ban (876000h = 100 años), el usuario pierde validez para iniciar sesión
       await supabaseAdmin.auth.admin.updateUserById(usuarioId, { ban_duration: '876000h' });
       
+      await registrarAuditoria(req.usuario.id, 'DESACTIVAR_CREDENCIAL', 'usuarios', { id: usuarioId }, { estado: 'Inactivo' }, req.ip, orgId);
       return res.json({ mensaje: 'Credencial desactivada permanentemente (el usuario fue inactivado en el sistema global).' });
     }
     
+    await registrarAuditoria(req.usuario.id, 'REVOCAR_CREDENCIAL', 'usuario_organizaciones', { usuario_id: usuarioId }, { organizacion_id: orgId }, req.ip, orgId);
     res.json({ mensaje: 'Acceso revocado para tu liga con éxito. (El usuario conserva sus credenciales en sus otras ligas).' });
   } catch (error) { 
     console.error('Error al remover credencial:', error);
@@ -757,6 +792,7 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     
     await db.query('UPDATE public.usuarios SET debe_cambiar_password = true, password_hash = $2 WHERE id = $1', [req.params.id, hashedPwd]);
+    await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD_OPERATIVO', 'usuarios', { id: req.params.id }, { password_reset: true }, req.ip, orgId);
     res.json({ mensaje: `Contraseña restablecida. Nueva clave temporal: ${nuevaPassword}` });
   } catch (error) { res.status(500).json({ error: 'Error al restablecer contraseña.' }); }
 });
@@ -767,6 +803,7 @@ router.put('/equipos/:id/delegado', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const resDb = await db.query(`UPDATE public.equipos SET delegado_id = $1 WHERE id = $2 AND ($3::uuid IS NULL OR organizacion_id = $3) RETURNING *`, [delegado_id, req.params.id, orgId]);
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Equipo no encontrado en tu organización.' });
+    await registrarAuditoria(req.usuario.id, 'ASIGNAR_DELEGADO', 'equipos', { id: req.params.id }, resDb.rows[0], req.ip, orgId);
     res.json({ mensaje: 'Delegado reasignado con éxito.' });
   } catch (error) { res.status(500).json({ error: 'Error al reasignar delegado.' }); }
 });
@@ -792,6 +829,7 @@ router.post('/plantillas-reglas', async (req, res) => {
       `INSERT INTO public.plantillas_reglas (organizacion_id, nombre, descripcion, reglas) VALUES ($1, $2, $3, $4) RETURNING *`,
       [orgId, formatearTexto(nombre), descripcion ? descripcion.trim() : null, JSON.stringify(reglasParseadas)]
     );
+    await registrarAuditoria(req.usuario.id, 'GUARDAR_PLANTILLAS', 'plantillas_reglas', null, resDb.rows[0], req.ip, orgId);
     res.status(201).json({ mensaje: 'Plantilla de reglas guardada con éxito.', plantilla: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error guardando reglas.' }); }
 });
@@ -1058,6 +1096,7 @@ const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHER
       } catch (e) { console.error('No se pudo inscribir equipo en torneo_equipos:', e?.message || e); }
     }
     await notificarInvolucrados(partidos_iniciales, orgId, req.usuario.id);
+    await registrarAuditoria(req.usuario.id, 'CREAR_TORNEO', 'torneos', null, { id: torneoId, partidos: partidos_iniciales.length }, req.ip, orgId);
     res.status(201).json({ mensaje: 'Torneo y partidos agendados con éxito.' });
   } catch (error) { 
     console.error('Error creando torneo:', error);
@@ -1085,6 +1124,7 @@ router.put('/torneos/:id', async (req, res) => {
       `UPDATE public.torneos SET nombre = COALESCE($1, nombre), fecha_inicio = COALESCE($2, fecha_inicio), fecha_fin = COALESCE($3, fecha_fin), reglas = $4 WHERE id = $5 AND ($6::uuid IS NULL OR organizacion_id = $6) RETURNING *`,
       [nombre ? formatearTexto(nombre) : null, fecha_inicio, fecha_fin, JSON.stringify(reglasActuales), id, orgId]
     );
+    await registrarAuditoria(req.usuario.id, 'EDITAR_TORNEO', 'torneos', { id: parseInt(id) }, resDb.rows[0], req.ip, orgId);
     res.json({ mensaje: 'Torneo actualizado con éxito.', torneo: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar torneo.' }); }
 });
@@ -1324,6 +1364,7 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     );
 
     await notificarInvolucrados([resDb.rows[0]], orgId, req.usuario.id);
+    await registrarAuditoria(req.usuario.id, 'CREAR_PARTIDO_SUELTO', 'partidos', null, resDb.rows[0], req.ip, orgId);
     res.status(201).json({ mensaje: 'Partido suelto agendado con éxito.', partido: resDb.rows[0] });
   } catch (error) { 
     // LOTE J: log del error real (antes se filtraba error.message al cliente).
@@ -1356,6 +1397,7 @@ router.put('/partidos/:id/reagendar', async (req, res) => {
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = $1, estado = 'Agendado' WHERE id = $2`, [nueva_fecha_hora, id]);
+    await registrarAuditoria(req.usuario.id, 'REAGENDAR_PARTIDO', 'partidos', { id: parseInt(id) }, { fecha_hora: nueva_fecha_hora }, req.ip, orgId);
     res.json({ mensaje: 'Partido reagendado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al reagendar.' }); }
 });
@@ -1393,6 +1435,7 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = COALESCE($1, fecha_hora), arbitro_id = $2, anotador_id = $3, sede_id = COALESCE($4, sede_id) WHERE id = $5`, [fecha_hora, arbitro_id || null, anotador_id || null, sede_id, id]);
+    await registrarAuditoria(req.usuario.id, 'EDITAR_OFICIALES_PARTIDO', 'partidos', { id: parseInt(id) }, { arbitro_id: arbitro_id || null, anotador_id: anotador_id || null, sede_id: sede_id || null }, req.ip, await obtenerOrgId(req.usuario));
     res.json({ mensaje: 'Partido modificado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al modificar partido.' }); }
 });
@@ -1408,6 +1451,7 @@ router.put('/partidos/:id/cancelar', async (req, res) => {
     }
     const resDb = await db.query(`UPDATE public.partidos p SET estado = 'Cancelado' FROM public.torneos t WHERE p.torneo_id = t.id AND p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2) RETURNING p.id`, [req.params.id, orgId]);
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+    await registrarAuditoria(req.usuario.id, 'CANCELAR_PARTIDO', 'partidos', { id: resDb.rows[0].id }, { estado: 'Cancelado' }, req.ip, orgId);
     res.json({ mensaje: 'Partido cancelado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al cancelar partido.' }); }
 })
@@ -1476,6 +1520,7 @@ router.post('/partidos/:id/forzar-ganador', async (req, res) => {
       [partidoId, ganador_id, adminId, motivo]
     );
 
+    await registrarAuditoria(req.usuario.id, 'FORZAR_RESULTADO', 'resultados', { partido_id: parseInt(partidoId) }, { equipo_ganador_id: ganador_id, motivo }, req.ip, orgId);
     res.status(200).json({ mensaje: 'Resultado forzado y registrado con éxito en el sistema.' });
 
   } catch (error) {
