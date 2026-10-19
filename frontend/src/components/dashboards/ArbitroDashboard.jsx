@@ -33,6 +33,10 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const [modalSorteo, setModalSorteo] = useState(null);
   const [sorteoTexto, setSorteoTexto] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modalIncidencias, setModalIncidencias] = useState(false);
+  const [incidencias, setIncidencias] = useState([]);
+  const [cargandoIncidencias, setCargandoIncidencias] = useState(false);
+  const [formIncidencia, setFormIncidencia] = useState({ tipo: 'Protesta', jugador_id: '', descripcion: '' });
 
   const [token, setToken] = useState(null);
   const [ligas, setLigas] = useState([]);
@@ -195,6 +199,50 @@ const guardarSorteo = async () => {
     } else { alert('Error de conexión al intentar suspender el partido.'); }
   };
 
+  const abrirIncidencias = async () => {
+    setModalIncidencias(true);
+    setCargandoIncidencias(true);
+    try {
+      const res = await fetchConToken(`/partidos/${partidoActivo.id}/incidencias`);
+      if (res.ok) {
+        const data = await res.json();
+        setIncidencias(Array.isArray(data) ? data : (data.incidencias || []));
+      } else {
+        setIncidencias([]);
+      }
+    } catch (err) {
+      setIncidencias([]);
+      alert('Error de conexión al cargar las incidencias.');
+    } finally {
+      setCargandoIncidencias(false);
+    }
+  };
+
+  const registrarIncidencia = async (e) => {
+    e.preventDefault();
+    if (formIncidencia.descripcion.trim().length < 5) return alert('La descripción debe tener al menos 5 caracteres.');
+    setIsSubmitting(true);
+    try {
+      const res = await fetchConToken(`/partidos/${partidoActivo.id}/incidencias`, { method: 'POST', body: JSON.stringify({ tipo: formIncidencia.tipo, descripcion: formIncidencia.descripcion.trim(), jugador_id: formIncidencia.jugador_id || null }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setFormIncidencia({ tipo: 'Protesta', jugador_id: '', descripcion: '' });
+        const res2 = await fetchConToken(`/partidos/${partidoActivo.id}/incidencias`);
+        if (res2.ok) {
+          const data2 = await res2.json();
+          setIncidencias(Array.isArray(data2) ? data2 : (data2.incidencias || []));
+        }
+        alert(data.mensaje || 'Incidencia registrada correctamente.');
+      } else {
+        alert(data.error || 'No se pudo registrar la incidencia.');
+      }
+    } catch (err) {
+      alert('Error de conexión al registrar la incidencia.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const emitirTarjeta = (color) => {
     if (!jugadorSancionId) return alert('Selecciona un jugador.');
     const j = [...jugadoresLocal, ...jugadoresVisita].find(x => x.id === parseInt(jugadorSancionId));
@@ -268,6 +316,72 @@ const guardarSorteo = async () => {
               </button>
               <button onClick={() => setModalSorteo(null)} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE INCIDENCIAS DEL PARTIDO (LOTE N) */}
+      {modalIncidencias && (
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-brand-brown mb-1">Incidencias del Partido</h3>
+            <p className="text-xs text-brand-brown/60 mb-4">{partidoActivo?.local_nombre} vs {partidoActivo?.visita_nombre}</p>
+
+            <div className="mb-5">
+              <h4 className="text-sm font-bold text-brand-brown mb-2">Registradas ({incidencias.length})</h4>
+              {cargandoIncidencias ? (
+                <p className="text-sm text-brand-brown/60">Cargando incidencias...</p>
+              ) : incidencias.length === 0 ? (
+                <p className="text-sm text-brand-brown/60">No hay incidencias registradas en este partido.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {incidencias.map(inc => (
+                    <li key={inc.id} className="border border-brand-gold/30 rounded-lg p-3 bg-brand-cream/10">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[0.7rem] font-bold uppercase px-2 py-0.5 rounded bg-brand-gold/20 text-brand-brown">{inc.tipo}</span>
+                        <span className="text-[0.65rem] text-brand-brown/50">{inc.created_at ? new Date(inc.created_at).toLocaleString('es-VE') : ''}</span>
+                      </div>
+                      <p className="text-sm text-brand-brown">{inc.descripcion}</p>
+                      <p className="text-[0.7rem] text-brand-brown/60 mt-1">
+                        Registrada por: {inc.autor_nombre ? [inc.autor_nombre, inc.autor_apellido].filter(Boolean).join(' ') : 'Árbitro'}
+                        {inc.jugador_nombre && (<> — Jugador: #{inc.numero_dorsal} {inc.jugador_nombre} {inc.jugador_apellido}</>)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <form onSubmit={registrarIncidencia} className="space-y-3 border-t border-brand-gold/20 pt-4">
+              <div>
+                <label className="block text-xs font-bold text-brand-brown/70 mb-1">Tipo de incidencia</label>
+                <select value={formIncidencia.tipo} onChange={e => setFormIncidencia({...formIncidencia, tipo: e.target.value})} className="w-full p-2.5 rounded-lg border border-brand-gold/40 focus:ring-2 focus:ring-brand-rust outline-none text-sm font-medium text-brand-brown bg-brand-cream/20 cursor-pointer">
+                  {['Protesta', 'Lesión', 'Retraso de equipo', 'Deterioro de sede', 'Afición', 'Otro'].map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-brand-brown/70 mb-1">Jugador involucrado (opcional)</label>
+                <select value={formIncidencia.jugador_id} onChange={e => setFormIncidencia({...formIncidencia, jugador_id: e.target.value})} className="w-full p-2.5 rounded-lg border border-brand-gold/40 focus:ring-2 focus:ring-brand-rust outline-none text-sm font-medium text-brand-brown bg-brand-cream/20 cursor-pointer">
+                  <option value="">Sin jugador asociado...</option>
+                  <optgroup label={partidoActivo?.local_nombre || 'Local'}>
+                    {jugadoresLocal.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
+                  </optgroup>
+                  <optgroup label={partidoActivo?.visita_nombre || 'Visita'}>
+                    {jugadoresVisita.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
+                  </optgroup>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-brand-brown/70 mb-1">Descripción</label>
+                <textarea value={formIncidencia.descripcion} onChange={e => setFormIncidencia({...formIncidencia, descripcion: e.target.value})} placeholder="Describa la incidencia (mínimo 5 caracteres)..." rows="3" minLength="5" required className="w-full p-2.5 rounded-lg border border-brand-gold/40 focus:ring-2 focus:ring-brand-rust outline-none text-sm text-brand-brown"></textarea>
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" disabled={isSubmitting} className="flex-1 py-2.5 bg-brand-rust hover:bg-brand-brown text-white rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-1">
+                  {isSubmitting ? 'Guardando...' : 'Registrar Incidencia'}
+                </button>
+                <button type="button" onClick={() => setModalIncidencias(false)} className="flex-1 py-2.5 bg-gray-200 text-brand-brown rounded-lg text-sm font-bold hover:bg-gray-300 transition-colors">Cerrar</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -575,6 +689,18 @@ const guardarSorteo = async () => {
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
                     {isSubmitting ? 'Suspendiendo...' : 'Suspender Partido'}
+                  </button>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-amber-200 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                  <h3 className="text-base font-bold text-brand-brown mb-2 pl-2">Incidencias del Partido</h3>
+                  <p className="text-[0.75rem] text-brand-brown/60 mb-4 pl-2 leading-relaxed">
+                    Registre novedades: Protesta, Lesión, Retraso de equipo, Deterioro de sede, Afición u Otro.
+                  </p>
+                  <button onClick={abrirIncidencias} className="w-full py-3 border rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    Ver y Registrar Incidencias
                   </button>
                 </div>
 
