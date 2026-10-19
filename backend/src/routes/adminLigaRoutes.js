@@ -558,9 +558,17 @@ router.post('/crear-credencial', async (req, res) => {
   const orgId = await obtenerOrgId(req.usuario);
   
   if (!/^\d{5,8}$/.test(cedula?.trim())) return res.status(400).json({ error: 'La cédula debe ser numérica de 5 a 8 dígitos.' });
+  const emailLimpio = String(email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpio)) { // LOTE J: validar correo antes de tocar Auth/BD
+    return res.status(400).json({ error: 'El correo es obligatorio y debe tener un formato válido.' });
+  }
 
   try {
     const existe = await db.query('SELECT id FROM public.usuarios WHERE cedula = $1', [cedula.trim()]);
+    const emailExistente = await db.query('SELECT id, cedula FROM public.usuarios WHERE email = $1', [emailLimpio]);
+    if (emailExistente.rows.length > 0 && String(emailExistente.rows[0].cedula || '').trim() !== cedula.trim()) {
+      return res.status(400).json({ error: 'Ese correo ya pertenece a otro usuario. Usa un correo distinto o ubica a la persona por su cédula.' });
+    }
     
     if (existe.rows.length > 0) {
       const usuarioId = existe.rows[0].id;
@@ -577,7 +585,7 @@ router.post('/crear-credencial', async (req, res) => {
 
     const nombreFmt = formatearTexto(nombre);
     const apellidoFmt = formatearTexto(apellido);
-    const emailReal = email.trim().toLowerCase();
+    const emailReal = emailLimpio; // LOTE J: ya normalizado y validado arriba
     const passwordInicial = `${nombreFmt.split(' ')[0]}${cedula.trim().substring(0, 5)}!`;
     const hashedPwd = await bcrypt.hash(passwordInicial, 10);
 
@@ -601,7 +609,11 @@ router.post('/crear-credencial', async (req, res) => {
     }
 
     res.status(201).json({ mensaje: `Credencial creada con éxito. Clave temporal: ${passwordInicial}` });
-  } catch (error) { res.status(500).json({ error: 'Error registrando credencial.' }); }
+  } catch (error) {
+    // LOTE J: sin este log, la causa real del 500 era invisible en Render.
+    console.error('Error creando credencial:', error);
+    res.status(500).json({ error: 'Error registrando credencial.' });
+  }
 });
 
 // Eliminar o revocar credencial de un oficial de liga con validación de delegado único
@@ -773,6 +785,57 @@ const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
 };
 
 // ==========================================
+// LOTE J: VALIDACIONES REGLAMENTARIAS Y DEPORTIVAS AL AGENDAR
+// ==========================================
+// Aplica en POST /torneos y POST /partidos-sueltos lo que exige la plantilla
+// de reglas seleccionada (antes solo lo sugería el frontend):
+//  - Quórum: cada equipo debe tener al menos limite_jugadores activos.
+//  - Categorías: en torneos, cada equipo debe estar en las categorías permitidas.
+// Devuelve { ok, equipos } con la fila de cada equipo (incluye capitan_id para
+// el snapshot de capitanes de la tabla partidos).
+const validarEquiposPartido = async (idsEquipos, reglasJson, categoriasPermitidas) => {
+  const ids = [...new Set(idsEquipos.filter(Boolean))];
+  const equipos = {};
+  if (ids.length === 0) return { ok: true, equipos };
+
+  const eqRes = await db.query(
+    'SELECT id, nombre, categoria, tipo_genero, capitan_id, estado FROM public.equipos WHERE id::text = ANY($1::text[])',
+    [ids.map(String)]
+  );
+  for (const fila of eqRes.rows) equipos[String(fila.id)] = fila;
+
+  for (const idEq of ids) {
+    const eq = equipos[String(idEq)];
+    if (!eq || eq.estado !== 'Activo') {
+      return { ok: false, error: 'Uno o más equipos indicados no existen o están inactivos.' };
+    }
+    if (Array.isArray(categoriasPermitidas) && categoriasPermitidas.length > 0) {
+      const catEquipo = eq.categoria + ' - ' + eq.tipo_genero;
+      if (!categoriasPermitidas.includes(catEquipo)) {
+        return { ok: false, error: 'El equipo ' + eq.nombre + ' no pertenece a las categorías permitidas del torneo (' + catEquipo + ').' };
+      }
+    }
+  }
+
+  const minimo = parseInt(reglasJson && reglasJson.limite_jugadores) || 4; // mismo default que el frontend
+  const nomina = await db.query(
+    "SELECT equipo_id, COUNT(*) as activos FROM public.jugadores WHERE equipo_id::text = ANY($1::text[]) AND estado = 'Activo' GROUP BY equipo_id",
+    [ids.map(String)]
+  );
+  const activos = {};
+  for (const fila of nomina.rows) activos[String(fila.equipo_id)] = parseInt(fila.activos);
+  for (const idEq of ids) {
+    const eq = equipos[String(idEq)];
+    const total = activos[String(idEq)] || 0;
+    if (total < minimo) {
+      return { ok: false, error: 'El equipo ' + eq.nombre + ' no cumple el quórum de la plantilla: exige ' + minimo + ' jugadores activos y solo tiene ' + total + '.' };
+    }
+  }
+
+  return { ok: true, equipos };
+};
+
+// ==========================================
 // TORNEOS Y RECURSOS
 // ==========================================
 router.get('/torneos', async (req, res) => {
@@ -872,6 +935,12 @@ const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHER
     if (reglaDb.rows.length === 0) return res.status(400).json({ error: 'La plantilla de reglas seleccionada no existe o no pertenece a tu organización.' });
     reglasJson.estado = 'Activo';
 
+    // LOTE J: validaciones reglamentarias y deportivas del calendario
+    // (quórum de jugadores activos exigido por la plantilla + categorías permitidas del torneo).
+    const valEquiposT = await validarEquiposPartido(idsEquiposT, reglasJson, categorias_permitidas);
+    if (!valEquiposT.ok) return res.status(400).json({ error: valEquiposT.error });
+    const equiposInfoT = valEquiposT.equipos;
+
     const ahoraLocalIso = obtenerHoraCaracas(); // <-- Corrección de zona horaria
     for (const p of partidos_iniciales) {
       if (!p.fecha_hora) return res.status(400).json({ error: 'Todos los partidos agendados deben tener fecha y hora.' });
@@ -891,11 +960,21 @@ const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHER
     const torneoId = resTorneo.rows[0].id;
 
     for (const p of partidos_iniciales) {
+      // LOTE J: snapshot de capitanes al agendar (las columnas existían sin usarse).
+      const capitanLocal = p.local_id ? (equiposInfoT[String(p.local_id)]?.capitan_id || null) : null;
+      const capitanVisita = p.visita_id ? (equiposInfoT[String(p.visita_id)]?.capitan_id || null) : null;
       await db.query(
-        `INSERT INTO public.partidos (torneo_id, equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora, fase, es_local_siguiente) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [torneoId, p.local_id || null, p.visita_id || null, p.sede_id, p.arbitro_id || null, p.anotador_id || null, p.fecha_hora, p.fase || 'Primera Ronda', p.es_local_siguiente ?? true]
+        `INSERT INTO public.partidos (torneo_id, equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora, fase, es_local_siguiente, capitan_local_id, capitan_visita_id) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [torneoId, p.local_id || null, p.visita_id || null, p.sede_id, p.arbitro_id || null, p.anotador_id || null, p.fecha_hora, p.fase || 'Primera Ronda', p.es_local_siguiente ?? true, capitanLocal, capitanVisita]
       );
+    }
+    // LOTE J: inscribir los equipos del calendario en torneo_equipos, la tabla que
+    // alimenta las posiciones (nadie la poblaba y por eso salía vacía).
+    for (const idEq of idsEquiposT) {
+      try {
+        await db.query('INSERT INTO public.torneo_equipos (torneo_id, equipo_id) VALUES ($1, $2)', [torneoId, idEq]);
+      } catch (e) { console.error('No se pudo inscribir equipo en torneo_equipos:', e?.message || e); }
     }
     await notificarInvolucrados(partidos_iniciales, orgId, req.usuario.id);
     res.status(201).json({ mensaje: 'Torneo y partidos agendados con éxito.' });
@@ -1117,6 +1196,21 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     let reglasJson = reglaDb.rows[0].reglas;
     reglasJson.estado = 'Activo';
 
+    // LOTE J: validaciones reglamentarias y deportivas del partido suelto
+    // (quórum de la plantilla + misma categoría y género entre ambos equipos).
+    const valEquiposS = await validarEquiposPartido(idsEq, reglasJson, null);
+    if (!valEquiposS.ok) return res.status(400).json({ error: valEquiposS.error });
+    const equiposInfoS = valEquiposS.equipos;
+    if (equipo_local_id && equipo_visita_id) {
+      const eqL = equiposInfoS[String(equipo_local_id)];
+      const eqV = equiposInfoS[String(equipo_visita_id)];
+      const catLocal = String(eqL?.categoria || '') + ' - ' + String(eqL?.tipo_genero || '');
+      const catVisita = String(eqV?.categoria || '') + ' - ' + String(eqV?.tipo_genero || '');
+      if (catLocal !== catVisita) {
+        return res.status(400).json({ error: 'Partido inválido: los equipos pertenecen a categorías distintas (' + catLocal + ' vs ' + catVisita + ').' });
+      }
+    }
+
     let torneoIndep = await db.query(
       `SELECT id FROM public.torneos WHERE organizacion_id = $1 AND nombre = 'Partidos Independientes' LIMIT 1`,
       [orgId]
@@ -1139,16 +1233,21 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
       await db.query(`UPDATE public.torneos SET reglas = $1 WHERE id = $2`, [JSON.stringify(reglasJson), torneoId]);
     }
 
+    // LOTE J: snapshot de capitanes al agendar (las columnas existían sin usarse).
+    const capitanLocalS = equipo_local_id ? (equiposInfoS[String(equipo_local_id)]?.capitan_id || null) : null;
+    const capitanVisitaS = equipo_visita_id ? (equiposInfoS[String(equipo_visita_id)]?.capitan_id || null) : null;
     const resDb = await db.query(
-      `INSERT INTO public.partidos (torneo_id, equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora, fase, estado, snapshot_data) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Partido Suelto', 'Agendado', $8) RETURNING *`,
-      [torneoId, equipo_local_id, equipo_visita_id, sede_id, arbitro_id || null, anotador_id || null, fecha_hora, JSON.stringify({ reglas_especificas: reglasJson })]
+      `INSERT INTO public.partidos (torneo_id, equipo_local_id, equipo_visita_id, sede_id, arbitro_id, anotador_id, fecha_hora, fase, estado, snapshot_data, capitan_local_id, capitan_visita_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Partido Suelto', 'Agendado', $8, $9, $10) RETURNING *`,
+      [torneoId, equipo_local_id, equipo_visita_id, sede_id, arbitro_id || null, anotador_id || null, fecha_hora, JSON.stringify({ reglas_especificas: reglasJson }), capitanLocalS, capitanVisitaS]
     );
 
     await notificarInvolucrados([resDb.rows[0]], orgId, req.usuario.id);
     res.status(201).json({ mensaje: 'Partido suelto agendado con éxito.', partido: resDb.rows[0] });
   } catch (error) { 
-    res.status(500).json({ error: error.message || 'Error al agendar partido suelto.' }); 
+    // LOTE J: log del error real (antes se filtraba error.message al cliente).
+    console.error('Error agendando partido suelto:', error);
+    res.status(500).json({ error: 'Error al agendar partido suelto.' }); 
   }
 });
 
