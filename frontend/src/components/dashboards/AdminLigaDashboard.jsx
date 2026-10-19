@@ -152,6 +152,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   // Estados para edición y modales
   const [modalCapitan, setModalCapitan] = useState({ visible: false, viejoId: null, equipoId: null, candidatos: [] });
+  const [modalTransferencia, setModalTransferencia] = useState(null);
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState([]);
   const [jugadorEditandoId, setJugadorEditandoId] = useState(null);
   const [sedeEditando, setSedeEditando] = useState(null);
@@ -444,6 +445,29 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       seleccionarEquipoModal(equipoSeleccionado);
       cargarDatos();
     } else mostrarToast(data.error || 'Error al reemplazar capitán.', 'error');
+  };
+
+  const iniciarTransferencia = (j) => {
+    setModalTransferencia({ jugador: j, equipo_destino_id: '', numero_dorsal: j.numero_dorsal || '', motivo: '' });
+  };
+
+  const confirmarTransferencia = async (e) => {
+    e.preventDefault();
+    const m = modalTransferencia;
+    if (!m || !m.jugador) return;
+    if (!m.equipo_destino_id) return mostrarToast('Selecciona el equipo destino.', 'error');
+    const dorsalNum = parseInt(m.numero_dorsal, 10);
+    if (!dorsalNum || dorsalNum < 1 || dorsalNum > 99) return mostrarToast('El dorsal debe ser un número entre 1 y 99.', 'error');
+    const res = await fetchConToken(`/jugadores/${m.jugador.id}/transferencia`, { method: 'POST', body: JSON.stringify({ equipo_destino_id: m.equipo_destino_id, numero_dorsal: dorsalNum, motivo: m.motivo || null }) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      mostrarToast(data.mensaje || 'Jugador transferido con éxito.', 'exito');
+      setModalTransferencia(null);
+      await cargarDatos();
+      if (equipoSeleccionado) await seleccionarEquipoModal(equipoSeleccionado);
+    } else {
+      mostrarToast(data.error || 'No se pudo transferir el jugador.', 'error');
+    }
   };
 
   const generarEstructuraPartidosPersonalizada = () => {
@@ -748,6 +772,39 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="flex gap-3">
                 <button type="submit" className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors">Asignar y Continuar</button>
                 <button type="button" onClick={() => setModalCapitan({...modalCapitan, visible: false})} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE TRANSFERENCIA DE JUGADOR (LOTE N) */}
+      {modalTransferencia && (
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold text-brand-brown mb-2">Transferir Jugador</h3>
+            <p className="text-sm text-brand-brown/80 mb-4">
+              {modalTransferencia.jugador.nombre} {modalTransferencia.jugador.apellido} — Dorsal #{modalTransferencia.jugador.numero_dorsal || '—'}
+            </p>
+            <form onSubmit={confirmarTransferencia} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-brand-brown/70 mb-1">Equipo destino</label>
+                <select className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalTransferencia.equipo_destino_id} onChange={e => setModalTransferencia({...modalTransferencia, equipo_destino_id: e.target.value})} required>
+                  <option value="">Seleccione equipo destino...</option>
+                  {equipos.filter(eq => eq.id !== equipoSeleccionado?.id).map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}{eq.categoria ? ' (' + eq.categoria + ' • ' + eq.tipo_genero + ')' : ''}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-brand-brown/70 mb-1">Dorsal en el equipo destino (1-99)</label>
+                <input type="number" min="1" max="99" className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalTransferencia.numero_dorsal} onChange={e => setModalTransferencia({...modalTransferencia, numero_dorsal: e.target.value})} required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-brand-brown/70 mb-1">Motivo (opcional, queda en la bitácora)</label>
+                <textarea rows="2" className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalTransferencia.motivo} onChange={e => setModalTransferencia({...modalTransferencia, motivo: e.target.value})}></textarea>
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors">Transferir</button>
+                <button type="button" onClick={() => setModalTransferencia(null)} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
           </div>
@@ -1228,6 +1285,9 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 </button>
                                 <button type="button" onClick={() => cambiarEstadoJugador(j.id, j.estado)} className={`px-3 py-1.5 rounded text-xs font-bold transition-colors shadow-sm ${j.estado === 'Activo' ? 'bg-red-100 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-green-100 text-green-700 hover:bg-green-600 hover:text-white'}`}>
                                   {j.estado === 'Activo' ? 'Desactivar' : 'Activar'}
+                                </button>
+                                <button type="button" onClick={() => iniciarTransferencia(j)} className="px-3 py-1.5 bg-brand-rust/10 text-brand-rust hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm">
+                                  Transferir
                                 </button>
                                 </div>
                               </td>

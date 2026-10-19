@@ -139,6 +139,7 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'CREAR_SEDE' THEN 'Registró una nueva sede deportiva.'
         WHEN a.accion = 'EDITAR_SEDE' THEN 'Actualizó los datos de una sede deportiva.'
         WHEN a.accion = 'ELIMINAR_SEDE' THEN 'Eliminó una sede deportiva.'
+        WHEN a.accion = 'TRANSFERIR_JUGADOR' THEN 'Transfirió un jugador entre equipos de la organización.'
         WHEN a.accion LIKE 'CREAR_%' THEN 'Creó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' ')) || '.'
         WHEN a.accion LIKE 'EDITAR_%' OR a.accion LIKE 'ACTUALIZAR_%' THEN 'Actualizó un registro de ' || LOWER(REPLACE(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' '), 'actualizar ', '')) || '.'
         WHEN a.accion LIKE 'ELIMINAR_%' THEN 'Eliminó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 9), '_', ' ')) || '.'
@@ -521,6 +522,86 @@ router.put('/jugadores/:id/estado', async (req, res) => {
     
     res.json({ mensaje: `Jugador ${estado.toLowerCase()} con éxito.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al cambiar estado del jugador.' }); }
+});
+
+// ==========================================
+// LOTE N: TRANSFERENCIA DE JUGADOR ENTRE EQUIPOS
+// ==========================================
+router.post('/jugadores/:id/transferencia', async (req, res) => {
+  const { id } = req.params;
+  const { equipo_destino_id, numero_dorsal, motivo } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+
+    // 1. Jugador a transferir (debe pertenecer a la organización)
+    const jugadorRes = await db.query(
+      `SELECT j.*, e.nombre AS equipo_nombre
+       FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id
+       WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)`,
+      [id, orgId]
+    );
+    if (jugadorRes.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado en tu organización.' });
+    const jugador = jugadorRes.rows[0];
+
+    // 2. Equipo destino (misma organización, estado Activo)
+    const destinoRes = await db.query(
+      `SELECT id, nombre, categoria, estado FROM public.equipos
+       WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)`,
+      [equipo_destino_id, orgId]
+    );
+    if (destinoRes.rows.length === 0) return res.status(404).json({ error: 'Equipo destino no encontrado en tu organización.' });
+    const destino = destinoRes.rows[0];
+    if (destino.estado !== 'Activo') return res.status(400).json({ error: 'El equipo destino está inactivo.' });
+    if (String(destino.id) === String(jugador.equipo_id)) {
+      return res.status(400).json({ error: 'El jugador ya pertenece a ese equipo.' });
+    }
+
+    // 3. Dorsal obligatorio, 1-99, libre en el destino entre jugadores activos
+    const dorsalNum = parseInt(numero_dorsal);
+    if (isNaN(dorsalNum) || dorsalNum <= 0 || dorsalNum > 99) {
+      return res.status(400).json({ error: 'El número dorsal debe ser un entero entre 1 y 99.' });
+    }
+    const dorsalCheck = await db.query(
+      `SELECT id FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND id != $3 AND estado = 'Activo'`,
+      [destino.id, dorsalNum, id]
+    );
+    if (dorsalCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'El dorsal #' + dorsalNum + ' ya está en uso en el equipo destino.' });
+    }
+
+    // 4. Validar edad vs categoría del destino (mismas reglas de alta/edición)
+    if (jugador.fecha_nacimiento) {
+      const edad = Math.floor((new Date() - new Date(jugador.fecha_nacimiento).getTime()) / 3.15576e+10);
+      if (destino.categoria === 'Pre-Infantil (<8)' && edad >= 8)
+        return res.status(400).json({ error: 'Categoría Pre-Infantil: El jugador debe ser menor de 8 años.' });
+      if (destino.categoria === 'Infantil (8-13)' && (edad < 8 || edad > 13))
+        return res.status(400).json({ error: 'Categoría Infantil: El jugador debe tener entre 8 y 13 años.' });
+      if (destino.categoria === 'Adulto 22+' && edad < 22)
+        return res.status(400).json({ error: 'Categoría Adulto 22+: El jugador debe tener al menos 22 años.' });
+    }
+
+    // 5. Si es capitán del equipo de origen, liberar la capitanía
+    await db.query('UPDATE public.equipos SET capitan_id = NULL WHERE capitan_id = $1', [id]);
+
+    // 6. Ejecutar la transferencia
+    const resDb = await db.query(
+      'UPDATE public.jugadores SET equipo_id = $1, numero_dorsal = $2 WHERE id = $3 RETURNING *',
+      [destino.id, dorsalNum, id]
+    );
+
+    // 7. Bitácora (audit_logs): trazabilidad de la transferencia
+    await registrarAuditoria(
+      req.usuario.id, 'TRANSFERIR_JUGADOR', 'jugadores',
+      { jugador_id: parseInt(id), equipo_origen_id: jugador.equipo_id, equipo_origen_nombre: jugador.equipo_nombre, dorsal_anterior: jugador.numero_dorsal },
+      { equipo_destino_id: destino.id, equipo_destino_nombre: destino.nombre, dorsal_nuevo: dorsalNum, motivo: motivo ? String(motivo).trim().slice(0, 255) : null },
+      req.ip
+    );
+
+    res.json({ mensaje: 'Jugador transferido a ' + destino.nombre + ' con éxito.', jugador: resDb.rows[0] });
+  } catch (error) {
+    console.error('Error al transferir jugador:', error);
+    res.status(500).json({ error: 'Error interno al transferir el jugador.' });
+  }
 });
 
 // ==========================================
