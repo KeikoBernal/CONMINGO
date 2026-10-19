@@ -22,6 +22,60 @@ const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = nul
   } catch (error) { console.error('Error escribiendo en audit_logs:', error); }
 };
 
+// ==========================================
+// LOTE O: RESPALDO PROGRAMADO (lo llama el GitHub Action .github/workflows/respaldo.yml)
+// OJO: se declara ANTES del router.use(verificarToken...) de abajo a propósito:
+// no hay usuario con sesión; se autentica con el header x-backup-secret,
+// que debe coincidir con la variable de entorno BACKUP_SECRET del backend.
+// ==========================================
+router.post('/respaldo-programado', async (req, res) => {
+  try {
+    const secret = req.get('x-backup-secret') || (req.body && req.body.secret) || null;
+    if (!process.env.BACKUP_SECRET || !secret || secret !== process.env.BACKUP_SECRET) {
+      console.warn('Intento de respaldo programado rechazado: secret inválido.');
+      return res.status(401).json({ error: 'No autorizado: secret de respaldo inválido.' });
+    }
+
+    // Cada tabla se lee de forma independiente: si una falla, el respaldo se
+    // genera igual con el resto y la tabla problemática queda como arreglo vacío.
+    const leerTabla = (nombre, sql) => db.query(sql).catch((e) => {
+      console.error('Respaldo programado: tabla omitida (' + nombre + '):', e.message);
+      return { rows: [] };
+    });
+
+    const ligas = await db.query('SELECT * FROM public.organizaciones');
+    const usuarios = await db.query('SELECT id, organizacion_id, rol, email, nombre, apellido, cedula, estado, debe_cambiar_password FROM public.usuarios');
+    const equipos = await leerTabla('equipos', 'SELECT * FROM public.equipos');
+    const sedes = await leerTabla('sedes', 'SELECT * FROM public.sedes');
+    const torneos = await leerTabla('torneos', 'SELECT * FROM public.torneos');
+    const partidos = await leerTabla('partidos', 'SELECT * FROM public.partidos');
+    const jugadores = await leerTabla('jugadores', 'SELECT * FROM public.jugadores');
+    const incidencias = await leerTabla('incidencias_partido', 'SELECT * FROM public.incidencias_partido');
+    const auditoria = await leerTabla('audit_logs', 'SELECT * FROM public.audit_logs ORDER BY fecha DESC LIMIT 5000');
+
+    // Sin usuario con sesión: la bitácora lo registra como acción del sistema
+    // (usuario_id NULL). El CASE de GET /bitacora ya lo describe como
+    // "Se ejecutó un respaldo programado del sistema."
+    await registrarAuditoria(null, 'RESPALDO_PROGRAMADO', 'multiples_tablas', null, { formato: 'JSON programado', origen: 'GitHub Actions' }, req.ip, null);
+
+    res.json({
+      generado_en: new Date().toISOString(),
+      ligas: ligas.rows,
+      usuarios: usuarios.rows,
+      equipos: equipos.rows,
+      sedes: sedes.rows,
+      torneos: torneos.rows,
+      partidos: partidos.rows,
+      jugadores: jugadores.rows,
+      incidencias: incidencias.rows,
+      auditoria: auditoria.rows
+    });
+  } catch (error) {
+    console.error('Error generando respaldo programado:', error);
+    res.status(500).json({ error: 'Error interno generando el respaldo programado.' });
+  }
+});
+
 router.use(verificarToken, autorizarRoles('Superadmin'));
 
 router.post('/log-evento', async (req, res) => {
