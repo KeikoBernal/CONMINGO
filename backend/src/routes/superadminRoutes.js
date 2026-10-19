@@ -464,6 +464,7 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'EMITIR_SANCION' THEN 'Emitió una sanción (tarjeta) a un jugador.'
         WHEN a.accion = 'REGISTRAR_INCIDENCIA' THEN 'Registró una incidencia de partido.'
         WHEN a.accion = 'CAMBIAR_PASSWORD_PROPIO' THEN 'Cambió su propia contraseña.'
+        WHEN a.accion = 'CREAR_TORNEO_FLASH' THEN 'Creó un torneo flash: sorteo aleatorio y calendario todos contra todos.'
         WHEN a.accion LIKE 'GET /%' THEN 'Consultó información del sistema.'
         ELSE REPLACE(a.accion, '_', ' ')
       END AS accion_descripcion,
