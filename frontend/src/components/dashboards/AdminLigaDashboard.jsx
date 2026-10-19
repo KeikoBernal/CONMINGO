@@ -6,6 +6,7 @@ import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import SistemaMensajeria from './SistemaMensajeria';
 import { useToasts, ToastContainer } from '../Toast';
+import CalendarioPartidos from '../CalendarioPartidos';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -28,7 +29,7 @@ const rowMatchesFilter = (row, filter, categoryFields = [], dateFields = []) => 
   return matchesSearch && matchesCategory && matchesDate;
 };
 
-function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFields = [], dateFields = [], filename, reportContext = {} }) {
+function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFields = [], dateFields = [], filename, reportContext = {}, logoUrl }) {
   const categoryOptions = [...new Set(rows.flatMap(row => categoryFields.flatMap(field => {
     const value = row[field];
     return Array.isArray(value) ? value : [value];
@@ -58,7 +59,16 @@ function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFi
       const pdf = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' });
       const pageWidth = pdf.internal.pageSize.getWidth();
       pdf.setFillColor(34, 78, 105); pdf.rect(0, 0, pageWidth, 22, 'F');
-      pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · REPORTE OFICIAL', 14, 10); pdf.setFontSize(9); pdf.text(context.modulo, 14, 17);
+      // LOTE L: logo de la organización en el encabezado del PDF (fallback si no hay o es WEBP).
+      let margenTexto = 14;
+      if (logoUrl && !logoUrl.startsWith('data:image/webp')) {
+        try {
+          pdf.setFillColor(255, 255, 255); pdf.rect(6, 2.5, 18, 17, 'F');
+          pdf.addImage(logoUrl, logoUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG', 7, 3.5, 16, 15);
+          margenTexto = 28;
+        } catch (e) { margenTexto = 14; }
+      }
+      pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · REPORTE OFICIAL', margenTexto, 10); pdf.setFontSize(9); pdf.text(context.modulo, margenTexto, 17);
       pdf.setTextColor(70, 45, 30); pdf.setFontSize(8); pdf.text(`Usuario: ${context.usuario}   |   Generado: ${context.generado}`, 14, 30); pdf.text(`Filtros: ${Object.values(context.filtros).join(' · ')}`, 14, 35);
       autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] }, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text('Documento generado desde el módulo Administrador de liga · CONMINGO', 14, pdf.internal.pageSize.getHeight() - 10); } });
       pdf.save(`${safeName}.pdf`);
@@ -576,6 +586,28 @@ const confirmarReagendar = async (e) => {
         html += `</table>`;
         const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
         descargarBlob(blob, `${nombreArchivo}.xls`);
+      } else if (formato === 'pdf') {
+        const pdf = new jsPDF();
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        pdf.setFillColor(34, 78, 105); pdf.rect(0, 0, pageWidth, 22, 'F');
+        let margenTexto = 14;
+        if (orgData.logo_url && !orgData.logo_url.startsWith('data:image/webp')) {
+          try {
+            pdf.setFillColor(255, 255, 255); pdf.rect(6, 2.5, 18, 17, 'F');
+            pdf.addImage(orgData.logo_url, orgData.logo_url.startsWith('data:image/png') ? 'PNG' : 'JPEG', 7, 3.5, 16, 15);
+            margenTexto = 28;
+          } catch (e) { margenTexto = 14; }
+        }
+        pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · PLANILLA OFICIAL', margenTexto, 10); pdf.setFontSize(9); pdf.text('Documento pre-impreso del encuentro', margenTexto, 17);
+        pdf.setTextColor(70, 45, 30); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
+        pdf.text(`${partidoData.local_nombre || 'Por definir'} vs ${partidoData.visita_nombre || 'Por definir'}`, 14, 32);
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
+        pdf.text(`Fecha: ${partidoData.fecha_hora}   |   Generado: ${new Date().toLocaleString('es-VE')}`, 14, 38);
+        autoTable(pdf, { startY: 44, head: [['Cédula', 'Nombre', 'Apellido', 'Dorsal', 'Equipo']], body: nominaData.map(j => [j.cedula ?? '—', j.nombre ?? '—', j.apellido ?? '—', j.numero_dorsal ?? '—', j.equipo_nombre || 'N/A']), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
+        const filaFirmas = (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 30;
+        pdf.setDrawColor(120); pdf.line(14, filaFirmas, 80, filaFirmas); pdf.line(120, filaFirmas, 186, filaFirmas);
+        pdf.setFontSize(8); pdf.setTextColor(100); pdf.text('Firma Árbitro', 14, filaFirmas + 5); pdf.text('Firma Anotador', 120, filaFirmas + 5);
+        pdf.save(`${nombreArchivo}.pdf`);
       }
       setMensaje('');
     } catch (e) { setMensaje('Error al exportar la planilla.'); }
@@ -605,6 +637,26 @@ const confirmarReagendar = async (e) => {
       html += `</table>`;
       const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
       descargarBlob(blob, `${nombreArchivo}.xls`);
+    } else if (formato === 'pdf') {
+      const pdf = new jsPDF();
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      pdf.setFillColor(34, 78, 105); pdf.rect(0, 0, pageWidth, 22, 'F');
+      let margenTexto = 14;
+      if (orgData.logo_url && !orgData.logo_url.startsWith('data:image/webp')) {
+        try {
+          pdf.setFillColor(255, 255, 255); pdf.rect(6, 2.5, 18, 17, 'F');
+          pdf.addImage(orgData.logo_url, orgData.logo_url.startsWith('data:image/png') ? 'PNG' : 'JPEG', 7, 3.5, 16, 15);
+          margenTexto = 28;
+        } catch (e) { margenTexto = 14; }
+      }
+      pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · REPORTE OFICIAL', margenTexto, 10); pdf.setFontSize(9); pdf.text('Estadísticas de la liga', margenTexto, 17);
+      pdf.setTextColor(70, 45, 30); pdf.setFontSize(8);
+      pdf.text(`Usuario: ${usuario?.email || usuario?.nombre || usuario?.username}   |   Generado: ${new Date().toLocaleString('es-VE')}   |   Temporada: ${temporadaFiltro}`, 14, 30);
+      autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
+      if (estadisticas.mejores_jugadores?.length) {
+        autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
+      }
+      pdf.save(`${nombreArchivo}.pdf`);
     }
   };
 
@@ -919,7 +971,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <input type="text" placeholder="Buscar sede..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaSedes} onChange={e => setBusquedaSedes(e.target.value)} />
                     </div>
                   </div>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
                       <div className="overflow-x-auto">
                         <table className="tabla-admin">
                       <thead>
@@ -987,7 +1039,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4">Plantillas Registradas</h3>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={plantillasReglas} filteredRows={filasReglas} filter={getFilter('reglas')} setFilter={setTableFilter('reglas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'descripcion', label: 'Descripción' }, { key: 'creado_en', label: 'Creado' }]} dateFields={["creado_en"]} filename="plantillas_reglas_filtradas" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={plantillasReglas} filteredRows={filasReglas} filter={getFilter('reglas')} setFilter={setTableFilter('reglas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'descripcion', label: 'Descripción' }, { key: 'creado_en', label: 'Creado' }]} dateFields={["creado_en"]} filename="plantillas_reglas_filtradas" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {plantillasReglas.length === 0 ? (
                       <div className="col-span-full text-center py-8 text-brand-brown/50">No hay plantillas registradas.</div>
@@ -1041,7 +1093,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <input type="text" placeholder="Buscar equipo..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaEquipos} onChange={e => setBusquedaEquipos(e.target.value)} />
                     </div>
                   </div>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
                   
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {filasEquipos.filter(e => e.nombre.toLowerCase().includes(busquedaEquipos.toLowerCase())).map(e => (
@@ -1091,7 +1143,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </label>
                       </div>
 
-                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename="nomina_filtrada" />
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename="nomina_filtrada" />
                       <form onSubmit={guardarJugador} className="bg-white p-5 rounded-lg border border-brand-gold/30 shadow-sm mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <input type="text" placeholder="Cédula (5-8 dígitos)" pattern="\d{5,8}" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.cedula} onChange={e => setFormJugador({...formJugador, cedula: e.target.value})} required />
                         <input type="text" placeholder="Nombre" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.nombre} onChange={e => setFormJugador({...formJugador, nombre: e.target.value})} required />
@@ -1250,7 +1302,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </div>
                     </div>
 
-                    <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }, { key: 'equipo_filtro', label: 'Equipo' }]} categoryFields={["rol", "equipo_filtro"]} filename="credenciales_filtradas" />
+                    <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }, { key: 'equipo_filtro', label: 'Equipo' }]} categoryFields={["rol", "equipo_filtro"]} filename="credenciales_filtradas" />
                     <div className="overflow-x-auto border border-brand-gold/20 rounded-lg">
                       <table className="w-full text-left text-sm">
                         <thead className="bg-brand-cream text-brand-brown uppercase tracking-wider text-xs">
@@ -1352,7 +1404,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <NavIcon pestanaId="historial" />
                     Archivo Documental y Resultados Finalizados
                   </h3>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }, { key: 'resultado_filtro', label: 'Resultado' }]} categoryFields={["torneo_nombre", "local_nombre", "visita_nombre", "resultado_filtro"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }, { key: 'resultado_filtro', label: 'Resultado' }]} categoryFields={["torneo_nombre", "local_nombre", "visita_nombre", "resultado_filtro"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
                   <div className="overflow-x-auto">
                     <table className="tabla-admin whitespace-nowrap">
                       <thead>
@@ -1377,6 +1429,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Acta Visual</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} className="bg-green-100 hover:bg-green-600 text-green-700 hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">Excel</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'csv')} className="bg-yellow-100 hover:bg-yellow-600 text-yellow-700 hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">CSV</button>
+                              <button onClick={() => exportarPlanillaFormato(p.id, 'pdf')} className="bg-red-100 hover:bg-red-600 text-red-700 hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">PDF</button>
                             </td>
                           </tr>
                         ))}
@@ -1398,7 +1451,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     </div>
                     <span className="rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-brown">Máximo 500 eventos recientes</span>
                   </div>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={bitacoraConTexto} filteredRows={filasBitacora} filter={getFilter('bitacora')} setFilter={setTableFilter('bitacora')} columns={[{ key: 'fecha_hora', label: 'Fecha y hora' }, { key: 'usuario', label: 'Usuario' }, { key: 'usuario_rol', label: 'Rol' }, { key: 'accion', label: 'Acción' }, { key: 'tabla', label: 'Recurso' }, { key: 'ip', label: 'IP' }]} categoryFields={["accion", "tabla", "usuario_rol", "usuario"]} dateFields={["fecha_hora"]} filename="bitacora_organizacion" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={bitacoraConTexto} filteredRows={filasBitacora} filter={getFilter('bitacora')} setFilter={setTableFilter('bitacora')} columns={[{ key: 'fecha_hora', label: 'Fecha y hora' }, { key: 'usuario', label: 'Usuario' }, { key: 'usuario_rol', label: 'Rol' }, { key: 'accion', label: 'Acción' }, { key: 'tabla', label: 'Recurso' }, { key: 'ip', label: 'IP' }]} categoryFields={["accion", "tabla", "usuario_rol", "usuario"]} dateFields={["fecha_hora"]} filename="bitacora_organizacion" />
                   <div className="overflow-x-auto rounded-lg border border-brand-gold/15">
                     <table className="tabla-admin min-w-[760px] whitespace-nowrap">
                       <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Rol</th><th>Qué hizo</th><th>Recurso consultado</th><th>IP</th></tr></thead>
@@ -1421,7 +1474,8 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     { id: 'crear', label: 'Nuevo Torneo' },
                     { id: 'partido-suelto', label: 'Partido Suelto' },
                     { id: 'posiciones', label: 'Posiciones y Grupos' },
-                    { id: 'acumulado', label: 'Acumulado Anual' }
+                    { id: 'acumulado', label: 'Acumulado Anual' },
+                    { id: 'calendario', label: 'Calendario' }
                   ].map(sub => (
                     <button 
                       key={sub.id} 
@@ -1445,7 +1499,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                             Partidos Suspendidos (Requieren Acción)
                           </h3>
-                          <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={partidos.filter(p => p.estado === 'Suspendido')} filteredRows={filasSuspendidos} filter={getFilter('suspendidos')} setFilter={setTableFilter('suspendidos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'fase', label: 'Fase' }]} categoryFields={["fase", "estado"]} dateFields={["fecha_hora"]} filename="partidos_suspendidos_filtrados" />
+                          <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={partidos.filter(p => p.estado === 'Suspendido')} filteredRows={filasSuspendidos} filter={getFilter('suspendidos')} setFilter={setTableFilter('suspendidos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'fase', label: 'Fase' }]} categoryFields={["fase", "estado"]} dateFields={["fecha_hora"]} filename="partidos_suspendidos_filtrados" />
                           <div className="overflow-x-auto bg-white rounded-lg border border-red-100">
                             <table className="w-full text-left text-sm">
                               <thead className="bg-red-100 text-red-800">
@@ -1468,7 +1522,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </div>
                       )}
 
-                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'equipos_filtro', label: 'Equipos participantes' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada", "equipos_filtro"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'equipos_filtro', label: 'Equipos participantes' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada", "equipos_filtro"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
                       {filasTorneos.filter(t => t.fecha_fin >= hoyStr && t.reglas?.estado !== 'Suspendido').length === 0 ? (
                         <div className="text-center py-12 bg-brand-cream/10 rounded-xl border border-brand-gold/20">
                           <svg className="w-16 h-16 mx-auto text-brand-gold/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
@@ -1805,6 +1859,21 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </div>
                     </div>
                   )}
+
+                  {/* LOTE L: SUB PESTAÑA CALENDARIO */}
+                  {subPestanaTorneo === 'calendario' && (() => {
+                    const detallesTorneo = Object.fromEntries(torneosList.flatMap(t => (t.partidos || []).map(p => [p.id, p])));
+                    return (
+                      <div className="animate-fade-in space-y-4">
+                        <CalendarioPartidos
+                          partidos={partidos}
+                          sedesPorPartido={Object.fromEntries(Object.entries(detallesTorneo).map(par => [par[0], par[1].sede_nombre]).filter(par => !!par[1]))}
+                          onEditar={(p) => setModalEditarPartido({ visible: true, partido: p, fecha_hora: p.fecha_hora.slice(0, 16), arbitro_id: p.arbitro_id || '', anotador_id: p.anotador_id || '', sede_id: detallesTorneo[p.id]?.sede_id || '' })}
+                          onReagendar={(p) => setModalReagendar({ visible: true, partido: p, nuevaFecha: p.fecha_hora.slice(0, 16) })}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
