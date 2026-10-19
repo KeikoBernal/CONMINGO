@@ -6,6 +6,29 @@ const { verificarToken } = require('../middleware/authMiddleware');
 router.use(verificarToken);
 
 // ============================================================
+// LOTE O: TRAZABILIDAD — bitácora de acciones del operativo
+// ============================================================
+// Helper: organización a la que pertenece un partido (vía su torneo).
+const obtenerOrgDePartido = async (partidoId) => {
+  try {
+    const { rows } = await db.query('SELECT t.organizacion_id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1', [partidoId]);
+    return rows[0]?.organizacion_id || null;
+  } catch (e) { return null; }
+};
+
+// Helper: insert en audit_logs con organización (no rompe el flujo si falla).
+const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
+  try {
+    await db.query(
+      `INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip, organizacion_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip, organizacionId]
+    );
+  } catch (error) {
+    console.error('❌ [auditoría] No se pudo registrar en la bitácora:', { usuarioId, accion, tabla, error: error?.message || error });
+  }
+};
+
+// ============================================================
 // LOTE C/D: verificación de acceso a un partido según rol y organización.
 // Superadmin: global. Administrador de Liga: partidos de su organización.
 // Árbitro/Anotador: solo el partido que tiene asignado.
@@ -165,6 +188,7 @@ router.put('/partidos/:id/iniciar', async (req, res) => {
       `UPDATE public.partidos SET estado = 'En Curso', hora_inicio = COALESCE(hora_inicio, $1) WHERE id = $2 RETURNING *`,
       [hora_inicio, req.params.id]
     );
+    await registrarAuditoria(req.usuario.id, 'INICIAR_PARTIDO', 'partidos', { id: req.params.id }, { estado: 'En Curso', hora_inicio }, req.ip, await obtenerOrgDePartido(req.params.id));
     res.json({ mensaje: 'Partido iniciado con éxito.', partido: resDb.rows[0], hora_inicio: hora_inicio });
   } catch (error) { res.status(500).json({ error: 'Error al cambiar estado del partido.' }); }
 });
@@ -186,6 +210,7 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
       `UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2 RETURNING *`,
       [hora_final, req.params.id]
     );
+    await registrarAuditoria(req.usuario.id, 'FINALIZAR_PARTIDO', 'partidos', { id: req.params.id }, { estado: 'Finalizado', hora_final }, req.ip, await obtenerOrgDePartido(req.params.id));
     res.json({ mensaje: 'Partido finalizado con éxito.', partido: resDb.rows[0], hora_final: hora_final });
   } catch (error) { res.status(500).json({ error: 'Error al finalizar el partido.' }); }
 });
@@ -203,6 +228,7 @@ router.put('/partidos/:id/suspender', async (req, res) => {
     }
 
     const resDb = await db.query(`UPDATE public.partidos SET estado = 'Suspendido' WHERE id = $1 RETURNING *`, [req.params.id]);
+    await registrarAuditoria(req.usuario.id, 'SUSPENDER_PARTIDO', 'partidos', { id: req.params.id }, { estado: 'Suspendido' }, req.ip, await obtenerOrgDePartido(req.params.id));
     res.json({ mensaje: 'Partido suspendido.', partido: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al suspender el partido.' }); }
 });
@@ -220,6 +246,7 @@ router.put('/partidos/:id/sorteo', async (req, res) => {
     }
     const { sorteo } = req.body;
     const resDb = await db.query(`UPDATE public.partidos SET sorteo_data = $1 WHERE id = $2 RETURNING *`, [JSON.stringify({ resultado: sorteo }), req.params.id]);
+    await registrarAuditoria(req.usuario.id, 'SORTEO_PARTIDO', 'partidos', { id: req.params.id }, { sorteo }, req.ip, await obtenerOrgDePartido(req.params.id));
     res.json({ mensaje: 'Sorteo registrado.', partido: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al registrar sorteo.' }); }
 });
@@ -409,6 +436,7 @@ router.post('/partidos/:id/sanciones', async (req, res) => {
       if (io) io.to(`partido_${partidoId}`).emit('jugador_expulsado', { jugador_id, partido_id: partidoId });
     }
     
+    await registrarAuditoria(req.usuario.id, 'EMITIR_SANCION', 'tarjetas', { partido_id: parseInt(partidoId), jugador_id: jugadorIdNum }, { color: colorNormalizado, motivo: motivo || null }, req.ip, await obtenerOrgDePartido(partidoId));
     res.json({ mensaje: 'Sanción registrada correctamente.', tarjeta: tarjetaDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al registrar la sanción.' }); }
 });
@@ -476,6 +504,7 @@ router.post('/partidos/:id/incidencias', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [partidoId, req.usuario.id, jugadorIdNum, tipoNormalizado, descLimpia]
     );
+    await registrarAuditoria(req.usuario.id, 'REGISTRAR_INCIDENCIA', 'incidencias_partido', { partido_id: parseInt(partidoId) }, { tipo: tipoNormalizado, jugador_id: jugadorIdNum }, req.ip, await obtenerOrgDePartido(partidoId));
     res.status(201).json({ mensaje: 'Incidencia registrada correctamente.', incidencia: insertada.rows[0] });
   } catch (error) {
     console.error('Error al registrar incidencia:', error);

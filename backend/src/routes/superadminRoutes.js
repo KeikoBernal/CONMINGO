@@ -12,15 +12,69 @@ const capitalizarTexto = (texto) => {
   return texto.trim().toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
-const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null) => {
+const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
   try {
     await db.query(
-      `INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip]
+      `INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip, organizacion_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip, organizacionId]
     );
   } catch (error) { console.error('Error escribiendo en audit_logs:', error); }
 };
+
+// ==========================================
+// LOTE O: RESPALDO PROGRAMADO (lo llama el GitHub Action .github/workflows/respaldo.yml)
+// OJO: se declara ANTES del router.use(verificarToken...) de abajo a propósito:
+// no hay usuario con sesión; se autentica con el header x-backup-secret,
+// que debe coincidir con la variable de entorno BACKUP_SECRET del backend.
+// ==========================================
+router.post('/respaldo-programado', async (req, res) => {
+  try {
+    const secret = req.get('x-backup-secret') || (req.body && req.body.secret) || null;
+    if (!process.env.BACKUP_SECRET || !secret || secret !== process.env.BACKUP_SECRET) {
+      console.warn('Intento de respaldo programado rechazado: secret inválido.');
+      return res.status(401).json({ error: 'No autorizado: secret de respaldo inválido.' });
+    }
+
+    // Cada tabla se lee de forma independiente: si una falla, el respaldo se
+    // genera igual con el resto y la tabla problemática queda como arreglo vacío.
+    const leerTabla = (nombre, sql) => db.query(sql).catch((e) => {
+      console.error('Respaldo programado: tabla omitida (' + nombre + '):', e.message);
+      return { rows: [] };
+    });
+
+    const ligas = await db.query('SELECT * FROM public.organizaciones');
+    const usuarios = await db.query('SELECT id, organizacion_id, rol, email, nombre, apellido, cedula, estado, debe_cambiar_password FROM public.usuarios');
+    const equipos = await leerTabla('equipos', 'SELECT * FROM public.equipos');
+    const sedes = await leerTabla('sedes', 'SELECT * FROM public.sedes');
+    const torneos = await leerTabla('torneos', 'SELECT * FROM public.torneos');
+    const partidos = await leerTabla('partidos', 'SELECT * FROM public.partidos');
+    const jugadores = await leerTabla('jugadores', 'SELECT * FROM public.jugadores');
+    const incidencias = await leerTabla('incidencias_partido', 'SELECT * FROM public.incidencias_partido');
+    const auditoria = await leerTabla('audit_logs', 'SELECT * FROM public.audit_logs ORDER BY fecha DESC LIMIT 5000');
+
+    // Sin usuario con sesión: la bitácora lo registra como acción del sistema
+    // (usuario_id NULL). El CASE de GET /bitacora ya lo describe como
+    // "Se ejecutó un respaldo programado del sistema."
+    await registrarAuditoria(null, 'RESPALDO_PROGRAMADO', 'multiples_tablas', null, { formato: 'JSON programado', origen: 'GitHub Actions' }, req.ip, null);
+
+    res.json({
+      generado_en: new Date().toISOString(),
+      ligas: ligas.rows,
+      usuarios: usuarios.rows,
+      equipos: equipos.rows,
+      sedes: sedes.rows,
+      torneos: torneos.rows,
+      partidos: partidos.rows,
+      jugadores: jugadores.rows,
+      incidencias: incidencias.rows,
+      auditoria: auditoria.rows
+    });
+  } catch (error) {
+    console.error('Error generando respaldo programado:', error);
+    res.status(500).json({ error: 'Error interno generando el respaldo programado.' });
+  }
+});
 
 router.use(verificarToken, autorizarRoles('Superadmin'));
 
@@ -126,7 +180,7 @@ router.post('/ligas', async (req, res) => {
     }
 
     await db.query(`INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, debe_cambiar_password) VALUES ($1, $2, 'Administrador de Liga', $3, $4, $5, $6, true)`, [authUser.user.id, responsable_email.trim().toLowerCase(), respNombreCap, respApellidoCap, cedulaLimpia, organizacionId]);
-    await registrarAuditoria(req.usuario.id, 'CREAR_LIGA_Y_ADMIN', 'organizaciones', null, { ...resDb.rows[0], adminId: authUser.user.id }, req.ip);
+    await registrarAuditoria(req.usuario.id, 'CREAR_LIGA_Y_ADMIN', 'organizaciones', null, { ...resDb.rows[0], adminId: authUser.user.id }, req.ip, resDb.rows[0].id);
     
     res.status(201).json({ mensaje: `Liga creada con éxito. Contraseña del Administrador: ${passwordInicial}`, liga: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error general al crear liga.' }); }
@@ -147,7 +201,7 @@ router.put('/ligas/:id', async (req, res) => {
       const usuariosLiga = await db.query('SELECT id FROM public.usuarios WHERE organizacion_id = $1', [id]);
       for (const u of usuariosLiga.rows) { await supabaseAdmin.auth.admin.updateUserById(u.id, { ban_duration: banStatus }); }
     }
-    await registrarAuditoria(req.usuario.id, 'EDITAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip);
+    await registrarAuditoria(req.usuario.id, 'EDITAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip, previa.rows[0].id);
     res.json({ mensaje: `Liga actualizada.`, liga: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar la liga.' }); }
 });
@@ -169,7 +223,7 @@ router.delete('/ligas/:id', async (req, res) => {
     const resDb = await db.query(`UPDATE public.organizaciones SET estado_activa = false WHERE id = $1 RETURNING *`, [id]);
     const usuariosLiga = await db.query('SELECT id FROM public.usuarios WHERE organizacion_id = $1', [id]);
     for (const u of usuariosLiga.rows) { await supabaseAdmin.auth.admin.updateUserById(u.id, { ban_duration: '876000h' }); }
-    await registrarAuditoria(req.usuario.id, 'DESACTIVAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip);
+    await registrarAuditoria(req.usuario.id, 'DESACTIVAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip, previa.rows[0].id);
     res.json({ mensaje: 'Liga desactivada con éxito. Sus usuarios pierden acceso y sus datos históricos se preservan.' });
   } catch (error) { res.status(500).json({ error: 'Error al desactivar la liga.' }); }
 });
@@ -237,7 +291,7 @@ router.post('/usuarios', async (req, res) => {
       await db.query('UPDATE public.equipos SET delegado_id = $1 WHERE id = $2', [authUser.user.id, equipo_id]);
     }
 
-    await registrarAuditoria(req.usuario.id, 'CREAR_USUARIO', 'usuarios', null, resDb.rows[0], req.ip);
+    await registrarAuditoria(req.usuario.id, 'CREAR_USUARIO', 'usuarios', null, resDb.rows[0], req.ip, resDb.rows[0].organizacion_id || null);
     res.status(201).json({ mensaje: `Usuario creado. Contraseña inicial: ${passwordInicial}`, usuario: resDb.rows[0] });
   } catch (error) {
     if (error && error.code === '23505') {
@@ -261,7 +315,7 @@ router.put('/usuarios/:id', async (req, res) => {
     const previa = await db.query('SELECT * FROM public.usuarios WHERE id = $1', [id]);
     const resDb = await db.query(`UPDATE public.usuarios SET nombre = $1, apellido = $2, cedula = $3, rol = $4, organizacion_id = $5, debe_cambiar_password = $6 WHERE id = $7 RETURNING *`, [nombreCap, apellidoCap, cedulaLimpia, rol, organizacion_id || null, debe_cambiar_password ?? previa.rows[0].debe_cambiar_password, id]);
     await supabaseAdmin.auth.admin.updateUserById(id, { user_metadata: { rol, nombre: nombreCap, apellido: apellidoCap, cedula: cedulaLimpia, debe_cambiar_password } });
-    await registrarAuditoria(req.usuario.id, 'EDITAR_USUARIO', 'usuarios', previa.rows[0], resDb.rows[0], req.ip);
+    await registrarAuditoria(req.usuario.id, 'EDITAR_USUARIO', 'usuarios', previa.rows[0], resDb.rows[0], req.ip, resDb.rows[0].organizacion_id || null);
     res.json({ mensaje: 'Usuario actualizado con éxito.', usuario: resDb.rows[0] });
   } catch (error) { res.status(500).json({ error: 'Error al actualizar el usuario.' }); }
 });
@@ -269,14 +323,14 @@ router.put('/usuarios/:id', async (req, res) => {
 router.post('/usuarios/:id/reset-password', async (req, res) => {
   const { id } = req.params;
   try {
-    const userDb = await db.query('SELECT id, email, cedula, nombre FROM public.usuarios WHERE id = $1', [id]);
+    const userDb = await db.query('SELECT id, email, cedula, nombre, organizacion_id FROM public.usuarios WHERE id = $1', [id]);
     const { cedula, nombre } = userDb.rows[0];
     const nuevaPassword = `${nombre ? nombre.trim().split(' ')[0] : 'User'}${cedula.trim().substring(0, 5)}!`;
     const { error } = await supabaseAdmin.auth.admin.updateUserById(id, { password: nuevaPassword, user_metadata: { debe_cambiar_password: true } });
     if (error) return res.status(400).json({ error: error.message });
 
     await db.query('UPDATE public.usuarios SET debe_cambiar_password = true WHERE id = $1', [id]);
-    await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD', 'usuarios', { id }, { password_reset: true }, req.ip);
+    await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD', 'usuarios', { id }, { password_reset: true }, req.ip, userDb.rows[0].organizacion_id || null);
     res.json({ mensaje: `Contraseña restablecida correctamente. Nueva clave temporal: ${nuevaPassword}` });
   } catch (error) { res.status(500).json({ error: 'Error al restablecer contraseña.' }); }
 });
@@ -346,7 +400,7 @@ router.delete('/usuarios/:id', async (req, res) => {
     await db.query("UPDATE public.usuarios SET estado = 'Inactivo' WHERE id = $1", [id]);
 
     // 5. Registrar auditoría
-    await registrarAuditoria(req.usuario.id, 'DESACTIVAR_USUARIO', 'usuarios', usuarioAEliminar, { estado: 'Inactivo' }, req.ip);
+    await registrarAuditoria(req.usuario.id, 'DESACTIVAR_USUARIO', 'usuarios', usuarioAEliminar, { estado: 'Inactivo' }, req.ip, usuarioAEliminar.organizacion_id || null);
 
     res.json({ mensaje: 'Usuario desactivado con éxito. Sus credenciales han perdido validez.' });
   } catch (error) {
@@ -379,7 +433,7 @@ router.post('/usuarios/:id/reactivar', async (req, res) => {
     await db.query("UPDATE public.usuarios SET estado = 'Activo' WHERE id = $1", [id]);
 
     // 3. Registrar auditoría
-    await registrarAuditoria(req.usuario.id, 'REACTIVAR_USUARIO', 'usuarios', usuarioAReactivar, { estado: 'Activo' }, req.ip);
+    await registrarAuditoria(req.usuario.id, 'REACTIVAR_USUARIO', 'usuarios', usuarioAReactivar, { estado: 'Activo' }, req.ip, usuarioAReactivar.organizacion_id || null);
 
     res.json({ mensaje: 'Usuario reactivado con éxito. Sus credenciales vuelven a ser válidas.' });
   } catch (error) {
@@ -389,18 +443,50 @@ router.post('/usuarios/:id/reactivar', async (req, res) => {
 });
 
 router.get('/bitacora', async (req, res) => {
-  const { rol, usuario_id, busqueda } = req.query;
+  const { rol, usuario_id, organizacion_id, accion, busqueda, fecha_desde, fecha_hasta } = req.query;
   try {
-    let sql = `SELECT a.id, a.accion, a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.fecha, u.email as usuario_email, u.rol as usuario_rol, u.cedula as usuario_cedula FROM public.audit_logs a LEFT JOIN public.usuarios u ON a.usuario_id = u.id WHERE 1=1`;
+    let sql = `SELECT a.id, a.accion,
+      CASE
+        WHEN a.accion = 'CREAR_LIGA_Y_ADMIN' THEN 'Creó una liga nueva junto a su administrador.'
+        WHEN a.accion = 'EDITAR_LIGA' THEN 'Actualizó los datos de una liga.'
+        WHEN a.accion = 'DESACTIVAR_LIGA' THEN 'Desactivó una liga (sus usuarios pierden acceso).'
+        WHEN a.accion = 'CREAR_USUARIO' THEN 'Creó un usuario nuevo.'
+        WHEN a.accion = 'EDITAR_USUARIO' THEN 'Actualizó un usuario.'
+        WHEN a.accion = 'RESET_PASSWORD' THEN 'Restableció la contraseña de un usuario.'
+        WHEN a.accion = 'DESACTIVAR_USUARIO' THEN 'Desactivó un usuario (baja lógica).'
+        WHEN a.accion = 'REACTIVAR_USUARIO' THEN 'Reactivó un usuario.'
+        WHEN a.accion = 'RESPALDO_GLOBAL' THEN 'Descargó un respaldo completo de la base de datos.'
+        WHEN a.accion = 'RESPALDO_PROGRAMADO' THEN 'Se ejecutó un respaldo programado del sistema.'
+        WHEN a.accion = 'INICIAR_PARTIDO' THEN 'Inició un partido.'
+        WHEN a.accion = 'FINALIZAR_PARTIDO' THEN 'Finalizó un partido.'
+        WHEN a.accion = 'SUSPENDER_PARTIDO' THEN 'Suspendió un partido.'
+        WHEN a.accion = 'SORTEO_PARTIDO' THEN 'Registró el sorteo de un partido.'
+        WHEN a.accion = 'EMITIR_SANCION' THEN 'Emitió una sanción (tarjeta) a un jugador.'
+        WHEN a.accion = 'REGISTRAR_INCIDENCIA' THEN 'Registró una incidencia de partido.'
+        WHEN a.accion = 'CAMBIAR_PASSWORD_PROPIO' THEN 'Cambió su propia contraseña.'
+        WHEN a.accion LIKE 'GET /%' THEN 'Consultó información del sistema.'
+        ELSE REPLACE(a.accion, '_', ' ')
+      END AS accion_descripcion,
+      a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.fecha,
+      u.email as usuario_email, u.nombre as usuario_nombre, u.apellido as usuario_apellido, u.rol as usuario_rol, u.cedula as usuario_cedula,
+      o.nombre as organizacion_nombre
+      FROM public.audit_logs a
+      LEFT JOIN public.usuarios u ON a.usuario_id = u.id
+      LEFT JOIN public.organizaciones o ON a.organizacion_id = o.id
+      WHERE 1=1`;
     const params = [];
     if (rol) { params.push(rol); sql += ` AND LOWER(u.rol) = LOWER($${params.length})`; }
-    if (usuario_id) { params.push(usuario_id); sql += ` AND a.usuario_id = $${params.length})`; }
-    if (busqueda) { params.push(`%${busqueda.trim()}%`); sql += ` AND (u.email ILIKE $${params.length} OR u.cedula ILIKE $${params.length})`; }
-    sql += ' ORDER BY a.fecha DESC LIMIT 150';
+    if (usuario_id) { params.push(usuario_id); sql += ` AND a.usuario_id = $${params.length}`; }
+    if (organizacion_id) { params.push(organizacion_id); sql += ` AND (a.organizacion_id = $${params.length} OR u.organizacion_id = $${params.length})`; }
+    if (accion) { params.push(accion); sql += ` AND a.accion = $${params.length}`; }
+    if (busqueda) { params.push(`%${busqueda.trim()}%`); sql += ` AND (a.accion ILIKE $${params.length} OR a.tabla ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.cedula ILIKE $${params.length} OR o.nombre ILIKE $${params.length})`; }
+    if (fecha_desde) { params.push(fecha_desde); sql += ` AND a.fecha >= $${params.length}::date`; }
+    if (fecha_hasta) { params.push(fecha_hasta); sql += ` AND a.fecha < ($${params.length}::date + INTERVAL '1 day')`; }
+    sql += ' ORDER BY a.fecha DESC LIMIT 500';
 
     const resultado = await db.query(sql, params);
     res.json(resultado.rows);
-  } catch (error) { res.status(500).json({ error: 'Error al consultar auditoría.' }); }
+  } catch (error) { console.error('Error al consultar bitácora global:', error); res.status(500).json({ error: 'Error al consultar auditoría.' }); }
 });
 
 // ==========================================

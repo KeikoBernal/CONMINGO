@@ -1,0 +1,40 @@
+name: Respaldo programado
+
+# LOTE O: cada madrugada llama al endpoint POST /api/superadmin/respaldo-programado
+# del backend y guarda la respuesta JSON como artefacto (30 días de retención).
+# IMPORTANTE: los eventos schedule solo corren en la rama por defecto (main),
+# así que este respaldo se activa cuando el lote esté fusionado.
+on:
+  schedule:
+    - cron: '0 8 * * *' # 08:00 UTC = 04:00 am en Venezuela (UTC-4)
+  workflow_dispatch:
+
+jobs:
+  respaldo:
+    name: Respaldo JSON de la base de datos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar respaldo desde el backend
+        env:
+          BACKUP_URL: ${{ secrets.BACKUP_URL }}
+          BACKUP_SECRET: ${{ secrets.BACKUP_SECRET }}
+        run: |
+          if [ -z "$BACKUP_URL" ] || [ -z "$BACKUP_SECRET" ]; then
+            echo '::error::Faltan los secrets BACKUP_URL y/o BACKUP_SECRET en el repositorio.'
+            exit 1
+          fi
+          curl -sS --fail-with-body -X POST \
+            -H "x-backup-secret: $BACKUP_SECRET" \
+            -H 'Content-Type: application/json' \
+            -d '{}' \
+            --max-time 300 \
+            -o respaldo.json \
+            "$BACKUP_URL/api/superadmin/respaldo-programado"
+          echo "Respaldo descargado: $(wc -c < respaldo.json) bytes"
+
+      - name: Subir respaldo como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-conmingo
+          retention-days: 30
+          path: respaldo.json
