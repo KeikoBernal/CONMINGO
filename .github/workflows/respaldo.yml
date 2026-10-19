@@ -23,13 +23,24 @@ jobs:
             echo '::error::Faltan los secrets BACKUP_URL y/o BACKUP_SECRET en el repositorio.'
             exit 1
           fi
-          curl -sS --fail-with-body -X POST \
+          # Preflight: la URL base del backend debe responder en /api/health con 200.
+          # Si falla, el secret BACKUP_URL no es la raíz del backend (sobra /api o una barra).
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$BACKUP_URL/api/health" || echo ERR)
+          if [ "$code" != "200" ]; then
+            echo "::error::BACKUP_URL no responde en /api/health (HTTP $code). El secret debe ser la URL pública del backend SIN /api y SIN barra final (ej. https://conmingo.onrender.com)."
+            exit 1
+          fi
+          if ! curl -sS --fail-with-body -X POST \
             -H "x-backup-secret: $BACKUP_SECRET" \
             -H 'Content-Type: application/json' \
             -d '{}' \
             --max-time 300 \
             -o respaldo.json \
-            "$BACKUP_URL/api/superadmin/respaldo-programado"
+            "$BACKUP_URL/api/superadmin/respaldo-programado"; then
+            echo '::error::El backend rechazó el respaldo. Cuerpo de la respuesta:'
+            cat respaldo.json || true
+            exit 1
+          fi
           echo "Respaldo descargado: $(wc -c < respaldo.json) bytes"
 
       - name: Subir respaldo como artefacto
