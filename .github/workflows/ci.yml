@@ -9,13 +9,13 @@ on:
 jobs:
   backend-sintaxis:
     name: Backend - sintaxis (node --check)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Descargar codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configurar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -38,10 +38,10 @@ jobs:
 
   plantillas-literales:
     name: Plantillas literales rotas
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Descargar codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Buscar artefactos de interpolacion rota en .js/.jsx
         run: |
@@ -53,16 +53,16 @@ jobs:
 
   frontend-build:
     name: Frontend - build de Vite
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
     steps:
       - name: Descargar codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configurar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
