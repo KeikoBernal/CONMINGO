@@ -179,13 +179,12 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [formTorneo, setFormTorneo] = useState({ nombre: '', fecha_inicio: '', fecha_fin: '', plantilla_id: '', categoria: 'Adulto 22+', tipo_genero: 'Mixto', sistema_clasificacion: 'liga_semifinales', opcion_grupos: 'cruc_semis', incluir_tercer_lugar: true, temporada: '2026' });
   const [equiposSeleccionadosTorneo, setEquiposSeleccionadosTorneo] = useState([]);
   const [partidosIniciales, setPartidosIniciales] = useState([]);
-  // LOTE P: torneos flash (sorteo Fisher-Yates + todos contra todos)
+  // LOTE P: torneos flash — se anotan los asistentes del día; el sorteo
+  // Fisher-Yates los reparte en equipos (≈4 por equipo) y arma el todos
+  // contra todos. El badge muestra "N asistentes → M equipos".
   const [formFlash, setFormFlash] = useState({ nombre: '', sede_id: '', fecha_hora_inicio: '', minutos_entre_partidos: 45, plantilla_id: '', arbitro_id: '', anotador_id: '', ida_y_vuelta: false });
-  const [equiposFlash, setEquiposFlash] = useState([
-    { equipo_id: '', nombre: '', jugadores: [{ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', telefono: '' }] },
-    { equipo_id: '', nombre: '', jugadores: [{ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', telefono: '' }] }
-  ]);
-  const [sugerenciasCedula, setSugerenciasCedula] = useState({ visible: false, eqIdx: -1, jugIdx: -1, items: [] });
+  const [participantesFlash, setParticipantesFlash] = useState([{ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', telefono: '' }, { cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', telefono: '' }]);
+  const [sugerenciasCedula, setSugerenciasCedula] = useState({ visible: false, idx: -1, items: [] });
   const [resultadoFlash, setResultadoFlash] = useState(null);
   const [creandoFlash, setCreandoFlash] = useState(false);
   const temporizadorAutocomplete = useRef(null);
@@ -513,62 +512,63 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   };
 
   // ===== LOTE P: TORNEOS FLASH =====
-  const jugadorFlashVacio = () => ({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', telefono: '' });
-  const equipoFlashVacio = () => ({ equipo_id: '', nombre: '', jugadores: [jugadorFlashVacio()] });
+  // Las plantillas de reglas solo se cargan al abrir la sub pestaña
+  // 'reglas'; en flash también se necesitan para el select opcional.
+  useEffect(() => {
+    if (subPestanaTorneo !== 'flash' || plantillasReglas.length > 0) return;
+    fetchConToken('/plantillas-reglas')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (Array.isArray(data)) setPlantillasReglas(data); })
+      .catch(() => {});
+  }, [subPestanaTorneo, plantillasReglas.length]);
 
-  const buscarSugerenciasCedula = (cedula, eqIdx, jugIdx) => {
+  const participanteFlashVacio = () => ({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', telefono: '' });
+
+  // Igual que el backend: M = max(2, redondeo(N / 4)) equipos
+  const equiposEstimadosFlash = () => Math.max(2, Math.round(participantesFlash.filter(p => String(p.cedula || '').trim() !== '').length / 4));
+
+  const buscarSugerenciasCedula = (cedula, idx) => {
     const limpio = String(cedula || '').replace(/\D/g, '');
     if (temporizadorAutocomplete.current) clearTimeout(temporizadorAutocomplete.current);
-    if (limpio.length < 3) { setSugerenciasCedula({ visible: false, eqIdx: -1, jugIdx: -1, items: [] }); return; }
+    if (limpio.length < 3) { setSugerenciasCedula({ visible: false, idx: -1, items: [] }); return; }
     temporizadorAutocomplete.current = setTimeout(async () => {
       try {
         const res = await fetchConToken('/autocomplete/cedula?q=' + encodeURIComponent(limpio));
         if (res.ok) {
           const data = await res.json();
-          setSugerenciasCedula({ visible: true, eqIdx, jugIdx, items: Array.isArray(data.resultados) ? data.resultados : [] });
+          setSugerenciasCedula({ visible: true, idx, items: Array.isArray(data.resultados) ? data.resultados : [] });
         }
       } catch (err) { /* autocompletado silencioso */ }
     }, 350);
   };
 
   const elegirSugerenciaCedula = (s) => {
-    const { eqIdx, jugIdx } = sugerenciasCedula;
-    setEquiposFlash(prev => prev.map((eq, i) => i !== eqIdx ? eq : { ...eq, jugadores: eq.jugadores.map((j, jIdx) => jIdx !== jugIdx ? j : { ...j, cedula: s.cedula, nombre: s.nombre, apellido: s.apellido, fecha_nacimiento: s.fecha_nacimiento || '', telefono: s.telefono || '' }) }));
-    setSugerenciasCedula({ visible: false, eqIdx: -1, jugIdx: -1, items: [] });
+    const idxSel = sugerenciasCedula.idx;
+    setParticipantesFlash(prev => prev.map((p, i) => i !== idxSel ? p : { ...p, cedula: s.cedula, nombre: s.nombre, apellido: s.apellido, fecha_nacimiento: s.fecha_nacimiento || '', telefono: s.telefono || '' }));
+    setSugerenciasCedula({ visible: false, idx: -1, items: [] });
   };
 
-  const actualizarJugadorFlash = (eqIdx, jugIdx, campo, valor) => {
-    setEquiposFlash(prev => prev.map((eq, i) => i !== eqIdx ? eq : { ...eq, jugadores: eq.jugadores.map((j, jIdx) => jIdx !== jugIdx ? j : { ...j, [campo]: valor }) }));
+  const actualizarParticipanteFlash = (idx, campo, valor) => {
+    setParticipantesFlash(prev => prev.map((p, i) => i !== idx ? p : { ...p, [campo]: valor }));
+    if (campo === 'cedula') buscarSugerenciasCedula(valor, idx);
   };
 
-  const actualizarEquipoFlash = (eqIdx, campo, valor) => {
-    setEquiposFlash(prev => prev.map((eq, i) => i !== eqIdx ? eq : { ...eq, [campo]: valor }));
+  const agregarParticipanteFlash = () => {
+    if (participantesFlash.length >= 48) return mostrarToast('Un torneo flash admite máximo 48 asistentes.', 'error');
+    setParticipantesFlash(prev => [...prev, participanteFlashVacio()]);
   };
 
-  const agregarEquipoFlash = () => {
-    if (equiposFlash.length >= 12) return mostrarToast('Un torneo flash admite máximo 12 equipos.', 'error');
-    setEquiposFlash(prev => [...prev, equipoFlashVacio()]);
-  };
-
-  const quitarEquipoFlash = (eqIdx) => {
-    if (equiposFlash.length <= 2) return mostrarToast('El torneo flash necesita al menos 2 equipos.', 'error');
-    setEquiposFlash(prev => prev.filter((_, i) => i !== eqIdx));
-    setSugerenciasCedula({ visible: false, eqIdx: -1, jugIdx: -1, items: [] });
-  };
-
-  const agregarJugadorFlash = (eqIdx) => {
-    setEquiposFlash(prev => prev.map((eq, i) => i !== eqIdx ? eq : { ...eq, jugadores: [...eq.jugadores, jugadorFlashVacio()] }));
-  };
-
-  const quitarJugadorFlash = (eqIdx, jugIdx) => {
-    setEquiposFlash(prev => prev.map((eq, i) => i !== eqIdx ? eq : { ...eq, jugadores: eq.jugadores.length > 1 ? eq.jugadores.filter((_, j) => j !== jugIdx) : eq.jugadores }));
+  const quitarParticipanteFlash = (idx) => {
+    if (participantesFlash.length <= 2) return mostrarToast('Deja al menos 2 filas para anotar asistentes.', 'error');
+    setParticipantesFlash(prev => prev.filter((_, i) => i !== idx));
+    setSugerenciasCedula({ visible: false, idx: -1, items: [] });
   };
 
   const reiniciarFormularioFlash = () => {
     setResultadoFlash(null);
     setFormFlash({ nombre: '', sede_id: '', fecha_hora_inicio: '', minutos_entre_partidos: 45, plantilla_id: '', arbitro_id: '', anotador_id: '', ida_y_vuelta: false });
-    setEquiposFlash([equipoFlashVacio(), equipoFlashVacio()]);
-    setSugerenciasCedula({ visible: false, eqIdx: -1, jugIdx: -1, items: [] });
+    setParticipantesFlash([participanteFlashVacio(), participanteFlashVacio()]);
+    setSugerenciasCedula({ visible: false, idx: -1, items: [] });
   };
 
   const crearTorneoFlash = async (e) => {
@@ -577,23 +577,23 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     if (!formFlash.nombre.trim()) return mostrarToast('Escribe un nombre para el torneo flash.', 'error');
     if (!formFlash.fecha_hora_inicio) return mostrarToast('Selecciona la fecha y hora de inicio.', 'error');
     if (!formFlash.sede_id) return mostrarToast('Selecciona la instalación donde se jugará.', 'error');
-    const equiposValidos = equiposFlash.filter(eq => eq.equipo_id !== '' || eq.nombre.trim() !== '');
-    if (equiposValidos.length < 2) return mostrarToast('Necesitas al menos 2 equipos (registrados o nuevos).', 'error');
-    if (equiposValidos.length > 12) return mostrarToast('Un torneo flash admite máximo 12 equipos.', 'error');
-    const clavesEquipos = equiposValidos.map(eq => eq.equipo_id !== '' ? 'id:' + eq.equipo_id : 'nombre:' + eq.nombre.trim().toLowerCase());
-    if (new Set(clavesEquipos).size !== clavesEquipos.length) return mostrarToast('Hay equipos repetidos en la lista.', 'error');
-    const payloadEquipos = equiposValidos.map(eq => eq.equipo_id !== ''
-      ? { equipo_id: eq.equipo_id }
-      : { nombre: eq.nombre.trim(), jugadores: eq.jugadores.filter(j => String(j.cedula || '').trim() !== '' || String(j.nombre || '').trim() !== '').map(j => ({ cedula: String(j.cedula || '').trim(), nombre: String(j.nombre || '').trim(), apellido: String(j.apellido || '').trim(), fecha_nacimiento: j.fecha_nacimiento || null, telefono: String(j.telefono || '').trim() || null })) }
-    );
+    const asistentes = participantesFlash
+      .map(p => ({ cedula: String(p.cedula || '').trim(), nombre: String(p.nombre || '').trim(), apellido: String(p.apellido || '').trim(), fecha_nacimiento: p.fecha_nacimiento || null, telefono: String(p.telefono || '').trim() || null }))
+      .filter(p => p.cedula !== '' && p.nombre !== '');
+    if (asistentes.length < 4) return mostrarToast('Inscribe al menos 4 asistentes con cédula y nombre: el sorteo los reparte en equipos.', 'error');
+    if (asistentes.length > 48) return mostrarToast('Un torneo flash admite máximo 48 asistentes.', 'error');
+    const cedulasAsistentes = asistentes.map(p => p.cedula);
+    if (new Set(cedulasAsistentes).size !== cedulasAsistentes.length) return mostrarToast('Hay cédulas repetidas en la lista de asistentes.', 'error');
+    const cedulaInvalida = asistentes.find(p => p.cedula.replace(/\D/g, '').length < 5 || p.cedula.replace(/\D/g, '').length > 8);
+    if (cedulaInvalida) return mostrarToast('La cédula de ' + cedulaInvalida.nombre + ' debe tener entre 5 y 8 dígitos.', 'error');
     setCreandoFlash(true);
     try {
-      const res = await fetchConToken('/torneos-flash', { method: 'POST', body: JSON.stringify({ ...formFlash, minutos_entre_partidos: parseInt(formFlash.minutos_entre_partidos) || 45, equipos: payloadEquipos }) });
+      const res = await fetchConToken('/torneos-flash', { method: 'POST', body: JSON.stringify({ ...formFlash, minutos_entre_partidos: parseInt(formFlash.minutos_entre_partidos) || 45, jugadores: asistentes }) });
       const data = await res.json();
       setCreandoFlash(false);
       if (res.ok) {
         setResultadoFlash(data);
-        setSugerenciasCedula({ visible: false, eqIdx: -1, jugIdx: -1, items: [] });
+        setSugerenciasCedula({ visible: false, idx: -1, items: [] });
         mostrarToast(data.mensaje || 'Torneo flash creado.', 'exito');
         cargarDatos();
       } else {
@@ -1877,34 +1877,45 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-white p-4 rounded-xl border border-brand-gold/20 shadow-sm">
-                              <h4 className="font-bold text-brand-brown mb-3 border-b border-brand-gold/30 pb-2">Orden del Sorteo (Fisher-Yates)</h4>
-                              <ol className="space-y-2">
+                              <h4 className="font-bold text-brand-brown mb-3 border-b border-brand-gold/30 pb-2">Equipos armados por el sorteo</h4>
+                              <div className="space-y-2">
+                                {(resultadoFlash.equipos || []).map((eq, i) => (
+                                  <div key={i} className="bg-brand-cream/20 rounded-lg p-2.5 border border-brand-gold/20">
+                                    <div className="text-sm font-bold text-brand-rust">{eq.nombre}</div>
+                                    <div className="text-xs text-brand-brown/70">{(eq.jugadores || []).join(', ')}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-brand-gold/20 shadow-sm">
+                              <h4 className="font-bold text-brand-brown mb-3 border-b border-brand-gold/30 pb-2">Orden del Sorteo de Asistentes</h4>
+                              <ol className="space-y-2 max-h-72 overflow-y-auto pr-1">
                                 {(resultadoFlash.sorteo || []).map(s => (
                                   <li key={s.posicion} className="text-sm text-brand-brown flex items-center gap-2">
                                     <span className="w-6 h-6 rounded-full bg-brand-cream text-brand-brown text-xs font-bold flex items-center justify-center shrink-0">{s.posicion}</span>
-                                    {s.equipo}
+                                    {s.persona}
                                   </li>
                                 ))}
                               </ol>
                             </div>
-                            <div className="bg-white p-4 rounded-xl border border-brand-gold/20 shadow-sm">
-                              <h4 className="font-bold text-brand-brown mb-3 border-b border-brand-gold/30 pb-2">Fixture (Todos contra Todos)</h4>
-                              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                                {(resultadoFlash.fixture || []).map((p, i) => (
-                                  <div key={i} className="text-xs bg-brand-cream/20 rounded-lg p-2.5 border border-brand-gold/20">
-                                    <div className="font-bold text-brand-rust mb-1">Jornada {p.jornada}</div>
-                                    <div className="text-brand-brown font-semibold">{p.local} <span className="text-brand-brown/50">vs</span> {p.visita}</div>
-                                    <div className="text-brand-brown/60">{String(p.fecha_hora).replace('T', ' ')}</div>
-                                  </div>
-                                ))}
-                              </div>
+                          </div>
+                          <div className="bg-white p-4 rounded-xl border border-brand-gold/20 shadow-sm">
+                            <h4 className="font-bold text-brand-brown mb-3 border-b border-brand-gold/30 pb-2">Fixture (Todos contra Todos)</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {(resultadoFlash.fixture || []).map((p, i) => (
+                                <div key={i} className="text-xs bg-brand-cream/20 rounded-lg p-2.5 border border-brand-gold/20">
+                                  <div className="font-bold text-brand-rust mb-1">Jornada {p.jornada}</div>
+                                  <div className="text-brand-brown font-semibold">{p.local} <span className="text-brand-brown/50">vs</span> {p.visita}</div>
+                                  <div className="text-brand-brown/60">{String(p.fecha_hora).replace('T', ' ')}</div>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </div>
                       ) : (
                         <form onSubmit={crearTorneoFlash} className="space-y-5 bg-white p-4 sm:p-8 rounded-xl border border-brand-gold/30 shadow-sm">
                           <h3 className="text-xl font-bold text-brand-brown mb-1 text-center">⚡ Torneo Flash</h3>
-                          <p className="text-sm text-brand-brown/70 text-center mb-6">Sorteo aleatorio Fisher-Yates y calendario todos contra todos, armado en una sola pantalla.</p>
+                          <p className="text-sm text-brand-brown/70 text-center mb-6">Anota a los asistentes del día, sortéalos y deja que el sistema arme los equipos y el calendario todos contra todos.</p>
 
                           <input type="text" placeholder="Nombre del torneo (ej. Flash Sabatino)" className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formFlash.nombre} onChange={e => setFormFlash({ ...formFlash, nombre: e.target.value })} required />
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1945,54 +1956,37 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </label>
 
                           <div>
-                            <h4 className="text-sm font-bold text-brand-brown mb-3">Equipos participantes (2 a 12)</h4>
-                            <div className="space-y-4">
-                              {equiposFlash.map((eq, i) => (
-                                <div key={i} className="border border-brand-gold/30 rounded-xl p-4 bg-brand-cream/10">
-                                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                                    <select className="flex-1 min-w-[180px] p-2.5 border border-brand-gold/30 rounded-lg text-sm font-semibold" value={eq.equipo_id} onChange={e => actualizarEquipoFlash(i, 'equipo_id', e.target.value)}>
-                                      <option value="">+ Equipo nuevo (crear al vuelo)</option>
-                                      {recursosTorneo.equipos.map(eqR => <option key={eqR.id} value={eqR.id}>{eqR.nombre}</option>)}
-                                    </select>
-                                    {eq.equipo_id === '' && (
-                                      <input type="text" placeholder="Nombre del equipo nuevo" className="flex-1 min-w-[160px] p-2.5 border border-brand-gold/30 rounded-lg text-sm font-semibold" value={eq.nombre} onChange={e => actualizarEquipoFlash(i, 'nombre', e.target.value)} />
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                              <h4 className="text-sm font-bold text-brand-brown">Asistentes del día</h4>
+                              <span className="text-xs font-bold bg-brand-cream text-brand-brown px-3 py-1.5 rounded-full border border-brand-gold/30">{participantesFlash.filter(p => String(p.cedula || '').trim() !== '').length} asistentes → {equiposEstimadosFlash()} equipos</span>
+                            </div>
+                            <div className="space-y-2">
+                              {participantesFlash.map((p, i) => (
+                                <div key={i} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-start">
+                                  <div className="relative">
+                                    <input type="text" inputMode="numeric" placeholder="Cédula (autocompleta)" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.cedula} onChange={e => actualizarParticipanteFlash(i, 'cedula', e.target.value)} />
+                                    {sugerenciasCedula.visible && sugerenciasCedula.idx === i && sugerenciasCedula.items.length > 0 && (
+                                      <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-brand-gold/40 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                        {sugerenciasCedula.items.map(s => (
+                                          <button type="button" key={s.cedula + '-' + s.origen} onClick={() => elegirSugerenciaCedula(s)} className="w-full text-left px-3 py-2 text-xs hover:bg-brand-cream/40 border-b border-brand-gold/10">
+                                            <span className="font-bold text-brand-brown">{s.cedula}</span> — {s.nombre} {s.apellido}
+                                            {s.de_mi_liga && <span className="ml-2 bg-brand-rust/10 text-brand-rust px-2 py-0.5 rounded-full text-xs font-bold">Tu liga</span>}
+                                            {!s.de_mi_liga && <span className="ml-2 text-brand-brown/40">Otra liga</span>}
+                                          </button>
+                                        ))}
+                                      </div>
                                     )}
-                                    <button type="button" onClick={() => quitarEquipoFlash(i)} className="text-red-600 hover:bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold transition-colors" title="Quitar equipo">✕ Quitar</button>
                                   </div>
-                                  {eq.equipo_id === '' && (
-                                    <div className="space-y-2">
-                                      {eq.jugadores.map((j, jIdx) => (
-                                        <div key={jIdx} className="relative grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-                                          <div className="relative">
-                                            <input type="text" inputMode="numeric" placeholder="Cédula (autocompleta)" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={j.cedula} onChange={e => { actualizarJugadorFlash(i, jIdx, 'cedula', e.target.value); buscarSugerenciasCedula(e.target.value, i, jIdx); }} />
-                                            {sugerenciasCedula.visible && sugerenciasCedula.eqIdx === i && sugerenciasCedula.jugIdx === jIdx && sugerenciasCedula.items.length > 0 && (
-                                              <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-brand-gold/40 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                {sugerenciasCedula.items.map(s => (
-                                                  <button type="button" key={s.cedula + '-' + s.origen} onClick={() => elegirSugerenciaCedula(s)} className="w-full text-left px-3 py-2 text-xs hover:bg-brand-cream/40 border-b border-brand-gold/10">
-                                                    <span className="font-bold text-brand-brown">{s.cedula}</span> — {s.nombre} {s.apellido}
-                                                    {s.de_mi_liga && <span className="ml-2 bg-brand-rust/10 text-brand-rust px-2 py-0.5 rounded-full text-xs font-bold">Tu liga</span>}
-                                                    {!s.de_mi_liga && <span className="ml-2 text-brand-brown/40">Otra liga</span>}
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
-                                          <input type="text" placeholder="Nombre" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={j.nombre} onChange={e => actualizarJugadorFlash(i, jIdx, 'nombre', e.target.value)} />
-                                          <input type="text" placeholder="Apellido" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={j.apellido} onChange={e => actualizarJugadorFlash(i, jIdx, 'apellido', e.target.value)} />
-                                          <input type="date" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={j.fecha_nacimiento} onChange={e => actualizarJugadorFlash(i, jIdx, 'fecha_nacimiento', e.target.value)} title="Fecha de nacimiento" />
-                                          <div className="flex gap-2">
-                                            <input type="tel" placeholder="Teléfono" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={j.telefono} onChange={e => actualizarJugadorFlash(i, jIdx, 'telefono', e.target.value)} />
-                                            <button type="button" onClick={() => quitarJugadorFlash(i, jIdx)} className="text-red-500 hover:bg-red-50 rounded-lg px-2 text-sm font-bold transition-colors" title="Quitar jugador">✕</button>
-                                          </div>
-                                        </div>
-                                      ))}
-                                      <button type="button" onClick={() => agregarJugadorFlash(i)} className="text-xs font-bold text-brand-rust hover:text-brand-brown transition-colors">+ Agregar jugador</button>
-                                    </div>
-                                  )}
+                                  <input type="text" placeholder="Nombre" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.nombre} onChange={e => actualizarParticipanteFlash(i, 'nombre', e.target.value)} />
+                                  <input type="text" placeholder="Apellido" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.apellido} onChange={e => actualizarParticipanteFlash(i, 'apellido', e.target.value)} />
+                                  <input type="date" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.fecha_nacimiento} onChange={e => actualizarParticipanteFlash(i, 'fecha_nacimiento', e.target.value)} title="Fecha de nacimiento" />
+                                  <input type="tel" placeholder="Teléfono" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.telefono} onChange={e => actualizarParticipanteFlash(i, 'telefono', e.target.value)} />
+                                  <button type="button" onClick={() => quitarParticipanteFlash(i)} className="text-red-600 hover:bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold transition-colors" title="Quitar asistente">✕</button>
                                 </div>
                               ))}
                             </div>
-                            <button type="button" onClick={agregarEquipoFlash} className="mt-3 w-full border-2 border-dashed border-brand-gold/40 text-brand-brown/70 rounded-xl py-3 text-sm font-bold hover:border-brand-rust hover:text-brand-rust transition-colors">+ Agregar equipo</button>
+                            <button type="button" onClick={agregarParticipanteFlash} className="mt-3 w-full border-2 border-dashed border-brand-gold/40 text-brand-brown/70 rounded-xl py-3 text-sm font-bold hover:border-brand-rust hover:text-brand-rust transition-colors">+ Agregar asistente</button>
+                            <p className="text-xs text-brand-brown/50 mt-2 text-center">El sorteo Fisher-Yates reparte a los asistentes en equipos de ≈4 y arma el todos contra todos.</p>
                           </div>
 
                           <button type="submit" disabled={creandoFlash} className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{creandoFlash ? 'Sorteando...' : '🎲 Sortear y Crear Torneo Flash'}</button>
