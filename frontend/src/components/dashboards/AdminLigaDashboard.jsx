@@ -5,6 +5,7 @@ import autoTable from 'jspdf-autotable';
 import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import SistemaMensajeria from './SistemaMensajeria';
+import { useToasts, ToastContainer } from '../Toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -87,6 +88,9 @@ const descargarBlob = (blob, filename) => {
 
 export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [pestana, setPestana] = useState(localStorage.getItem('adminLigaPestana') || 'equipos');
+
+  // LOTE K: notificaciones tipo toast (reemplazan los alert nativos)
+  const { toasts, mostrarToast, cerrarToast } = useToasts();
   const [menuAbierto, setMenuAbierto] = useState(false);
 
 // Estado para saber qué botón específico se está transformando en bola
@@ -219,13 +223,13 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       const res = await fetchConToken('/mi-organizacion/logo', { method: 'PUT', body: JSON.stringify({ logo_url: base64 }) });
       const data = await res.json();
       if (res.ok) {
-        alert(data.mensaje || 'Logo actualizado correctamente');
+        mostrarToast(data.mensaje || 'Logo actualizado correctamente', 'exito');
         cargarOrganizacion(); // <-- Refresca la UI al instante
       } else {
-        alert(data.error || 'Error subiendo logo');
+        mostrarToast(data.error || 'Error subiendo logo', 'error');
       }
     } catch (e) { 
-      alert(e.message || 'Error al procesar la imagen del logo.'); 
+      mostrarToast(e.message || 'Error al procesar la imagen del logo.', 'error'); 
     }
   };
 
@@ -242,10 +246,10 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     const res = await fetchConToken('/jugadores/batch-fotos', { method: 'POST', body: JSON.stringify({ batch, equipo_id: equipoSeleccionado.id }) });
     const data = await res.json();
     if (res.ok) {
-      alert(data.mensaje); setMensaje('');
+      mostrarToast(data.mensaje, 'exito'); setMensaje('');
       const resEq = await fetchConToken(`/equipos/${equipoSeleccionado.id}/jugadores`);
       if (resEq.ok) setJugadores(await resEq.json());
-    } else { alert(data.error); setMensaje(''); }
+    } else { mostrarToast(data.error, 'error'); setMensaje(''); }
   };
 
   const cargarDatos = async () => {
@@ -359,7 +363,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
     setIsSubmitting(false);
 
-    if (res.ok) { setMensaje('Jugador guardado con éxito'); setFormJugador({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false }); setJugadorEditandoId(null); seleccionarEquipoModal(equipoSeleccionado); }    else { alert(data.error); }
+    if (res.ok) { setMensaje('Jugador guardado con éxito'); setFormJugador({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false }); setJugadorEditandoId(null); seleccionarEquipoModal(equipoSeleccionado); }    else { mostrarToast(data.error, 'error'); }
   
   };
 
@@ -369,7 +373,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       method: 'POST', body: JSON.stringify({ nombre: formReglas.nombre, descripcion: formReglas.descripcion, reglas: { puntos_victoria: parseInt(formReglas.puntos_victoria), puntos_empate: parseInt(formReglas.puntos_empate), puntos_derrota: parseInt(formReglas.puntos_derrota), limite_jugadores: parseInt(formReglas.limite_jugadores), meta_puntos: parseInt(formReglas.meta_puntos), tiempo_minutos: parseInt(formReglas.tiempo_minutos), tarjetas_suspension: parseInt(formReglas.tarjetas_suspension), esferas_por_equipo: parseInt(formReglas.esferas_por_equipo), politica_clasificacion: formReglas.politica_clasificacion }})
     });
     const data = await res.json();
-    if (res.ok) { setMensaje('Plantilla guardada.'); cargarDatos(); } else { alert(data.error); }
+    if (res.ok) { setMensaje('Plantilla guardada.'); cargarDatos(); } else { mostrarToast(data.error, 'error'); }
   };
 
   const validarDisponibilidadEquipos = (equipo1, equipo2, fechaHora) => {
@@ -379,7 +383,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       p.equipo_local_id == equipo2 || p.equipo_visita_id == equipo2)
     );
     if (conflicto) {
-      alert(`Conflicto: Al menos uno de los equipos ya tiene un encuentro agendado a esta hora.`);
+      mostrarToast('Conflicto: Al menos uno de los equipos ya tiene un encuentro agendado a esta hora.', 'error');
       return false;
     }
     return true;
@@ -387,7 +391,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   const guardarPartidoSuelto = async (e) => {
     e.preventDefault();
-    if (formPartidoSuelto.equipo_local_id === formPartidoSuelto.equipo_visita_id) return alert('El equipo local y visitante no pueden ser el mismo.');
+    if (formPartidoSuelto.equipo_local_id === formPartidoSuelto.equipo_visita_id) return mostrarToast('El equipo local y visitante no pueden ser el mismo.', 'error');
+    if (formPartidoSuelto.fecha_hora && formPartidoSuelto.fecha_hora < ahoraIsoLocal) return mostrarToast('La fecha y hora del encuentro no puede estar en el pasado.', 'error');
     if (!validarDisponibilidadEquipos(formPartidoSuelto.equipo_local_id, formPartidoSuelto.equipo_visita_id, formPartidoSuelto.fecha_hora)) return;
     const res = await fetchConToken('/partidos-sueltos', { method: 'POST', body: JSON.stringify(formPartidoSuelto) });
     const data = await res.json();
@@ -395,7 +400,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       setMensaje('Partido agendado con éxito.'); 
       setFormPartidoSuelto({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '', plantilla_id: '' }); 
       cargarDatos();
-    } else { alert(data.error); }
+    } else { mostrarToast(data.error, 'error'); }
   };
 
   const iniciarEdicionJugador = (j) => {
@@ -407,7 +412,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     const nuevoEstado = estadoActual === 'Activo' ? 'Inactivo' : 'Activo';
     if (nuevoEstado === 'Inactivo' && equipoSeleccionado.capitan_id === id) {
       const otrosActivos = jugadores.filter(j => j.id !== id && j.estado === 'Activo');
-      if (otrosActivos.length === 0) return alert('No puedes desactivar al único jugador (capitán). Registra a otro primero.');
+      if (otrosActivos.length === 0) return mostrarToast('No puedes desactivar al único jugador (capitán). Registra a otro primero.', 'error');
       setModalCapitan({ visible: true, viejoId: id, equipoId: equipoSeleccionado.id, candidatos: otrosActivos, nuevoCapitanId: otrosActivos[0].id });
       return;
     }
@@ -424,15 +429,15 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     });
     const data = await res.json();
     if (res.ok) {
-      alert(data.mensaje || 'Capitán reemplazado con éxito.');
+      mostrarToast(data.mensaje || 'Capitán reemplazado con éxito.', 'exito');
       setModalCapitan({ visible: false, viejoId: null, equipoId: null, candidatos: [], nuevoCapitanId: '' });
       seleccionarEquipoModal(equipoSeleccionado);
       cargarDatos();
-    } else alert(data.error || 'Error al reemplazar capitán.');
+    } else mostrarToast(data.error || 'Error al reemplazar capitán.', 'error');
   };
 
   const generarEstructuraPartidosPersonalizada = () => {
-    if (equiposSeleccionadosTorneo.length < 2) return alert('Debes seleccionar al menos 2 equipos.');
+    if (equiposSeleccionadosTorneo.length < 2) return mostrarToast('Debes seleccionar al menos 2 equipos.', 'error');
     let nuevosPartidos = [];
     const defaultSede = recursosTorneo.sedes[0]?.id || '';
     const defaultArbitro = recursosTorneo.arbitros.length === 1 ? recursosTorneo.arbitros[0].id : '';
@@ -459,19 +464,21 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       }
     });
 
-    if(nuevosPartidos.length === 0) return alert('No hay suficientes equipos por categoría.');
+    if(nuevosPartidos.length === 0) return mostrarToast('No hay suficientes equipos por categoría.', 'error');
     setPartidosIniciales(nuevosPartidos); setPasoTorneo(3);
   };
 
   const guardarTorneoCompleto = async (e) => {
     e.preventDefault();
+    if (formTorneo.fecha_fin && formTorneo.fecha_fin < formTorneo.fecha_inicio) return mostrarToast('La fecha de cierre no puede ser anterior a la fecha de inicio.', 'error');
     const res = await fetchConToken('/torneos', { method: 'POST', body: JSON.stringify({ ...formTorneo, categorias_permitidas: [`${formTorneo.categoria} - ${formTorneo.tipo_genero}`], partidos_iniciales: partidosIniciales }) });
     const data = await res.json();
-    if (res.ok) { setMensaje('Torneo creado.'); setPartidosIniciales([]); setPasoTorneo(1); setSubPestanaTorneo('lista'); cargarDatos(); } else { alert(data.error); }
+    if (res.ok) { setMensaje('Torneo creado.'); setPartidosIniciales([]); setPasoTorneo(1); setSubPestanaTorneo('lista'); cargarDatos(); } else { mostrarToast(data.error, 'error'); }
   };
 
   const actualizarTorneoEdicion = async (e) => {
     e.preventDefault();
+    if (torneoEditando.fecha_fin && torneoEditando.fecha_fin < torneoEditando.fecha_inicio) return mostrarToast('La fecha de cierre no puede ser anterior a la fecha de inicio.', 'error');
     const res = await fetchConToken(`/torneos/${torneoEditando.id}`, { method: 'PUT', body: JSON.stringify({ nombre: torneoEditando.nombre, fecha_inicio: torneoEditando.fecha_inicio, fecha_fin: torneoEditando.fecha_fin, estado: torneoEditando.reglas?.estado || 'Activo' }) });
     if (res.ok) { setMensaje('Torneo actualizado.'); setTorneoEditando(null); cargarDatos(); }
   };
@@ -480,13 +487,13 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     e.preventDefault();
     const res = await fetchConToken('/crear-credencial', { method: 'POST', body: JSON.stringify(formCredencial) });
     const data = await res.json();
-    if (res.ok) { setMensaje(data.mensaje); setFormCredencial({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' }); cargarDatos(); } else { alert(data.error); }
+    if (res.ok) { setMensaje(data.mensaje); setFormCredencial({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' }); cargarDatos(); } else { mostrarToast(data.error, 'error'); }
   };
 
   const resetearPasswordOperativo = async (userId, cedula, nombre) => {
     if (!window.confirm(`¿Restablecer contraseña para ${nombre}?`)) return;
     const res = await fetchConToken(`/usuarios/${userId}/reset-password`, { method: 'POST' });
-    const data = await res.json(); if (res.ok) alert(data.mensaje); else alert(data.error);
+    const data = await res.json(); if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error, 'error');
   };
 
   const reasignarDelegado = async (equipoId, delegadoId) => {
@@ -497,11 +504,12 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const cambiarClaveObligatoria = async (e) => {
     e.preventDefault();
     const res = await fetchConToken('/cambiar-password-obligatorio', { method: 'POST', body: JSON.stringify({ nueva_password: nuevaClave }) });
-    if (res.ok) { alert('Contraseña actualizada.'); setDebeCambiarPass(false); }
+    if (res.ok) { mostrarToast('Contraseña actualizada.', 'exito'); setDebeCambiarPass(false); }
   };
 
 const confirmarReagendar = async (e) => {
     e.preventDefault();
+    if (modalReagendar.nuevaFecha && modalReagendar.nuevaFecha < ahoraIsoLocal) return mostrarToast('La nueva fecha y hora no puede estar en el pasado.', 'error');
     try {
       const res = await fetchConToken(`/partidos/${modalReagendar.partido.id}/reagendar`, { 
         method: 'PUT', 
@@ -511,19 +519,20 @@ const confirmarReagendar = async (e) => {
       const data = await res.json();
       
       if (res.ok) { 
-        alert('Partido reagendado exitosamente.'); 
+        mostrarToast('Partido reagendado exitosamente.', 'exito'); 
         setModalReagendar({ visible: false, partido: null, nuevaFecha: '' });
         cargarDatos(); 
       } else {
-        alert(data.error || 'Error al intentar reagendar el partido.');
+        mostrarToast(data.error || 'Error al intentar reagendar el partido.', 'error');
       }
     } catch (error) {
-      alert('Error de conexión con el servidor al reagendar.');
+      mostrarToast('Error de conexión con el servidor al reagendar.', 'error');
     }
   };
 
   const confirmarEditarPartido = async (e) => {
     e.preventDefault();
+    if (modalEditarPartido.fecha_hora && modalEditarPartido.fecha_hora < ahoraIsoLocal) return mostrarToast('La nueva fecha y hora no puede estar en el pasado.', 'error');
     const res = await fetchConToken(`/partidos/${modalEditarPartido.partido.id}/editar-oficiales`, { 
       method: 'PUT', 
       body: JSON.stringify({ 
@@ -535,10 +544,10 @@ const confirmarReagendar = async (e) => {
     });
     const data = await res.json();
     if(res.ok) { 
-      alert(data.mensaje); 
+      mostrarToast(data.mensaje, 'exito'); 
       setModalEditarPartido({ visible: false, partido: null, fecha_hora: '', arbitro_id: '', anotador_id: '', sede_id: '' }); 
       cargarDatos(); 
-    } else { alert(data.error); }
+    } else { mostrarToast(data.error, 'error'); }
   };
 
   const exportarPlanillaFormato = async (partidoId, formato) => {
@@ -573,7 +582,7 @@ const confirmarReagendar = async (e) => {
   };
 
   const exportarReporteEstadisticas = (formato) => {
-    if (!estadisticas) return alert('No hay datos estad��sticos cargados.');
+    if (!estadisticas) return mostrarToast('No hay datos estadísticos cargados.', 'error');
     const nombreArchivo = `Reporte_Estadisticas_Liga_${temporadaFiltro}`;
 
     if (formato === 'json') {
@@ -613,10 +622,10 @@ const confirmarReagendar = async (e) => {
     const res = await fetchConToken(`/equipos/${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (res.ok) {
-      alert(data.mensaje);
+      mostrarToast(data.mensaje, 'exito');
       if (equipoSeleccionado?.id === id) setEquipoSeleccionado(null);
       cargarDatos();
-    } else alert(data.error);
+    } else mostrarToast(data.error, 'error');
   };
 
   // Íconos SVG para la barra lateral
@@ -669,6 +678,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
+      <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
 
       {/* MODALES REUTILIZABLES */}
       {modalCapitan.visible && (
@@ -849,7 +859,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto"> {/* INSERCIÓN: overflow-y-auto */}
         
         {/* HEADER SUPERIOR */}
-        <header className="h-16 sm:h-20 bg-white border-b border-brand-gold/20 flex items-center justify-between px-6 shadow-sm shrink-0">
+        <header className="h-16 sm:h-20 bg-white border-b border-brand-gold/20 flex items-center justify-between px-4 sm:px-6 shadow-sm shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={() => setMenuAbierto(true)} className="md:hidden p-2 text-brand-brown hover:bg-brand-cream rounded-md">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -906,7 +916,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <h3 className="text-lg font-bold text-brand-brown">Listado de Sedes</h3>
                     <div className="relative w-full sm:w-64">
                       <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                      <input type="text" placeholder="Buscar sede..." className="w-full pl-10 pr-4 py-2 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={busquedaSedes} onChange={e => setBusquedaSedes(e.target.value)} />
+                      <input type="text" placeholder="Buscar sede..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaSedes} onChange={e => setBusquedaSedes(e.target.value)} />
                     </div>
                   </div>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
@@ -1028,7 +1038,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <h3 className="text-lg font-bold text-brand-brown">Listado de Equipos</h3>
                     <div className="relative w-full sm:w-64">
                       <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                      <input type="text" placeholder="Buscar equipo..." className="w-full pl-10 pr-4 py-2 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={busquedaEquipos} onChange={e => setBusquedaEquipos(e.target.value)} />
+                      <input type="text" placeholder="Buscar equipo..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaEquipos} onChange={e => setBusquedaEquipos(e.target.value)} />
                     </div>
                   </div>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
@@ -1195,7 +1205,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <form onSubmit={guardarCredencial} className="space-y-4 bg-brand-cream/20 p-5 rounded-lg border border-brand-gold/20">
                       <div>
                         <label className="block text-xs font-bold text-brand-brown uppercase mb-1">Cédula</label>
-                        <input type="text" placeholder="Ej: 12345678" className="w-full p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formCredencial.cedula} onChange={e => setFormCredencial({...formCredencial, cedula: e.target.value.replace(/\D/g, '')})} onBlur={async (e) => { const ced = e.target.value; if(ced.length >= 5) { const res = await fetchConToken(`/verificar-cedula/${ced}`); const data = await res.json(); if(data.existe) { alert(`✅ Usuario encontrado: ${data.usuario.nombre} ${data.usuario.apellido}.`); setFormCredencial(prev => ({...prev, nombre: data.usuario.nombre, apellido: data.usuario.apellido, email: data.usuario.email})); } } }} required />
+                        <input type="text" placeholder="Ej: 12345678" className="w-full p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formCredencial.cedula} onChange={e => setFormCredencial({...formCredencial, cedula: e.target.value.replace(/\D/g, '')})} onBlur={async (e) => { const ced = e.target.value; if(ced.length >= 5) { const res = await fetchConToken(`/verificar-cedula/${ced}`); const data = await res.json(); if(data.existe) { mostrarToast(`✅ Usuario encontrado: ${data.usuario.nombre} ${data.usuario.apellido}.`, 'exito'); setFormCredencial(prev => ({...prev, nombre: data.usuario.nombre, apellido: data.usuario.apellido, email: data.usuario.email})); } } }} required />
                       </div>
 
                       <div>
@@ -1236,7 +1246,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <h3 className="text-lg font-bold text-brand-brown">Usuarios Operativos en la Liga</h3>
                       <div className="relative w-full sm:w-64">
                         <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                        <input type="text" placeholder="Buscar credencial..." className="w-full pl-10 pr-4 py-2 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={busquedaCredenciales} onChange={e => setBusquedaCredenciales(e.target.value)} />
+                        <input type="text" placeholder="Buscar credencial..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaCredenciales} onChange={e => setBusquedaCredenciales(e.target.value)} />
                       </div>
                     </div>
 
@@ -1259,7 +1269,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               <td className="p-3 text-xs text-brand-brown/70"><div>{u.cedula}</div><div>{u.email}</div></td>
                               <td className="p-3 flex justify-center gap-2">
                                 <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm">Reset Clave</button>
-                                <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json(); if (res.ok) alert(data.mensaje); else alert(data.error); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
+                                <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json(); if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error, 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
                               </td>
                             </tr>
                           ))}
@@ -1423,7 +1433,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   ))}
                 </div>
 
-<div className="p-6">
+<div className="p-4 sm:p-6">
   {/* SUB PESTAÑA LISTA */}
                   {subPestanaTorneo === 'lista' && (
                     <div className="space-y-6">
@@ -1557,7 +1567,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </div>
 
                           <div className="flex justify-end pt-4">
-                            <button type="button" onClick={() => { if (!formTorneo.nombre || !formTorneo.fecha_inicio || !formTorneo.fecha_fin || !formTorneo.plantilla_id) { alert('Completa todos los campos'); return; } if(categoriasSeleccionadas.length === 0) return alert('Selecciona al menos una categoría'); setPasoTorneo(2); }} className="bg-brand-rust text-white px-8 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">Continuar al Draft</button>
+                            <button type="button" onClick={() => { if (!formTorneo.nombre || !formTorneo.fecha_inicio || !formTorneo.fecha_fin || !formTorneo.plantilla_id) { mostrarToast('Completa todos los campos', 'error'); return; } if (formTorneo.fecha_fin < formTorneo.fecha_inicio) { mostrarToast('La fecha de cierre no puede ser anterior a la de inicio.', 'error'); return; } if(categoriasSeleccionadas.length === 0) return mostrarToast('Selecciona al menos una categoría', 'error'); setPasoTorneo(2); }} className="bg-brand-rust text-white px-8 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">Continuar al Draft</button>
                           </div>
                         </div>
                       )}
@@ -1605,7 +1615,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                   <div className="text-xs font-bold text-brand-blue uppercase tracking-wider mb-3 pb-2 border-b border-brand-cream">{p.fase}</div>
                                   
                                   {esPrimeraFase ? (
-                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                                       <div className="text-center p-3 bg-brand-cream/30 rounded-lg border border-brand-gold/20"><select className="w-full text-sm font-bold bg-transparent focus:outline-none" value={p.local_id} onChange={e => { const arr = [...partidosIniciales]; arr[index].local_id = e.target.value; setPartidosIniciales(arr); }}><option value="">-- Local --</option>{equiposSeleccionadosTorneo.map(idEq => { const eqObj = equipos.find(x => x.id === idEq); return <option key={idEq} value={idEq}>{eqObj?.nombre}</option>; })}</select></div>
                                       <div className="text-center p-3 bg-brand-cream/30 rounded-lg border border-brand-gold/20"><select className="w-full text-sm font-bold bg-transparent focus:outline-none" value={p.visita_id} onChange={e => { const arr = [...partidosIniciales]; arr[index].visita_id = e.target.value; setPartidosIniciales(arr); }}><option value="">-- Visita --</option>{equiposSeleccionadosTorneo.map(idEq => { const eqObj = equipos.find(x => x.id === idEq); return <option key={idEq} value={idEq}>{eqObj?.nombre}</option>; })}</select></div>
                                     </div>
@@ -1634,12 +1644,12 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                   {/* SUB PESTAÑA PARTIDO SUELTO */}
                   {subPestanaTorneo === 'partido-suelto' && (
-                    <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl border border-brand-gold/30 shadow-sm animate-fade-in">
+                    <div className="max-w-2xl mx-auto bg-white p-4 sm:p-8 rounded-xl border border-brand-gold/30 shadow-sm animate-fade-in">
                       <h3 className="text-xl font-bold text-brand-brown mb-2 text-center">Agendar Encuentro Rápido</h3>
                       <p className="text-sm text-brand-brown/70 text-center mb-6">Ideal para amistosos o pruebas. Se archivará en el historial global sin afectar puntuaciones de torneos.</p>
                       
                       <form onSubmit={guardarPartidoSuelto} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formPartidoSuelto.equipo_local_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_local_id: e.target.value})} required>
                             <option value="">-- Local --</option>
                             {recursosTorneo.equipos.map(eq => (
@@ -1658,7 +1668,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </select>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.sede_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, sede_id: e.target.value})} required>
                             <option value="">-- Instalación --</option>
                             {recursosTorneo.sedes.map(s => (
@@ -1677,7 +1687,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </select>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.arbitro_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, arbitro_id: e.target.value})} required>
                             <option value="">-- Árbitro Asignado --</option>
                             {recursosTorneo.arbitros.map(a => (
