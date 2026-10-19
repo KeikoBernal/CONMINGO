@@ -30,7 +30,14 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // LOTE M (PWA offline): una navegación sin conexión responde con el
+        // index.html precacheado (el shell de la app) en vez del error del navegador.
+        navigateFallback: 'index.html',
+        // LOTE M: Workbox no cachea archivos mayores a 2 MiB por defecto; el bundle
+        // principal (jsPDF + FullCalendar) puede superar ese límite y romper el modo
+        // offline, así que lo subimos a 5 MiB.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
       }
     })
   ],

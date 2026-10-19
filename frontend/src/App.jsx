@@ -7,6 +7,7 @@ import ArbitroDashboard from './components/dashboards/ArbitroDashboard';
 import DelegadoDashboard from './components/dashboards/DelegadoDashboard';
 import AnotadorDashboard from './components/dashboards/AnotadorDashboard';
 import PantallaPuntajes from './components/dashboards/PantallaPuntajes';
+import PantallaOffline, { useConexion } from './components/PantallaOffline';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -29,6 +30,10 @@ export default function App() {
   const [bloqueadoHasta, setBloqueadoHasta] = useState(null);
 
   const enProcesoLoginRef = useRef(false);
+
+  // LOTE M (PWA offline): escucha los eventos online/offline del navegador y
+  // permite verificar la conexión real contra el backend (ver PantallaOffline.jsx).
+  const { enLinea, verificando, verificarConexion } = useConexion(API_URL);
 
   useEffect(() => {
     if (vista === 'inicio') {
@@ -88,6 +93,13 @@ export default function App() {
 
     return () => subscription?.unsubscribe();
   }, []);
+
+  // LOTE M (PWA offline): sin conexión, toda la app (login, dashboards y pizarra
+  // pública) muestra la pantalla offline en lugar de errores de red crípticos.
+  // El hook useConexion la retira sola al volver la señal (evento 'online').
+  if (!enLinea) {
+    return <PantallaOffline verificando={verificando} onReintentar={verificarConexion} />;
+  }
 
   // FIX #2: retorno temprano de la vista pública, ahora ubicado DESPUÉS de todos los hooks.
   if (new URLSearchParams(window.location.search).get('vista') === 'puntajes') {
