@@ -161,8 +161,8 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'EDITAR_OFICIALES_PARTIDO' THEN 'Modificó los oficiales o la sede de un partido.'
         WHEN a.accion = 'CANCELAR_PARTIDO' THEN 'Canceló un partido.'
         WHEN a.accion = 'FORZAR_RESULTADO' THEN 'Forzó el resultado de un partido.'
-        WHEN a.accion = 'CREAR_TORNEO_FLASH' THEN 'Creó un torneo flash: sorteo aleatorio y calendario todos contra todos.'
-        WHEN a.accion = 'POST /torneos-flash' THEN 'Creó un torneo flash (equipos, sorteo y calendario en un paso).'
+        WHEN a.accion = 'CREAR_TORNEO_FLASH' THEN 'Creó un torneo flash: sorteó a los asistentes, armó los equipos y generó el calendario todos contra todos.'
+        WHEN a.accion = 'POST /torneos-flash' THEN 'Creó un torneo flash (asistentes, sorteo de equipos y calendario en un paso).'
         WHEN a.accion LIKE 'CREAR_%' THEN 'Creó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' ')) || '.'
         WHEN a.accion LIKE 'EDITAR_%' OR a.accion LIKE 'ACTUALIZAR_%' THEN 'Actualizó un registro de ' || LOWER(REPLACE(REPLACE(SUBSTRING(a.accion FROM 7), '_', ' '), 'actualizar ', '')) || '.'
         WHEN a.accion LIKE 'ELIMINAR_%' THEN 'Eliminó un registro de ' || LOWER(REPLACE(SUBSTRING(a.accion FROM 9), '_', ' ')) || '.'
@@ -999,17 +999,16 @@ router.get('/autocomplete/cedula', async (req, res) => {
   }
 });
 
-// POST /torneos-flash — crea equipos y jugadores al vuelo si hace falta,
-// sortea el orden con Fisher-Yates, genera el calendario todos contra todos
-// y agenda los partidos con horarios secuenciales.
+// POST /torneos-flash — recibe a los asistentes del día, los sortea con
+// Fisher-Yates para armar los equipos (el sistema calcula cuántos), sortea
+// el orden de los equipos para los cruces y genera el calendario todos
+// contra todos con horarios secuenciales. Pensado para jornadas de un día.
 router.post('/torneos-flash', async (req, res) => {
-  const { nombre, sede_id, fecha_hora_inicio, minutos_entre_partidos, plantilla_id, arbitro_id, anotador_id, ida_y_vuelta, equipos } = req.body;
+  const { nombre, sede_id, fecha_hora_inicio, minutos_entre_partidos, plantilla_id, arbitro_id, anotador_id, ida_y_vuelta, jugadores } = req.body;
   try {
     const orgId = await obtenerOrgId(req.usuario);
     const ahoraLocalIso = obtenerHoraCaracas();
 
-    if (!Array.isArray(equipos) || equipos.length < 2) return res.status(400).json({ error: 'Se necesitan al menos 2 equipos para el torneo flash.' });
-    if (equipos.length > 12) return res.status(400).json({ error: 'Un torneo flash admite como máximo 12 equipos.' });
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(fecha_hora_inicio || ''))) return res.status(400).json({ error: 'La fecha y hora de inicio tiene un formato inválido.' });
     if (fecha_hora_inicio < ahoraLocalIso) return res.status(400).json({ error: 'La fecha y hora de inicio no puede estar en el pasado.' });
     const minutos = parseInt(minutos_entre_partidos) || 45;
@@ -1026,47 +1025,73 @@ router.post('/torneos-flash', async (req, res) => {
       if (parseInt(ofChk.rows[0].n) !== idsOf.length) return res.status(400).json({ error: 'Uno o más oficiales indicados no pertenecen a tu organización.' });
     }
 
-    // 1. REGISTRO RÁPIDO: equipos existentes o creados al vuelo con su nómina.
-    const equiposFinales = [];
+    // 1. ASISTENTES: la lista de personas se arma en el momento (la cédula
+    // autocompleta los datos de quien ya esté registrado en el sistema).
+    if (!Array.isArray(jugadores) || jugadores.length < 4) return res.status(400).json({ error: 'Se necesitan al menos 4 asistentes para armar el torneo flash.' });
+    if (jugadores.length > 48) return res.status(400).json({ error: 'Un torneo flash admite como máximo 48 asistentes.' });
     const cedulasVistas = new Set();
-    for (const eq of equipos) {
-      if (eq.equipo_id) {
-        const eqRes = await db.query('SELECT id, nombre, capitan_id FROM public.equipos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2) AND estado = \'Activo\'', [eq.equipo_id, orgId]);
-        if (eqRes.rows.length === 0) return res.status(400).json({ error: 'Uno de los equipos indicados no existe en tu organización.' });
-        equiposFinales.push({ id: eqRes.rows[0].id, nombre: eqRes.rows[0].nombre, capitan_id: eqRes.rows[0].capitan_id });
-      } else {
-        if (!eq.nombre || !String(eq.nombre).trim()) return res.status(400).json({ error: 'Todo equipo nuevo del torneo flash necesita nombre.' });
-        const nuevoEq = await db.query(
-          'INSERT INTO public.equipos (nombre, categoria, tipo_genero, organizacion_id) VALUES ($1, \'Flash\', \'Mixto\', $2) RETURNING id, nombre',
-          [formatearTexto(eq.nombre), orgId]
-        );
-        let dorsalAuto = 1;
-        for (const jug of (eq.jugadores || [])) {
-          const ced = String(jug.cedula || '').trim();
-          if (!/^\d{5,8}$/.test(ced)) return res.status(400).json({ error: 'La cédula ' + (ced || 'vacía') + ' debe ser numérica de 5 a 8 dígitos.' });
-          if (cedulasVistas.has(ced)) return res.status(400).json({ error: 'La cédula ' + ced + ' está repetida en el registro del torneo flash.' });
-          cedulasVistas.add(ced);
-          const dorsalNum = jug.dorsal ? parseInt(jug.dorsal) : dorsalAuto++;
-          await db.query(
-            'INSERT INTO public.jugadores (equipo_id, cedula, nombre, apellido, fecha_nacimiento, correo, telefono, numero_dorsal, estado) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, \'Activo\')',
-            [nuevoEq.rows[0].id, ced, formatearTexto(jug.nombre), formatearTexto(jug.apellido), jug.fecha_nacimiento || null, jug.correo || null, jug.telefono || null, dorsalNum]
-          );
-        }
-        equiposFinales.push({ id: nuevoEq.rows[0].id, nombre: nuevoEq.rows[0].nombre, capitan_id: null });
-      }
+    for (const jug of jugadores) {
+      const ced = String(jug.cedula || '').trim();
+      if (!/^\d{5,8}$/.test(ced)) return res.status(400).json({ error: 'La cédula ' + (ced || 'vacía') + ' debe ser numérica de 5 a 8 dígitos.' });
+      if (!String(jug.nombre || '').trim()) return res.status(400).json({ error: 'El asistente con cédula ' + ced + ' necesita su nombre.' });
+      if (cedulasVistas.has(ced)) return res.status(400).json({ error: 'La cédula ' + ced + ' está repetida en la lista de asistentes.' });
+      cedulasVistas.add(ced);
     }
+    const totalAsistentes = jugadores.length;
+    const nombrePersona = (jug) => formatearTexto(jug.nombre) + (String(jug.apellido || '').trim() ? ' ' + formatearTexto(jug.apellido) : '');
 
-    // 2. SORTEO FISHER-YATES: mezcla imparcial del orden de los equipos.
-    const sorteo = [...equiposFinales];
+    // 2. NÚMERO DE EQUIPOS: lo calcula el sistema según los asistentes,
+    // apuntando a 4 jugadores por equipo.
+    const numEquipos = Math.max(2, Math.round(totalAsistentes / 4));
+
+    // 3. SORTEO FISHER-YATES: mezcla imparcial de los asistentes; el orden
+    // resultante define quién queda en cada equipo.
+    const sorteo = [...jugadores];
     for (let i = sorteo.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [sorteo[i], sorteo[j]] = [sorteo[j], sorteo[i]];
     }
 
-    // 3. TODOS CONTRA TODOS (método del círculo). Con número impar de equipos,
+    // 4. ARMADO DE EQUIPOS: reparto parejo (los primeros equipos reciben el
+    // sobrante cuando la cuenta no es exacta). Se crean al vuelo con
+    // categoría Flash y el primer jugador sorteado de cada uno queda de capitán.
+    const prefijoEquipos = formatearTexto(nombre || 'Flash');
+    const base = Math.floor(totalAsistentes / numEquipos);
+    const sobrante = totalAsistentes % numEquipos;
+    const equiposFinales = [];
+    let cursor = 0;
+    for (let e = 0; e < numEquipos; e++) {
+      const tam = base + (e < sobrante ? 1 : 0);
+      const miembros = sorteo.slice(cursor, cursor + tam);
+      cursor += tam;
+      const nuevoEq = await db.query(
+        'INSERT INTO public.equipos (nombre, categoria, tipo_genero, organizacion_id) VALUES ($1, \'Flash\', \'Mixto\', $2) RETURNING id, nombre',
+        [prefijoEquipos + ' · Equipo ' + (e + 1), orgId]
+      );
+      let capitanId = null;
+      let dorsalAuto = 1;
+      for (const jug of miembros) {
+        const jugRes = await db.query(
+          'INSERT INTO public.jugadores (equipo_id, cedula, nombre, apellido, fecha_nacimiento, correo, telefono, numero_dorsal, estado) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, \'Activo\') RETURNING id',
+          [nuevoEq.rows[0].id, String(jug.cedula || '').trim(), formatearTexto(jug.nombre), formatearTexto(jug.apellido), jug.fecha_nacimiento || null, jug.correo || null, jug.telefono || null, dorsalAuto++]
+        );
+        if (capitanId === null) capitanId = jugRes.rows[0].id;
+      }
+      equiposFinales.push({ id: nuevoEq.rows[0].id, nombre: nuevoEq.rows[0].nombre, capitan_id: capitanId, jugadores: miembros.map(nombrePersona) });
+    }
+
+    // 5. SORTEO DE ENFRENTAMIENTOS: segunda mezcla Fisher-Yates sobre los
+    // equipos; el orden define las parejas del todos contra todos.
+    const ordenEquipos = [...equiposFinales];
+    for (let i = ordenEquipos.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ordenEquipos[i], ordenEquipos[j]] = [ordenEquipos[j], ordenEquipos[i]];
+    }
+
+    // 6. TODOS CONTRA TODOS (método del círculo). Con número impar de equipos,
     // un "LIBRE" rota para que cada jornada descanse un equipo distinto.
-    const lista = [...sorteo];
-    if (lista.length % 2 === 1) lista.push({ id: null, nombre: 'LIBRE', capitan_id: null });
+    const lista = [...ordenEquipos];
+    if (lista.length % 2 === 1) lista.push({ id: null, nombre: 'LIBRE', capitan_id: null, jugadores: [] });
     const jornadasIda = lista.length - 1;
     const mitad = lista.length / 2;
     const rotacion = [...lista];
@@ -1093,7 +1118,7 @@ router.post('/torneos-flash', async (req, res) => {
       encuentros.push(...vuelta);
     }
 
-    // 4. HORARIOS SECUENCIALES (una cancha): un partido tras otro, sin
+    // 7. HORARIOS SECUENCIALES (una cancha): un partido tras otro, sin
     // aritmética de zonas horarias (las fechas son hora de Venezuela naive).
     const [fechaStr, horaStr] = String(fecha_hora_inicio).split('T');
     const [hh, mi] = horaStr.split(':').map(Number);
@@ -1109,7 +1134,7 @@ router.post('/torneos-flash', async (req, res) => {
     const fechasEncuentros = encuentros.map((e, idx) => fechaDeMinutos(inicioMinutos + idx * minutos));
     const fechaFin = fechasEncuentros[fechasEncuentros.length - 1].split('T')[0];
 
-    // 5. PLANTILLA DE REGLAS (opcional en flash; por defecto reglas estándar).
+    // 8. PLANTILLA DE REGLAS (opcional en flash; por defecto reglas estándar).
     let reglasJson = { estado: 'Activo', esferas_por_equipo: 8, limite_jugadores: 4 };
     if (plantilla_id) {
       const reglaDb = await db.query('SELECT reglas FROM public.plantillas_reglas WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2 OR organizacion_id IS NULL)', [plantilla_id, orgId]);
@@ -1142,12 +1167,13 @@ router.post('/torneos-flash', async (req, res) => {
 
     await notificarInvolucrados(encuentros.map((e, idx) => ({ local_id: e.local.id, visita_id: e.visita.id, arbitro_id: arbitro_id || null, anotador_id: anotador_id || null, fecha_hora: fechasEncuentros[idx], fase: 'Jornada ' + e.jornada })), orgId, req.usuario.id);
 
-    await registrarAuditoria(req.usuario.id, 'CREAR_TORNEO_FLASH', 'torneos', null, { id: torneoId, nombre: resTorneo.rows[0].nombre, equipos: equiposFinales.length, partidos: encuentros.length, orden_sorteo: sorteo.map(e => e.nombre) }, req.ip, orgId);
+    await registrarAuditoria(req.usuario.id, 'CREAR_TORNEO_FLASH', 'torneos', null, { id: torneoId, nombre: resTorneo.rows[0].nombre, asistentes: totalAsistentes, equipos: numEquipos, partidos: encuentros.length, orden_sorteo: sorteo.map(nombrePersona) }, req.ip, orgId);
 
     res.status(201).json({
-      mensaje: 'Torneo flash creado: ' + equiposFinales.length + ' equipos, ' + encuentros.length + ' partidos agendados.',
+      mensaje: 'Torneo flash creado: ' + totalAsistentes + ' asistentes repartidos en ' + numEquipos + ' equipos, ' + encuentros.length + ' partidos agendados.',
       torneo: resTorneo.rows[0],
-      sorteo: sorteo.map((e, i) => ({ posicion: i + 1, equipo: e.nombre })),
+      sorteo: sorteo.map((p, i) => ({ posicion: i + 1, persona: nombrePersona(p) })),
+      equipos: ordenEquipos.map(eq => ({ nombre: eq.nombre, jugadores: eq.jugadores })),
       fixture
     });
   } catch (error) {
