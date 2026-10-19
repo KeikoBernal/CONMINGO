@@ -413,4 +413,74 @@ router.post('/partidos/:id/sanciones', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error al registrar la sanción.' }); }
 });
 
+// ============================================================
+// LOTE N: INCIDENCIAS DEL PARTIDO (módulo del árbitro)
+// ============================================================
+router.get('/partidos/:id/incidencias', async (req, res) => {
+  const partidoId = req.params.id;
+  try {
+    const acceso = await puedeAccederPartido(req, partidoId);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    const resultado = await db.query(
+      `SELECT i.id, i.tipo, i.descripcion, i.created_at, i.jugador_id,
+              j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal,
+              u.nombre AS autor_nombre, u.apellido AS autor_apellido
+       FROM public.incidencias_partido i
+       LEFT JOIN public.jugadores j ON i.jugador_id = j.id
+       LEFT JOIN public.usuarios u ON i.usuario_id = u.id
+       WHERE i.partido_id = $1
+       ORDER BY i.created_at DESC`,
+      [partidoId]
+    );
+    res.json(resultado.rows);
+  } catch (error) {
+    console.error('Error al obtener incidencias:', error);
+    res.status(500).json({ error: 'Error al obtener las incidencias del partido.' });
+  }
+});
+
+router.post('/partidos/:id/incidencias', async (req, res) => {
+  const partidoId = req.params.id;
+  const { tipo, descripcion, jugador_id } = req.body;
+  try {
+    const acceso = await puedeAccederPartido(req, partidoId);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    // Solo el árbitro asignado (o un superadmin) puede reportar incidencias.
+    const partidoRes = await db.query('SELECT arbitro_id FROM public.partidos WHERE id = $1', [partidoId]);
+    if (partidoRes.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    const esSuperadmin = (req.usuario.rol || '').toLowerCase().includes('superadmin');
+    if (!esSuperadmin && String(partidoRes.rows[0].arbitro_id) !== String(req.usuario.id)) {
+      return res.status(403).json({ error: 'Solo el árbitro asignado a este encuentro puede registrar incidencias.' });
+    }
+    const tiposValidos = ['Protesta', 'Lesión', 'Retraso de equipo', 'Deterioro de sede', 'Afición', 'Otro'];
+    const tipoNormalizado = tiposValidos.find(t => t.toLowerCase() === String(tipo || '').trim().toLowerCase());
+    if (!tipoNormalizado) {
+      return res.status(400).json({ error: 'Tipo de incidencia inválido. Debe ser uno de: ' + tiposValidos.join(', ') + '.' });
+    }
+    const descLimpia = String(descripcion || '').trim();
+    if (descLimpia.length < 5) {
+      return res.status(400).json({ error: 'La descripción de la incidencia debe tener al menos 5 caracteres.' });
+    }
+    if (descLimpia.length > 1000) {
+      return res.status(400).json({ error: 'La descripción de la incidencia no puede exceder 1000 caracteres.' });
+    }
+    let jugadorIdNum = null;
+    if (jugador_id !== undefined && jugador_id !== null && jugador_id !== '') {
+      jugadorIdNum = Number(jugador_id);
+      if (!Number.isInteger(jugadorIdNum) || jugadorIdNum < 1) {
+        return res.status(400).json({ error: 'El jugador indicado no es válido.' });
+      }
+    }
+    const insertada = await db.query(
+      `INSERT INTO public.incidencias_partido (partido_id, usuario_id, jugador_id, tipo, descripcion)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [partidoId, req.usuario.id, jugadorIdNum, tipoNormalizado, descLimpia]
+    );
+    res.status(201).json({ mensaje: 'Incidencia registrada correctamente.', incidencia: insertada.rows[0] });
+  } catch (error) {
+    console.error('Error al registrar incidencia:', error);
+    res.status(500).json({ error: 'Error al registrar la incidencia.' });
+  }
+});
+
 module.exports = router;

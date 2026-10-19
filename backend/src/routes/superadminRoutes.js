@@ -355,6 +355,39 @@ router.delete('/usuarios/:id', async (req, res) => {
   }
 });
 
+// ==========================================
+// LOTE N: REACTIVAR USUARIO (inverso del soft delete)
+// ==========================================
+router.post('/usuarios/:id/reactivar', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const userQuery = await db.query('SELECT * FROM public.usuarios WHERE id = $1', [id]);
+    if (userQuery.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    const usuarioAReactivar = userQuery.rows[0];
+    if (usuarioAReactivar.estado !== 'Inactivo') {
+      return res.status(400).json({ error: 'El usuario ya se encuentra activo.' });
+    }
+
+    // 1. Desbloquear en Supabase Auth (levantar el ban aplicado al desactivar)
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { ban_duration: 'none' });
+    if (authError) {
+      console.error('Error al desbloquear en Supabase Auth:', authError);
+      return res.status(400).json({ error: 'No se pudo restaurar el acceso en Supabase: ' + authError.message });
+    }
+
+    // 2. Reactivar en la base de datos
+    await db.query("UPDATE public.usuarios SET estado = 'Activo' WHERE id = $1", [id]);
+
+    // 3. Registrar auditoría
+    await registrarAuditoria(req.usuario.id, 'REACTIVAR_USUARIO', 'usuarios', usuarioAReactivar, { estado: 'Activo' }, req.ip);
+
+    res.json({ mensaje: 'Usuario reactivado con éxito. Sus credenciales vuelven a ser válidas.' });
+  } catch (error) {
+    console.error('Error crítico al reactivar usuario:', error);
+    res.status(500).json({ error: 'Error interno al intentar reactivar el usuario.' });
+  }
+});
+
 router.get('/bitacora', async (req, res) => {
   const { rol, usuario_id, busqueda } = req.query;
   try {
