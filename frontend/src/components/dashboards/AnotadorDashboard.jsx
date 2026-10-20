@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import PlanillaUniversal from './PlanillaUniversal';
 import SistemaMensajeria from './SistemaMensajeria';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import CalendarioPartidos from '../CalendarioPartidos';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -286,6 +287,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const partidosHoy = filtrarTabla('hoy', partidosHoyBase);
   const partidosAgendados = filtrarTabla('proximos', partidosAgendadosBase, [], ['fecha_hora']);
   const partidosFinalizados = filtrarTabla('historial', partidosFinalizadosBase, ['estado'], ['fecha_hora']);
+  const sedesCalendario = Object.fromEntries(partidosFiltrados.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   // Íconos para la barra lateral
   const NavIcon = ({ id }) => {
@@ -296,6 +298,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
         return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
       case 'historial':
         return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
+      case 'calendario':
+        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
       default:
         return null;
     }
@@ -381,7 +385,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               {[
                 { id: 'hoy', label: 'Partidos de Hoy', badge: partidosHoy.length },
                 { id: 'proximos', label: 'Próximos Partidos', badge: partidosAgendados.length },
-                { id: 'historial', label: 'Historial Reciente', badge: partidosFinalizados.length }
+                { id: 'historial', label: 'Historial Reciente', badge: partidosFinalizados.length },
+                { id: 'calendario', label: 'Calendario de Partidos', badge: partidosFiltrados.length }
               ].map(item => {
                 const isActive = pestana === item.id;
                 return (
@@ -428,7 +433,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <h2 className="text-xl sm:text-2xl font-bold text-brand-brown capitalize">
-              {partidoActivo ? `Planilla Oficial: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : 'Historial Reciente')}
+              {partidoActivo ? `Planilla Oficial: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : 'Historial Reciente')}
             </h2>
           </div>
           
@@ -515,6 +520,23 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* PESTAÑA: CALENDARIO DE PARTIDOS */}
+              {pestana === 'calendario' && (
+                <div className="space-y-4 animate-fade-in">
+                  <h3 className="text-lg font-bold text-brand-brown/70 border-b-2 border-brand-brown/20 pb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Calendario de Partidos
+                  </h3>
+                  {partidosFiltrados.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
+                      <p className="text-brand-brown/50 text-sm">No hay partidos para mostrar en el calendario.</p>
+                    </div>
+                  ) : (
+                    <CalendarioPartidos partidos={partidosFiltrados} sedesPorPartido={sedesCalendario} />
                   )}
                 </div>
               )}
