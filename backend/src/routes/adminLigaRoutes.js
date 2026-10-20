@@ -15,7 +15,7 @@ const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = nul
     );
   } catch (error) {
     // FIX #15: la auditoría no debe fallar en silencio; se registra el error con contexto.
-    console.error('❌ [auditoría] No se pudo registrar en la bitácora:', { usuarioId, accion, tabla, error: error?.message || error });
+    console.error('[auditoría] No se pudo registrar en la bitácora:', { usuarioId, accion, tabla, error: error?.message || error });
   }
 };
 
@@ -747,7 +747,7 @@ router.delete('/remover-credencial/:id', async (req, res) => {
     if (equiposDelDelegado.rows.length > 0) {
       const nombresEquipos = equiposDelDelegado.rows.map(e => e.nombre).join(', ');
       return res.status(400).json({ 
-        error: `⚠️️ Acción denegada: Un equipo nunca puede quedar sin delegado. Este usuario es el delegado actual del/los equipo(s): [${nombresEquipos}]. Debe asignar otro delegado a dicho(s) equipo(s) antes de poder eliminar sus credenciales.` 
+        error: `Acción denegada: Un equipo nunca puede quedar sin delegado. Este usuario es el delegado actual del/los equipo(s): [${nombresEquipos}]. Debe asignar otro delegado a dicho(s) equipo(s) antes de poder eliminar sus credenciales.` 
       });
     }
     
@@ -891,7 +891,7 @@ const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
            ON CONFLICT (usuario_id, organizacion_id) DO UPDATE SET rol = 'delegado de equipo'`,
           [usuarioId, orgId]
         );
-        mensajeResultado = ` 🔑 Credencial de delegado creada automáticamente. Contraseña inicial temporal: ${passwordInicial}`;
+        mensajeResultado = ` Credencial de delegado creada automáticamente. Contraseña inicial temporal: ${passwordInicial}`;
       }
     }
 

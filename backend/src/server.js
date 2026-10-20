@@ -45,7 +45,7 @@ const apiLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutos
   max: 600, // FIX #17: 600 peticiones por IP / 10 min — frena abuso sin bloquear el uso normal
   message: { 
-    error: '🚨 Hemos detectado un exceso de peticiones desde tu red. Por medidas de seguridad, por favor espera 10 minutos antes de volver a intentarlo.' 
+    error: 'Hemos detectado un exceso de peticiones desde tu red. Por medidas de seguridad, por favor espera 10 minutos antes de volver a intentarlo.' 
   },
   standardHeaders: true, // Retorna la info del límite en los headers `RateLimit-*`
   legacyHeaders: false, // Deshabilita los headers obsoletos `X-RateLimit-*`
@@ -271,7 +271,7 @@ const persistirPlanilla = (partidoId) => {
   db.query(
     'INSERT INTO public.planilla_estado (partido_id, datos) VALUES ($1, $2) ON CONFLICT (partido_id) DO UPDATE SET datos = EXCLUDED.datos, updated_at = now()',
     [partidoId, JSON.stringify(estado)]
-  ).catch((e) => console.error('❌ [planilla] No se pudo persistir el estado:', e?.message || e));
+  ).catch((e) => console.error('[planilla] No se pudo persistir el estado:', e?.message || e));
 };
 
 const cargarPlanilla = async (partidoId) => {
@@ -282,7 +282,7 @@ const cargarPlanilla = async (partidoId) => {
       return rows[0].datos;
     }
   } catch (e) {
-    console.warn('⚠️ [planilla] Tabla planilla_estado no disponible (¿falta ejecutar la migración?):', e?.message || e);
+    console.warn('[planilla] Tabla planilla_estado no disponible (¿falta ejecutar la migración?):', e?.message || e);
   }
   return null;
 };
@@ -328,7 +328,7 @@ io.on('connection', (socket) => {
     if (!usuario || !ROLES_OPERATIVOS.includes(rolNorm)) return false;
     return puedeOperarPartidoEnBD(usuario, rolNorm, partidoId);
   };
-  console.log(`🟢 Nuevo cliente conectado: ${socket.id} ${usuario ? `(usuario ${usuario.id} · ${usuario.rol})` : '(anónimo, solo lectura pública)'}`);
+  console.log(`Nuevo cliente conectado: ${socket.id} ${usuario ? `(usuario ${usuario.id} · ${usuario.rol})` : '(anónimo, solo lectura pública)'}`);
 
   // --- SISTEMA DE MENSAJERÍA JERÁRQUICA (FIX #6) ---
   // La identidad la resuelve el servidor a partir del token verificado en io.use().
@@ -339,10 +339,10 @@ io.on('connection', (socket) => {
     // LOTE F: salas de rol acotadas por organización (el superadmin mantiene la sala global)
     if (rolNorm === 'superadmin') {
       socket.join(`rol_${rolNorm}`);
-      console.log(`💬 Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}`);
+      console.log(`Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}`);
     } else if (usuario.organizacion_id) {
       socket.join(`rol_${rolNorm}__org_${usuario.organizacion_id}`);
-      console.log(`💬 Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}__org_${usuario.organizacion_id}`);
+      console.log(`Cliente ${socket.id} registrado en mensajería como: usuario_${usuario.id} y rol_${rolNorm}__org_${usuario.organizacion_id}`);
     }
   });
 
@@ -457,7 +457,7 @@ io.on('connection', (socket) => {
     const pid = parseInt(partidoId, 10); // FIX #16: normaliza el ID (antes llegaba mezclado como texto/número)
     const sala = `partido_${pid}`;
     socket.join(sala);
-    console.log(`👤 Cliente ${socket.id} se unió a la sala: ${sala}`);
+    console.log(`Cliente ${socket.id} se unió a la sala: ${sala}`);
 
     // FIX #16: si el servidor se reinició (redeploy de Render), el estado se recupera desde la BD.
     if (!isNaN(pid) && !partidosEnMemoria[pid]) {
@@ -592,10 +592,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`🔴 Cliente desconectado: ${socket.id}`);
+    console.log(`Cliente desconectado: ${socket.id}`);
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`🚀 Servidor HTTP y WebSockets corriendo en el puerto ${PORT}`);
+  console.log(`Servidor HTTP y WebSockets corriendo en el puerto ${PORT}`);
 });

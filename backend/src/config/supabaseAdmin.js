@@ -8,7 +8,7 @@ const MENSAJE_ERROR =
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
-    '❌ [supabaseAdmin] Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY. ' +
+    '[supabaseAdmin] Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY. ' +
     'Las operaciones administrativas (crear usuarios, cambiar contraseñas, eliminar ligas) fallarán hasta configurarlas.'
   );
 }
