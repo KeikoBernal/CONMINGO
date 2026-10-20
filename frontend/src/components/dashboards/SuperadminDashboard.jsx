@@ -4,6 +4,8 @@ import SistemaMensajeria from './SistemaMensajeria';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import CalendarioPartidos from '../CalendarioPartidos';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -46,6 +48,14 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
   const [token, setToken] = useState(null);
 
+  const [partidosGlobales, setPartidosGlobales] = useState([]);
+  const [filtrosTablas, setFiltrosTablas] = useState({});
+
+  // LOTE R: filtrado, busqueda y descargas compartidos para las tablas del Superadmin.
+  const getFilter = key => filtrosTablas[key] || EMPTY_FILTER;
+  const setTableFilter = key => next => setFiltrosTablas(previous => ({ ...previous, [key]: next }));
+  const filtrarTabla = (key, rows, categoryFields = [], dateFields = []) => rows.filter(row => rowMatchesFilter(row, getFilter(key), categoryFields, dateFields));
+
   useEffect(() => {
     localStorage.setItem('superadminPestana', pestana);
   }, [pestana]);
@@ -79,6 +89,31 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+  // LOTE R: los partidos globales se obtienen del router operativo (mis-partidos ya
+  // devuelve todos los partidos de todas las ligas para el rol Superadmin).
+  const fetchOperativo = async (endpoint, options = {}) => {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        return { ok: false, status: 401, json: async () => ({ error: 'Sesión no válida' }) };
+      }
+
+      const response = await fetch(API_URL + '/operativo' + endpoint, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + session.access_token,
+          ...options.headers
+        },
+      });
+
+      if (response.status === 401) setMensaje({ texto: 'Tu sesión ha expirado.', tipo: 'error' });
+      return response;
+    } catch (err) {
+      return { ok: false, status: 500, json: async () => ({ error: 'Error de conexión.' }) };
+    }
+  };
+
   const cargarDatosPestana = async () => {
     setMensaje(null);
     try {
@@ -95,6 +130,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         if (resLigas.ok) setLigas(await resLigas.json());
         const resUsers = await fetchConToken('/usuarios');
         if (resUsers.ok) setUsuariosList(await resUsers.json());
+      } else if (pestana === 'calendario') {
+        const resPartidos = await fetchOperativo('/mis-partidos');
+        if (resPartidos.ok) setPartidosGlobales(await resPartidos.json());
       } else if (pestana === 'bitacora') {
         const resUsers = await fetchConToken('/usuarios');
         if (resUsers.ok) setUsuariosList(await resUsers.json());
@@ -236,6 +274,13 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       return true;
     });
   };
+
+  // LOTE R: filas derivadas para el filtrado, la busqueda y las descargas de las tablas.
+  const filasPartidosVivo = filtrarTabla('partidosVivo', metricas?.partidos_activos || [], ['liga_nombre'], ['fecha_hora']);
+  const filasAgendados = filtrarTabla('partidosAgendados', partidosAgendadosFiltrados(), []);
+  const filasLigasBase = ligas.map(l => ({ ...l, estado_liga: l.estado_activa ? 'Activa' : 'Inactiva' }));
+  const filasLigas = filtrarTabla('ligas', filasLigasBase, ['estado_liga']);
+  const sedesGlobales = Object.fromEntries(partidosGlobales.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   const guardarLiga = async (e) => {
     e.preventDefault();
@@ -386,8 +431,12 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     return fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute:'2-digit' });
   };
 
-  const renderTablaUsuarios = (arregloUsuarios) => (
-    <div className="overflow-x-auto hide-scrollbar border border-brand-gold/30 rounded-lg">
+  const renderTablaUsuarios = (arregloUsuarios) => {
+    const filasUsuariosVista = filtrarTabla('usuarios', arregloUsuarios, ['rol', 'estado']);
+    return (
+      <div className="space-y-3">
+        <TableTools rows={arregloUsuarios} filteredRows={filasUsuariosVista} filter={getFilter('usuarios')} setFilter={setTableFilter('usuarios')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Email' }, { key: 'rol', label: 'Rol' }, { key: 'organizacion_nombre', label: 'Liga' }, { key: 'estado', label: 'Estado' }]} categoryFields={['rol', 'estado']} filename="superadmin_directorio_usuarios" modulo="Superadmin" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+        <div className="overflow-x-auto hide-scrollbar border border-brand-gold/30 rounded-lg">
       <table className="w-full text-left text-sm text-brand-brown whitespace-nowrap">
         <thead className="bg-brand-cream/50 text-brand-brown uppercase tracking-wider text-xs font-bold border-b border-brand-gold/30">
           <tr>
@@ -401,10 +450,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-brand-gold/20 bg-white">
-          {arregloUsuarios.length === 0 ? (
+          {filasUsuariosVista.length === 0 ? (
             <tr><td colSpan={7} className="text-center p-8 text-brand-brown/50">No se encontraron usuarios.</td></tr>
           ) : (
-            arregloUsuarios.map((u) => (
+            filasUsuariosVista.map((u) => (
               <tr key={u.id} className={`transition-colors ${u.estado === 'Inactivo' ? 'opacity-60 bg-gray-50' : 'hover:bg-brand-cream/10'}`}>
                 <td className="p-4 font-bold">{u.nombre} {u.apellido}</td>
                 <td className="p-4">{u.cedula || 'N/R'}</td>
@@ -443,8 +492,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           )}
         </tbody>
       </table>
-    </div>
-  );
+        </div>
+      </div>
+    );
+  };
 
   const renderListadoUsuarios = () => {
     if (isBuscando) return renderTablaUsuarios(usuariosMatchBusqueda);
@@ -499,6 +550,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       case 'ligas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>;
       case 'usuarios': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
       case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>;
+      case 'calendario': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
       default: return null;
     }
   };
@@ -555,7 +607,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           <div>
             <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Módulos del Sistema</div>
             <nav className="space-y-1">
-              {['metricas', 'ligas', 'usuarios', 'bitacora'].map(item => {
+              {['metricas', 'calendario', 'ligas', 'usuarios', 'bitacora'].map(item => {
                 const isActive = pestana === item;
                 return (
                   <button 
@@ -649,8 +701,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                     <button onClick={() => generarReporte(metricas.partidos_activos, 'Partidos_En_Vivo', 'pdf', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="text-[0.7rem] bg-brand-cream border border-brand-gold/30 px-2 py-1 rounded-lg font-bold hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
                   </div>
                 </div>
+                <TableTools rows={metricas.partidos_activos} filteredRows={filasPartidosVivo} filter={getFilter('partidosVivo')} setFilter={setTableFilter('partidosVivo')} columns={[{ key: 'id', label: 'ID' }, { key: 'liga_nombre', label: 'Liga' }, { key: 'fecha_hora', label: 'Fecha y Hora' }]} categoryFields={['liga_nombre']} dateFields={['fecha_hora']} filename="superadmin_partidos_en_vivo" modulo="Superadmin" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto hide-scrollbar">
-                  {metricas.partidos_activos.length === 0 ? (
+                  {filasPartidosVivo.length === 0 ? (
                     <p className="p-6 text-center text-sm text-brand-brown/50 italic">No hay partidos en vivo.</p>
                   ) : (
                     <table className="w-full text-left text-sm whitespace-nowrap">
@@ -658,7 +711,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                         <tr><th className="p-3 text-center">ID</th><th className="p-3">Liga</th><th className="p-3 text-center">Fecha y Hora</th></tr>
                       </thead>
                       <tbody className="divide-y divide-red-100 text-brand-brown font-medium">
-                        {metricas.partidos_activos.map(p => (
+                        {filasPartidosVivo.map(p => (
                           <tr key={p.id} className="hover:bg-red-50/30">
                             <td className="p-3 text-center text-red-600 font-bold">#{p.id}</td>
                             <td className="p-3">{p.liga_nombre || 'General / Suelto'}</td>
@@ -691,8 +744,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                     </div>
                   </div>
                 </div>
+                <TableTools rows={partidosAgendadosFiltrados()} filteredRows={filasAgendados} filter={getFilter('partidosAgendados')} setFilter={setTableFilter('partidosAgendados')} columns={[{ key: 'id', label: 'ID' }, { key: 'liga_nombre', label: 'Liga' }, { key: 'fecha_hora', label: 'Fecha y Hora' }]} filename="superadmin_partidos_agendados" modulo="Superadmin" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto hide-scrollbar">
-                  {partidosAgendadosFiltrados().length === 0 ? (
+                  {filasAgendados.length === 0 ? (
                     <p className="p-6 text-center text-sm text-brand-brown/50 italic">No hay partidos agendados bajo estos filtros.</p>
                   ) : (
                     <table className="w-full text-left text-sm whitespace-nowrap">
@@ -700,7 +754,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                         <tr><th className="p-3 text-center">ID</th><th className="p-3">Liga</th><th className="p-3 text-center">Fecha y Hora</th></tr>
                       </thead>
                       <tbody className="divide-y divide-brand-gold/20 text-brand-brown font-medium">
-                        {partidosAgendadosFiltrados().map(p => (
+                        {filasAgendados.map(p => (
                           <tr key={p.id} className="hover:bg-brand-cream/20 transition-colors">
                             <td className="p-3 text-center font-bold">#{p.id}</td>
                             <td className="p-3">{p.liga_nombre || 'General / Suelto'}</td>
@@ -709,6 +763,28 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                         ))}
                       </tbody>
                     </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PESTAÑA: CALENDARIO GLOBAL DE PARTIDOS */}
+          {pestana === 'calendario' && (
+            <div className="animate-fade-in space-y-6">
+              <div className="bg-white border border-brand-gold/30 rounded-xl shadow-sm">
+                <div className="bg-brand-cream/30 px-5 py-4 border-b border-brand-gold/30 flex justify-between items-center">
+                  <h3 className="font-bold text-brand-brown flex items-center gap-2">
+                    <svg className="w-5 h-5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Calendario Global de Partidos
+                  </h3>
+                  <span className="text-xs font-bold text-brand-brown/60">{partidosGlobales.length} partidos en el sistema</span>
+                </div>
+                <div className="p-4">
+                  {partidosGlobales.length === 0 ? (
+                    <p className="p-6 text-center text-sm text-brand-brown/50 italic">No hay partidos registrados.</p>
+                  ) : (
+                    <CalendarioPartidos partidos={partidosGlobales} sedesPorPartido={sedesGlobales} />
                   )}
                 </div>
               </div>
@@ -777,13 +853,14 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                         <button onClick={() => exportarReporteActual('pdf')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded-lg font-bold text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
                       </div>
                     </div>
+                    <TableTools rows={filasLigasBase} filteredRows={filasLigas} filter={getFilter('ligas')} setFilter={setTableFilter('ligas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'responsable_nombre', label: 'Administrador' }, { key: 'estado_liga', label: 'Estado' }]} categoryFields={['estado_liga']} filename="superadmin_directorio_ligas" modulo="Superadmin" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                     <div className="overflow-x-auto hide-scrollbar">
                       <table className="w-full text-left text-sm whitespace-nowrap">
                         <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-xs font-bold">
                           <tr><th className="p-4">Nombre</th><th className="p-4">Administrador</th><th className="p-4">Estado</th><th className="p-4 text-center">Acciones</th></tr>
                         </thead>
                         <tbody className="divide-y divide-brand-gold/20 text-brand-brown">
-                          {ligas.map((l) => (
+                          {filasLigas.map((l) => (
                             <tr key={l.id} className="hover:bg-brand-cream/10 transition-colors">
                               <td className="p-4 font-bold">{l.nombre}</td>
                               <td className="p-4">{l.responsable_nombre}</td>

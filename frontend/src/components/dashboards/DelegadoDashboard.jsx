@@ -5,6 +5,7 @@ import PlanillaUniversal from './PlanillaUniversal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import CalendarioPartidos from '../CalendarioPartidos';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -280,6 +281,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const filasNomina = filtrarTabla('nomina', jugadores, ['estado', 'posicion']);
   const filasPartidos = filtrarTabla('calendario', partidos, ['estado', 'fase'], ['fecha_hora']);
   const filasScouting = filtrarTabla('scouting', estadisticas.individual || [], ['perfil_tactico']);
+  const sedesDelegado = Object.fromEntries(filasPartidos.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   // Íconos SVG para la barra lateral
   const NavIcon = ({ pestanaId }) => {
@@ -527,6 +529,9 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                     Encuentros y Planillas de Puntajes
                   </h3>
                   <TableTools rows={partidos} filteredRows={filasPartidos} filter={getFilter('calendario')} setFilter={setTableFilter('calendario')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'fase', label: 'Fase' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'fase']} dateFields={['fecha_hora']} filename="calendario_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                  <div className="mb-4">
+                    <CalendarioPartidos partidos={filasPartidos} sedesPorPartido={sedesDelegado} />
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filasPartidos.length === 0 ? (
                       <div className="col-span-full text-center py-8 text-brand-brown/50">No hay partidos que coincidan con los filtros aplicados.</div>
