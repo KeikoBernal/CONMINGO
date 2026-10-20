@@ -4,6 +4,7 @@ import SistemaMensajeria from './SistemaMensajeria';
 import PlanillaUniversal from './PlanillaUniversal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -35,6 +36,9 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const [isSubmittingPass, setIsSubmittingPass] = useState(false);
 
   const [token, setToken] = useState(null);
+
+  // Filtrado, busqueda y descargas de las tablas del modulo
+  const [filtrosTablas, setFiltrosTablas] = useState({});
 
   // Datos del Delegado
   const [miEquipo, setMiEquipo] = useState(null);
@@ -269,6 +273,14 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+  // Filtrado, busqueda y descargas de las tablas del modulo
+  const getFilter = key => filtrosTablas[key] || EMPTY_FILTER;
+  const setTableFilter = key => next => setFiltrosTablas(previous => ({ ...previous, [key]: next }));
+  const filtrarTabla = (key, rows, categoryFields = [], dateFields = []) => rows.filter(row => rowMatchesFilter(row, getFilter(key), categoryFields, dateFields));
+  const filasNomina = filtrarTabla('nomina', jugadores, ['estado', 'posicion']);
+  const filasPartidos = filtrarTabla('calendario', partidos, ['estado', 'fase'], ['fecha_hora']);
+  const filasScouting = filtrarTabla('scouting', estadisticas.individual || [], ['perfil_tactico']);
+
   // Íconos SVG para la barra lateral
   const NavIcon = ({ pestanaId }) => {
     switch (pestanaId) {
@@ -413,6 +425,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                   <NavIcon pestanaId="equipo" />
                   Nómina Oficial del Equipo
                 </h3>
+                <TableTools rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'posicion', label: 'Rol' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'posicion']} filename="nomina_filtrada_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto">
                   <table className="tabla-admin">
                     <thead>
@@ -426,10 +439,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {jugadores.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay jugadores registrados en tu equipo.</td></tr>
+                      {filasNomina.length === 0 ? (
+                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
                       ) : (
-                        jugadores.map(j => (
+                        filasNomina.map(j => (
                           <tr key={j.id} className={j.estado === 'Inactivo' ? 'bg-gray-50 opacity-60' : ''}>
                             <td className="text-center font-bold text-lg text-brand-brown">#{j.numero_dorsal}</td>
                             <td className="text-center">
@@ -513,11 +526,12 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                     <NavIcon pestanaId="calendario" />
                     Encuentros y Planillas de Puntajes
                   </h3>
+                  <TableTools rows={partidos} filteredRows={filasPartidos} filter={getFilter('calendario')} setFilter={setTableFilter('calendario')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'fase', label: 'Fase' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'fase']} dateFields={['fecha_hora']} filename="calendario_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {partidos.length === 0 ? (
-                      <div className="col-span-full text-center py-8 text-brand-brown/50">Tu equipo no tiene partidos programados.</div>
+                    {filasPartidos.length === 0 ? (
+                      <div className="col-span-full text-center py-8 text-brand-brown/50">No hay partidos que coincidan con los filtros aplicados.</div>
                     ) : (
-                      partidos.map(p => (
+                      filasPartidos.map(p => (
                         <div key={p.id} className={`flex flex-col justify-between p-5 rounded-xl border ${p.estado === 'Finalizado' ? 'border-brand-rust bg-brand-rust/5 shadow-sm ring-1 ring-brand-rust' : 'border-brand-gold/30 bg-white hover:border-brand-blue hover:shadow-sm'} transition-all`}>
                           <div>
                             <div className="flex justify-between items-center mb-3">
@@ -588,6 +602,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
 
               <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
                 <h3 className="text-lg font-bold text-brand-brown mb-4">Scouting de Jugadores (Perfiles Tácticos)</h3>
+                <TableTools rows={estadisticas.individual || []} filteredRows={filasScouting} filter={getFilter('scouting')} setFilter={setTableFilter('scouting')} columns={[{ key: 'dorsal', label: 'Dorsal' }, { key: 'apellido', label: 'Apellido' }, { key: 'nombre', label: 'Nombre' }, { key: 'efectividad_arrime', label: '% Arrime' }, { key: 'efectividad_boche', label: '% Boche' }, { key: 'tasa_error', label: 'Tasa de error' }, { key: 'pts_promedio', label: 'Pts/Juego' }, { key: 'clutch', label: 'Clutch %' }, { key: 'perfil_tactico', label: 'Perfil sugerido' }]} categoryFields={['perfil_tactico']} filename="scouting_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto">
                   <table className="tabla-admin">
                     <thead>
@@ -602,10 +617,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {estadisticas.individual.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">No hay suficientes datos de partidos para calcular el scouting.</td></tr>
+                      {filasScouting.length === 0 ? (
+                        <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
                       ) : (
-                        estadisticas.individual.map((j, idx) => (
+                        filasScouting.map((j, idx) => (
                           <tr key={idx}>
                             <td className="font-bold text-brand-brown">#{j.dorsal} {j.apellido}</td>
                             <td className="text-center font-bold text-brand-blue">{j.efectividad_arrime || 0}%</td>

@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import PlanillaUniversal from './PlanillaUniversal';
 import SistemaMensajeria from './SistemaMensajeria';
+import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -44,6 +45,12 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   // --- ESTADOS MULTILIGA ---
   const [ligas, setLigas] = useState([]);
   const [ligaFiltro, setLigaFiltro] = useState('');
+
+  // Filtrado, busqueda y descargas de las tablas del modulo
+  const [filtrosTablas, setFiltrosTablas] = useState({});
+  const getFilter = key => filtrosTablas[key] || EMPTY_FILTER;
+  const setTableFilter = key => next => setFiltrosTablas(previous => ({ ...previous, [key]: next }));
+  const filtrarTabla = (key, rows, categoryFields = [], dateFields = []) => rows.filter(row => rowMatchesFilter(row, getFilter(key), categoryFields, dateFields));
 
   useEffect(() => {
     localStorage.setItem('anotadorPestana', pestana);
@@ -273,9 +280,12 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const partidosFiltrados = partidos.filter(p => !ligaFiltro || p.organizacion_id === ligaFiltro);
   const hoyFecha = new Date().toLocaleDateString('es-VE');
   
-  const partidosHoy = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFecha && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
-  const partidosAgendados = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') !== hoyFecha && p.estado !== 'Finalizado');
-  const partidosFinalizados = partidosFiltrados.filter(p => p.estado === 'Finalizado' || p.estado === 'Suspendido');
+  const partidosHoyBase = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFecha && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
+  const partidosAgendadosBase = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') !== hoyFecha && p.estado !== 'Finalizado');
+  const partidosFinalizadosBase = partidosFiltrados.filter(p => p.estado === 'Finalizado' || p.estado === 'Suspendido');
+  const partidosHoy = filtrarTabla('hoy', partidosHoyBase);
+  const partidosAgendados = filtrarTabla('proximos', partidosAgendadosBase, [], ['fecha_hora']);
+  const partidosFinalizados = filtrarTabla('historial', partidosFinalizadosBase, ['estado'], ['fecha_hora']);
 
   // Íconos para la barra lateral
   const NavIcon = ({ id }) => {
@@ -447,6 +457,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     Encuentros Programados para Hoy
                   </h3>
+                  <TableTools rows={partidosHoyBase} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="anotador_partidos_hoy" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {partidosHoy.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
                       <p className="text-brand-brown/50 text-sm">No hay partidos agendados para el día de hoy.</p>
@@ -487,6 +498,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     Próximos Partidos Agendados
                   </h3>
+                  <TableTools rows={partidosAgendadosBase} filteredRows={partidosAgendados} filter={getFilter('proximos')} setFilter={setTableFilter('proximos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} dateFields={['fecha_hora']} filename="anotador_proximos_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {partidosAgendados.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
                       <p className="text-brand-brown/50 text-sm">No hay próximos partidos en el calendario.</p>
@@ -514,6 +526,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     Historial Reciente y Archivo
                   </h3>
+                  <TableTools rows={partidosFinalizadosBase} filteredRows={partidosFinalizados} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado']} dateFields={['fecha_hora']} filename="anotador_historial_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {partidosFinalizados.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
                       <p className="text-brand-brown/50 text-sm">No hay registros en el historial.</p>
