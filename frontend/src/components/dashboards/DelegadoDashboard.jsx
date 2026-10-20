@@ -265,7 +265,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
       }
       setMensaje('');
     } catch (e) {
-      setMensaje('❌ Error al exportar la planilla.');
+      setMensaje('Error al exportar la planilla.');
     }
   };
 
@@ -478,10 +478,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                     </button>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-brand-brown mr-2">Descargar Planilla:</span>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'pdf')} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">PDF</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'excel')} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">Excel</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'csv')} className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">CSV</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'json')} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">JSON</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'pdf')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">PDF</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">Excel</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'csv')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">CSV</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'json')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">JSON</button>
                     </div>
                   </div>
                   <PlanillaUniversal
@@ -535,9 +535,9 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                               Ver Planilla Detallada
                             </button>
                             <div className="flex gap-2">
-                              <button onClick={() => exportarPlanilla(p.id, 'pdf')} className="flex-1 bg-red-100 hover:bg-red-600 text-red-700 hover:text-white py-1.5 rounded text-xs font-bold transition-colors">PDF</button>
-                              <button onClick={() => exportarPlanilla(p.id, 'excel')} className="flex-1 bg-green-100 hover:bg-green-600 text-green-700 hover:text-white py-1.5 rounded text-xs font-bold transition-colors">Excel</button>
-                              <button onClick={() => exportarPlanilla(p.id, 'csv')} className="flex-1 bg-yellow-100 hover:bg-yellow-600 text-yellow-700 hover:text-white py-1.5 rounded text-xs font-bold transition-colors">CSV</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'pdf')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">PDF</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'excel')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'csv')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">CSV</button>
                             </div>
                           </div>
                         </div>
@@ -559,9 +559,9 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   <span className="text-sm font-bold text-brand-brown self-center mr-2">Exportar Scouting:</span>
-                  <button onClick={() => exportarScouting('excel')} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">Excel</button>
-                  <button onClick={() => exportarScouting('csv')} className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">CSV</button>
-                  <button onClick={() => exportarScouting('json')} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-sm font-bold transition-colors shadow-sm">JSON</button>
+                  <button onClick={() => exportarScouting('excel')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">Excel</button>
+                  <button onClick={() => exportarScouting('csv')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">CSV</button>
+                  <button onClick={() => exportarScouting('json')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">JSON</button>
                 </div>
               </div>
 

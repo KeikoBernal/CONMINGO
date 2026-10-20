@@ -328,7 +328,7 @@ const seleccionarContacto = (contacto) => {
             {vista === 'usuarios' && (
               <div className="flex-1 overflow-y-auto hide-scrollbar">
                 {!soySuperadmin && (
-                  <div onClick={() => seleccionarContacto({ id: `grupo_${rolSeleccionado}`, nombre: '📢 Todos los', apellido: formatearPlurales(rolSeleccionado), rol: 'Difusión', rolTarget: rolSeleccionado, isMasivo: true })} className="p-4 border-b-2 border-brand-rust/20 cursor-pointer bg-brand-rust/5 hover:bg-brand-rust/10 text-brand-rust transition-colors flex items-center gap-3">
+                  <div onClick={() => seleccionarContacto({ id: `grupo_${rolSeleccionado}`, nombre: 'Todos los', apellido: formatearPlurales(rolSeleccionado), rol: 'Difusión', rolTarget: rolSeleccionado, isMasivo: true })} className="p-4 border-b-2 border-brand-rust/20 cursor-pointer bg-brand-rust/5 hover:bg-brand-rust/10 text-brand-rust transition-colors flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-brand-rust flex items-center justify-center text-white shadow-sm shrink-0">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
                     </div>
@@ -359,7 +359,7 @@ const seleccionarContacto = (contacto) => {
                   
                   {chatActivo.isMasivo && (
                     <div className="bg-brand-gold/20 text-brand-brown p-3 rounded-lg text-xs text-center mb-2 font-bold border border-brand-gold/40 shadow-sm mx-4">
-                      📢 Modo Difusión: Este mensaje llegará a todos los usuarios del grupo.
+                      Modo Difusión: Este mensaje llegará a todos los usuarios del grupo.
                     </div>
                   )}
                   
