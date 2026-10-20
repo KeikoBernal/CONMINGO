@@ -5,6 +5,7 @@ import PlanillaUniversal from './PlanillaUniversal';
 import SistemaMensajeria from './SistemaMensajeria';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
+import VisualizadorCancha from '../VisualizadorCancha';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -26,6 +27,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   
   const [modalRegistro, setModalRegistro] = useState(null);
   const [modalTantos, setModalTantos] = useState(null);
+  const [modalCancha, setModalCancha] = useState(false); // LOTE S: simulador visual de cancha
   const [modalStatPanel, setModalStatPanel] = useState(null);
   const [arbitroConectado, setArbitroConectado] = useState(false);
   
@@ -310,6 +312,27 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
       
+      {/* MODAL SIMULADOR VISUAL DE CANCHA (LOTE S) */}
+      {modalCancha && partidoActivo && (
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-[1700] p-4">
+          <div className="bg-white rounded-xl w-full max-w-3xl shadow-2xl animate-slide-up border border-brand-gold/30 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-brand-gold/20 sticky top-0 bg-white">
+              <h3 className="text-lg font-black text-brand-brown">Simulador Visual de Cancha</h3>
+              <button onClick={() => setModalCancha(false)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar simulador">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-5">
+              <VisualizadorCancha
+                plantillaReglas={partidoActivo.torneo_reglas || {}}
+                nombreLocal={partidoActivo.local_nombre}
+                nombreVisita={partidoActivo.visita_nombre}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL REGISTRO JUGADAS (MESA DE ANOTACIÓN) */}
       {modalRegistro && (
         <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4">
@@ -629,25 +652,37 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               {/* BARRA LATERAL DERECHA: HERRAMIENTAS DE MESA */}
               <div className="w-full lg:w-80 flex flex-col gap-5 shrink-0 lg:sticky lg:top-6">
                 
-                {partidoActivo.estado === 'Agendado' && (
-                  <button 
-                    onClick={handleIniciarPartido} 
-                    disabled={isSubmitting}
-                    className={`w-full py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                  >
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
-                    {isSubmitting ? 'INICIANDO...' : 'INICIAR PARTIDO'}
-                  </button>
-                )}
-                {partidoActivo.estado === 'En Curso' && (
-                  <button 
-                    onClick={finalizarPartido} 
-                    disabled={isSubmitting}
-                    className={`w-full py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
-                  >
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
-                    {isSubmitting ? 'FINALIZANDO...' : 'FINALIZAR ACTA'}
-                  </button>
+                                {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
+                  <div className="flex gap-2 items-stretch">
+                    {partidoActivo.estado === 'Agendado' && (
+                      <button 
+                        onClick={handleIniciarPartido} 
+                        disabled={isSubmitting}
+                        className={`min-w-0 flex-1 py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                      >
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                        {isSubmitting ? 'INICIANDO...' : 'INICIAR PARTIDO'}
+                      </button>
+                    )}
+                    {partidoActivo.estado === 'En Curso' && (
+                      <button 
+                        onClick={finalizarPartido} 
+                        disabled={isSubmitting}
+                        className={`min-w-0 flex-1 py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+                      >
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
+                        {isSubmitting ? 'FINALIZANDO...' : 'FINALIZAR ACTA'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setModalCancha(true)}
+                      title="Simulador Visual de Cancha"
+                      className="w-14 shrink-0 py-4 rounded-xl bg-brand-blue text-white text-[0.65rem] font-bold tracking-wider hover:bg-brand-brown transition-colors shadow-md flex flex-col justify-center items-center gap-1"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12m9 0a9 9 0 11-18 0 9 9 0 0118 0M12 12m5 0a5 5 0 11-10 0 5 5 0 0110 0M12 12m1 0a1 1 0 11-2 0 1 1 0 012 0" /></svg>
+                      Simular
+                    </button>
+                  </div>
                 )}
 
                 {/* CRONÓMETRO MESA TÉCNICA */}   

@@ -69,7 +69,7 @@ router.get('/mis-partidos', async (req, res) => {
              t.organizacion_id,
              COALESCE(o.nombre, 'Partidos Independientes') as organizacion_nombre,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
-             t.nombre AS torneo_nombre, s.nombre AS sede_nombre,
+             t.nombre AS torneo_nombre, t.reglas AS torneo_reglas, s.nombre AS sede_nombre,
              COALESCE(ua.nombre || ' ' || ua.apellido, 'Por definir') AS arbitro_nombre,
              COALESCE(un.nombre || ' ' || un.apellido, 'Por definir') AS anotador_nombre,
              COALESCE(jl.nombre || ' ' || jl.apellido, 'Por definir') AS capitan_local_nombre,
