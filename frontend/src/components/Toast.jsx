@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
 
 const TIPOS_TOAST = {
-  exito: { icono: '✅', texto: 'text-green-700', borde: 'border-green-500/40' },
-  error: { icono: '⚠️', texto: 'text-red-700', borde: 'border-red-500/40' },
-  info: { icono: 'ℹ️', texto: 'text-brand-blue', borde: 'border-brand-blue/40' }
+  exito: { icono: 'OK', texto: 'text-green-700', borde: 'border-green-500/40' },
+  error: { icono: 'ERROR', texto: 'text-red-700', borde: 'border-red-500/40' },
+  info: { icono: 'INFO', texto: 'text-brand-blue', borde: 'border-brand-blue/40' }
 };
 
 // LOTE K: hook de notificaciones visuales (reemplaza los alert nativos).

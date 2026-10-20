@@ -73,3 +73,19 @@ jobs:
 
       - name: Compilar el frontend
         run: npm run build
+
+  emojis-prohibidos:
+    name: Emojis prohibidos (frontend y backend)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v7
+
+      - name: Verificar que no haya emojis en .js y .jsx
+        run: |
+          if grep -rnP '[\x{1F000}-\x{1FBFF}\x{2600}-\x{26FF}\x{2B00}-\x{2BFF}]|\x{FE0F}|\x{2705}|\x{274C}' --include='*.js' --include='*.jsx' backend/src frontend/src; then
+            echo '::error::Se encontro al menos un emoji. El sistema no permite emojis en el frontend ni en el backend.'
+            exit 1
+          else
+            echo 'OK: no hay emojis en el frontend ni en el backend'
+          fi

@@ -133,7 +133,7 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
     });
 
     socketRef.current.on('partido_finalizado_auto', (data) => {
-      alert(`🏆 ¡META DE PUNTOS ALCANZADA! El sistema ha cerrado el acta de forma automática.\nHora final registrada: ${data.hora_final}`);
+      alert(`¡META DE PUNTOS ALCANZADA! El sistema ha cerrado el acta de forma automática.\nHora final registrada: ${data.hora_final}`);
       setPartidoActivo(prev => prev ? ({ ...prev, estado: 'Finalizado', hora_final: data.hora_final }) : null);
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
       localStorage.removeItem('partidoActivoId');
@@ -169,7 +169,7 @@ const guardarSorteo = async () => {
 
   const suspenderPartido = async () => {
     if(!partidoActivo || isSubmitting) return; // INSERCIÓN: Prevención de doble click
-    const confirmacion = window.confirm("🛑 ¿Estás seguro de suspender este partido? Se guardarán los resultados actuales y desaparecerá de tu panel y del anotador hasta ser reagendado.");
+    const confirmacion = window.confirm("¿Estás seguro de suspender este partido? Se guardarán los resultados actuales y desaparecerá de tu panel y del anotador hasta ser reagendado.");
     if (!confirmacion) return;
 
     setIsSubmitting(true); // INSERCIÓN: Bloqueo
@@ -178,7 +178,7 @@ const guardarSorteo = async () => {
     
     if (res.ok) {
       socketRef.current.emit('partido_suspendido', { partidoId: partidoActivo.id });
-      socketRef.current.emit('enviar_notificacion_admin', { mensaje: `🚨 El árbitro ha suspendido el encuentro: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre} (Partido #${partidoActivo.id}). Requiere ser reagendado en el panel.`, tipo: 'alerta_suspension' });
+      socketRef.current.emit('enviar_notificacion_admin', { mensaje: `El árbitro ha suspendido el encuentro: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre} (Partido #${partidoActivo.id}). Requiere ser reagendado en el panel.`, tipo: 'alerta_suspension' });
 
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.access_token) {
@@ -187,7 +187,7 @@ const guardarSorteo = async () => {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
           body: JSON.stringify({
             destinatario_rol: 'Administrador de Liga',
-            mensaje: `🚨 URGENTE: El partido #${partidoActivo.id} (${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}) fue SUSPENDIDO. Por favor reagendar en tu panel.`
+            mensaje: `URGENTE: El partido #${partidoActivo.id} (${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}) fue SUSPENDIDO. Por favor reagendar en tu panel.`
           })
         });
       }
@@ -506,7 +506,7 @@ const guardarSorteo = async () => {
                           </div>
 
                           <div className="flex gap-2">
-                            <button onClick={() => setModalSorteo(p.id)} className="flex-1 bg-brand-cream text-brand-brown py-2 rounded-lg text-sm font-bold border border-brand-gold/30 hover:bg-brand-gold hover:text-white hover:border-brand-gold transition-colors flex justify-center items-center gap-1 shadow-sm">🪙 Sorteo</button>
+                            <button onClick={() => setModalSorteo(p.id)} className="flex-1 bg-brand-cream text-brand-brown py-2 rounded-lg text-sm font-bold border border-brand-gold/30 hover:bg-brand-gold hover:text-white hover:border-brand-gold transition-colors flex justify-center items-center gap-1 shadow-sm">Sorteo</button>
                             <button onClick={() => seleccionarPartido(p)} className="flex-1 bg-brand-blue text-white py-2 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors flex justify-center items-center gap-1 shadow-sm">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> Control
                             </button>

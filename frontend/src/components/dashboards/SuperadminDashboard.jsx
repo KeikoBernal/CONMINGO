@@ -601,8 +601,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
               Respaldo BD:
             </span>
-            <button onClick={() => exportarRespaldoBD('sql')} className="px-3 py-1.5 bg-brand-brown text-brand-cream rounded hover:bg-brand-brown/80 transition-colors text-xs font-bold">SQL</button>
-            <button onClick={() => exportarRespaldoBD('json')} className="px-3 py-1.5 bg-brand-blue text-white rounded hover:bg-blue-700 transition-colors text-xs font-bold">JSON</button>
+            <button onClick={() => exportarRespaldoBD('sql')} className="px-3 py-1.5 bg-brand-brown text-brand-cream rounded-lg hover:bg-brand-brown/80 transition-colors text-xs font-bold">SQL</button>
+            <button onClick={() => exportarRespaldoBD('json')} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold">JSON</button>
           </div>
         </header>
 
@@ -645,8 +645,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                     <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span> Partidos en Vivo
                   </h3>
                   <div className="flex gap-2">
-                    <button onClick={() => generarReporte(metricas.partidos_activos, 'Partidos_En_Vivo', 'excel', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="text-[0.7rem] bg-brand-cream border border-brand-gold/30 px-2 py-1 rounded font-bold hover:bg-brand-gold hover:text-white transition-colors">EXCEL</button>
-                    <button onClick={() => generarReporte(metricas.partidos_activos, 'Partidos_En_Vivo', 'pdf', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="text-[0.7rem] bg-brand-cream border border-brand-gold/30 px-2 py-1 rounded font-bold hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
+                    <button onClick={() => generarReporte(metricas.partidos_activos, 'Partidos_En_Vivo', 'excel', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="text-[0.7rem] bg-brand-cream border border-brand-gold/30 px-2 py-1 rounded-lg font-bold hover:bg-brand-rust hover:text-white transition-colors">EXCEL</button>
+                    <button onClick={() => generarReporte(metricas.partidos_activos, 'Partidos_En_Vivo', 'pdf', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="text-[0.7rem] bg-brand-cream border border-brand-gold/30 px-2 py-1 rounded-lg font-bold hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
                   </div>
                 </div>
                 <div className="overflow-x-auto hide-scrollbar">
@@ -686,8 +686,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                       <option value="todos">Cualquier Fecha</option><option value="hoy">Para Hoy</option><option value="semana">Esta Semana</option><option value="mes">Este Mes</option>
                     </select>
                     <div className="flex gap-1 ml-auto">
-                      <button onClick={() => generarReporte(partidosAgendadosFiltrados(), 'Partidos_Agendados', 'excel', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="px-2 py-1 bg-green-600 text-white rounded text-[0.7rem] font-bold hover:bg-green-700">EXCEL</button>
-                      <button onClick={() => generarReporte(partidosAgendadosFiltrados(), 'Partidos_Agendados', 'pdf', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="px-2 py-1 bg-brand-rust text-white rounded text-[0.7rem] font-bold hover:bg-red-700">PDF</button>
+                      <button onClick={() => generarReporte(partidosAgendadosFiltrados(), 'Partidos_Agendados', 'excel', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="px-2 py-1 bg-brand-rust text-white rounded-lg text-[0.7rem] font-bold hover:bg-brand-brown">EXCEL</button>
+                      <button onClick={() => generarReporte(partidosAgendadosFiltrados(), 'Partidos_Agendados', 'pdf', [{label: 'ID', key: 'id'}, {label: 'Liga', key: 'liga_nombre'}])} className="px-2 py-1 bg-brand-rust text-white rounded-lg text-[0.7rem] font-bold hover:bg-brand-brown">PDF</button>
                     </div>
                   </div>
                 </div>
@@ -772,9 +772,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                     <div className="bg-brand-cream/30 px-5 py-4 border-b border-brand-gold/30 flex justify-between items-center">
                       <h3 className="font-bold text-brand-brown">Directorio de Ligas</h3>
                       <div className="flex gap-2">
-                        <button onClick={() => exportarReporteActual('excel')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded font-bold hover:bg-green-500 hover:text-white transition-colors">EXCEL</button>
-                        <button onClick={() => exportarReporteActual('csv')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded font-bold hover:bg-yellow-500 hover:text-white transition-colors">CSV</button>
-                        <button onClick={() => exportarReporteActual('pdf')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded font-bold hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
+                        <button onClick={() => exportarReporteActual('excel')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded-lg font-bold text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">EXCEL</button>
+                        <button onClick={() => exportarReporteActual('csv')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded-lg font-bold text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">CSV</button>
+                        <button onClick={() => exportarReporteActual('pdf')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded-lg font-bold text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
                       </div>
                     </div>
                     <div className="overflow-x-auto hide-scrollbar">
@@ -794,7 +794,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                               </td>
                               <td className="p-4 flex gap-2 justify-center">
                                 <button onClick={() => verInformacionLiga(l.id)} className="px-3 py-1.5 bg-brand-cream border border-brand-gold/40 text-brand-brown rounded hover:bg-brand-gold hover:text-white transition-colors text-xs font-bold">Ver Info</button>
-                                <button onClick={() => setLigaEditando(l)} className="px-3 py-1.5 bg-brand-blue text-white rounded hover:bg-blue-700 transition-colors text-xs font-bold">Editar</button>
+                                <button onClick={() => setLigaEditando(l)} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold">Editar</button>
                                 <button onClick={() => setItemEliminar({ tipo: 'liga', id: l.id, nombre: l.nombre })} className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-xs font-bold">Eliminar</button>
                               </td>
                             </tr>
@@ -871,9 +871,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                       <input type="text" placeholder="Buscar por nombre, cédula..." value={busquedaUsuario} onChange={(e) => setBusquedaUsuario(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-brand-gold/40 rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-brand-rust" />
                     </div>
                     <div className="flex gap-2 bg-white border border-brand-gold/40 p-1 rounded-lg">
-                      <button onClick={() => exportarReporteActual('excel')} className="text-[0.7rem] px-3 py-1 rounded font-bold bg-green-50 text-green-700 hover:bg-green-600 hover:text-white transition-colors">EXCEL</button>
-                      <button onClick={() => exportarReporteActual('csv')} className="text-[0.7rem] px-3 py-1 rounded font-bold bg-yellow-50 text-yellow-700 hover:bg-yellow-500 hover:text-white transition-colors">CSV</button>
-                      <button onClick={() => exportarReporteActual('pdf')} className="text-[0.7rem] px-3 py-1 rounded font-bold bg-red-50 text-red-700 hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
+                      <button onClick={() => exportarReporteActual('excel')} className="text-[0.7rem] px-3 py-1 rounded-lg font-bold bg-brand-cream border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">EXCEL</button>
+                      <button onClick={() => exportarReporteActual('csv')} className="text-[0.7rem] px-3 py-1 rounded-lg font-bold bg-brand-cream border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">CSV</button>
+                      <button onClick={() => exportarReporteActual('pdf')} className="text-[0.7rem] px-3 py-1 rounded-lg font-bold bg-brand-cream border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">PDF</button>
                     </div>
                   </div>
                 </div>
@@ -892,8 +892,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   Bitácora de Auditoría
                 </h3>
                 <div className="flex gap-2">
-                  <button onClick={() => exportarReporteActual('excel')} className="text-xs bg-brand-cream border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded font-bold hover:bg-green-600 hover:text-white transition-colors">Exportar Excel</button>
-                  <button onClick={() => exportarReporteActual('pdf')} className="text-xs bg-brand-cream border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded font-bold hover:bg-brand-rust hover:text-white transition-colors">Exportar PDF</button>
+                  <button onClick={() => exportarReporteActual('excel')} className="text-xs bg-brand-cream border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg font-bold hover:bg-brand-rust hover:text-white transition-colors">Exportar Excel</button>
+                  <button onClick={() => exportarReporteActual('pdf')} className="text-xs bg-brand-cream border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg font-bold hover:bg-brand-rust hover:text-white transition-colors">Exportar PDF</button>
                 </div>
               </div>
               

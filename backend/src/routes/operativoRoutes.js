@@ -24,7 +24,7 @@ const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = nul
       [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip, organizacionId]
     );
   } catch (error) {
-    console.error('❌ [auditoría] No se pudo registrar en la bitácora:', { usuarioId, accion, tabla, error: error?.message || error });
+    console.error('[auditoría] No se pudo registrar en la bitácora:', { usuarioId, accion, tabla, error: error?.message || error });
   }
 };
 

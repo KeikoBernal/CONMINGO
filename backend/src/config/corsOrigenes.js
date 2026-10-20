@@ -14,7 +14,7 @@ const ORIGENES_DEV = [
 const origenesPermitidos = [...new Set([...ORIGENES_ENV, ...ORIGENES_DEV])];
 
 if (!ORIGENES_ENV.length && process.env.NODE_ENV === 'production') {
-  console.warn('⚠️  CORS: CORS_ORIGINS no está definida. Solo se permiten orígenes localhost y *.vercel.app.');
+  console.warn('CORS: CORS_ORIGINS no está definida. Solo se permiten orígenes localhost y *.vercel.app.');
 }
 
 function origenPermitido(origin, callback) {
@@ -26,7 +26,7 @@ function origenPermitido(origin, callback) {
     const { hostname } = new URL(limpio);
     if (/\.vercel\.app$/i.test(hostname)) return callback(null, true);
   } catch (_) { /* origen malformado */ }
-  console.warn('🚫 CORS: origen rechazado →', origin);
+  console.warn('CORS: origen rechazado →', origin);
   return callback(new Error('Origen no permitido por CORS.'));
 }
 

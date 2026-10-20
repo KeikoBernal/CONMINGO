@@ -22,7 +22,7 @@ function construirSSL() {
   }
 
   console.warn(
-    '⚠️ [db] SSL de PostgreSQL sin verificación de certificado (rejectUnauthorized: false). ' +
+    '[db] SSL de PostgreSQL sin verificación de certificado (rejectUnauthorized: false). ' +
     'Configura PGSSLCERT con el certificado CA del proveedor para una conexión verificada.'
   );
   return { rejectUnauthorized: false };

@@ -142,7 +142,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       
       if (data.estadoPartido) {
         if (data.estadoPartido === 'Suspendido') {
-          alert('🛑 El árbitro ha suspendido el partido. Los resultados hasta este momento se han guardado automáticamente. Serás redirigido al menú principal.');
+          alert('El árbitro ha suspendido el partido. Los resultados hasta este momento se han guardado automáticamente. Serás redirigido al menú principal.');
           localStorage.removeItem('partidoActivoId');
           setPartidoActivo(null);
         } else {
@@ -152,7 +152,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     });
 
     socketRef.current.on('partido_finalizado_auto', (data) => {
-      alert(`🏆 ¡META ALCANZADA! El partido ha finalizado automáticamente porque se alcanzó el límite de tantos configurado.\nMarcador Final registrado: ${data.marcador_local} - ${data.marcador_visita}`);
+      alert(`¡META ALCANZADA! El partido ha finalizado automáticamente porque se alcanzó el límite de tantos configurado.\nMarcador Final registrado: ${data.marcador_local} - ${data.marcador_visita}`);
       setPartidoActivo(prev => prev ? ({ ...prev, estado: 'Finalizado', hora_final: data.hora_final }) : null);
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
       localStorage.removeItem(`backup_partido_${data.partido_id}`); 
@@ -160,10 +160,10 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     });
 
     socketRef.current.on('error_validacion_jugada', (msg) => {
-      alert(`❌ ERROR DE VALIDACIÓN:\n\n${msg}`);
+      alert(`ERROR DE VALIDACIÓN:\n\n${msg}`);
     });
 
-    socketRef.current.on('alerta_revision', (msg) => { alert(`⚠️ SOLICITUD DEL ÁRBITRO:\n\n${msg}`); });
+    socketRef.current.on('alerta_revision', (msg) => { alert(`SOLICITUD DEL ÁRBITRO:\n\n${msg}`); });
 
     const res = await fetchConToken(`/partidos/${partido.id}/nomina`);
     if (res.ok) {
@@ -175,7 +175,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     const localData = localStorage.getItem(`backup_partido_${partido.id}`);
     if (localData && partido.estado !== 'Finalizado' && partido.estado !== 'Suspendido') {
       const parsed = JSON.parse(localData);
-      if (window.confirm('⚠️ Se detectaron datos locales sin sincronizar para este partido. ¿Deseas restaurar la planilla desde tu navegador? (Ideal si perdiste conexión recientemente)')) {
+      if (window.confirm('Se detectaron datos locales sin sincronizar para este partido. ¿Deseas restaurar la planilla desde tu navegador? (Ideal si perdiste conexión recientemente)')) {
         setEfectividadJugadores(parsed.efectividadJugadores || {}); setManualStats(parsed.manualStats || {});
         setPuntosPorManoLocal(parsed.puntosPorManoLocal || Array(20).fill('')); setPuntosPorManoVisita(parsed.puntosPorManoVisita || Array(20).fill(''));
         socketRef.current.emit('sincronizar_planilla_completa', { partido_id: partido.id, efectividad: parsed.efectividadJugadores, manualStats: parsed.manualStats, tantosLocal: parsed.puntosPorManoLocal, tantosVisita: parsed.puntosPorManoVisita });
