@@ -7,6 +7,11 @@ import { useState } from 'react';
 // es dibujar una entrada simulada y sugerir el tanteo según la gráfica.
 
 const MARGEN_TABLERO = 5; // Porcentaje de margen para que las piezas no se corten.
+const PROBABILIDAD_NULA = 0.2; // Proporción de lanzamientos anulados por entrada.
+
+// Tipos de lanzamiento del sistema, con el mismo vocabulario del modal del
+// Anotador: 'A'/'a' = Arrime válido/nulo, 'B'/'b' = Boche válido/nulo.
+const TIPOS_LANZAMIENTO = ['Arrime', 'Boche'];
 
 // Lectura estricta de la plantilla de reglas del torneo (sin hardcodeo):
 // la cantidad de bolas por equipo se toma de la propiedad esferas_por_equipo.
@@ -17,6 +22,14 @@ const leerEsferasPorEquipo = (plantillaReglas) => {
 
 // Posición aleatoria en porcentaje, respetando el margen del tablero.
 const posicionAleatoria = () => MARGEN_TABLERO + Math.random() * (100 - 2 * MARGEN_TABLERO);
+
+// Lanzamiento simulado: posición, tipo de lanzamiento y validez.
+const lanzamientoAleatorio = () => ({
+  x: posicionAleatoria(),
+  y: posicionAleatoria(),
+  tipo: TIPOS_LANZAMIENTO[Math.floor(Math.random() * TIPOS_LANZAMIENTO.length)],
+  valida: Math.random() >= PROBABILIDAD_NULA
+});
 
 // Motor de arrime: distancia euclidiana al mingo por el teorema de Pitágoras.
 // El tablero es cuadrado y las coordenadas son porcentuales, por lo que la
@@ -32,29 +45,43 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
   const esferasPorEquipo = leerEsferasPorEquipo(plantillaReglas);
 
   // Genera posiciones aleatorias para el mingo y las bolas de ambos equipos,
-  // agrupa las distancias, las ordena y determina el ganador de la entrada.
+  // clasifica cada lanzamiento (Arrime/Boche, Válido/Nulo), agrupa las
+  // distancias de las bolas válidas y determina el ganador de la entrada.
   const lanzarBolas = () => {
     const nuevoMingo = { x: posicionAleatoria(), y: posicionAleatoria() };
-    const nuevasLocal = Array.from({ length: esferasPorEquipo }, () => ({ x: posicionAleatoria(), y: posicionAleatoria() }));
-    const nuevasVisita = Array.from({ length: esferasPorEquipo }, () => ({ x: posicionAleatoria(), y: posicionAleatoria() }));
+    const nuevasLocal = Array.from({ length: esferasPorEquipo }, lanzamientoAleatorio);
+    const nuevasVisita = Array.from({ length: esferasPorEquipo }, lanzamientoAleatorio);
 
     const distancias = []
-      .concat(nuevasLocal.map((bola, i) => ({ equipo: 'Local', indice: i + 1, distancia: distanciaAlMingo(bola, nuevoMingo) })))
-      .concat(nuevasVisita.map((bola, i) => ({ equipo: 'Visita', indice: i + 1, distancia: distanciaAlMingo(bola, nuevoMingo) })))
-      .sort((a, b) => a.distancia - b.distancia);
+      .concat(nuevasLocal.map((bola, i) => ({ equipo: 'Local', indice: i + 1, tipo: bola.tipo, valida: bola.valida, distancia: distanciaAlMingo(bola, nuevoMingo) })))
+      .concat(nuevasVisita.map((bola, i) => ({ equipo: 'Visita', indice: i + 1, tipo: bola.tipo, valida: bola.valida, distancia: distanciaAlMingo(bola, nuevoMingo) })));
 
-    const equipoGanador = distancias[0].equipo;
+    // Solo las bolas válidas participan del arrime; las nulas quedan como evidencia.
+    const validas = distancias.filter(d => d.valida).sort((a, b) => a.distancia - b.distancia);
+    const nulas = distancias.filter(d => !d.valida).sort((a, b) => a.distancia - b.distancia);
+    const filas = validas.concat(nulas);
+
+    const sinValidas = validas.length === 0;
+
+    const equipoGanador = sinValidas ? null : validas[0].equipo;
     const equipoRival = equipoGanador === 'Local' ? 'Visita' : 'Local';
-    const primeraDelRival = distancias.findIndex(d => d.equipo === equipoRival);
-    const bolasContadas = primeraDelRival === -1 ? distancias.length : primeraDelRival;
+    const primeraDelRival = sinValidas ? -1 : validas.findIndex(d => d.equipo === equipoRival);
+    const bolasContadas = sinValidas ? 0 : (primeraDelRival === -1 ? validas.length : primeraDelRival);
 
-    // Caso de raya: la bola más cercana de cada equipo quedó a la misma distancia.
-    const esRayada = distancias.length > 1 && distancias[0].equipo !== distancias[1].equipo && Math.abs(distancias[0].distancia - distancias[1].distancia) < 0.0001;
+    // Caso de raya: la bola válida más cercana de cada equipo quedó a la misma distancia.
+    const esRayada = validas.length > 1 && validas[0].equipo !== validas[1].equipo && Math.abs(validas[0].distancia - validas[1].distancia) < 0.0001;
 
     setMingo(nuevoMingo);
     setBolasLocal(nuevasLocal);
     setBolasVisita(nuevasVisita);
-    setVeredicto({ distancias, ganador: equipoGanador, puntos: esRayada ? 0 : bolasContadas, raya: esRayada });
+    setVeredicto({
+      filas,
+      ganador: equipoGanador,
+      puntos: esRayada || sinValidas ? 0 : bolasContadas,
+      raya: esRayada,
+      sinValidas: sinValidas,
+      tipoGanador: sinValidas ? null : validas[0].tipo
+    });
   };
 
   const hayLanzamiento = mingo && bolasLocal.length > 0 && bolasVisita.length > 0;
@@ -86,17 +113,17 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
               {bolasLocal.map((bola, i) => (
                 <div
                   key={'local-' + i}
-                  className="absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-blue border border-brand-brown/40 shadow z-20"
+                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-blue border border-brand-brown/40 shadow z-20' + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
-                  title={'Bola ' + (i + 1) + ' de ' + nombreLocal}
+                  title={'Bola ' + (i + 1) + ' de ' + nombreLocal + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
               ))}
               {bolasVisita.map((bola, i) => (
                 <div
                   key={'visita-' + i}
-                  className="absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-rust border border-brand-brown/40 shadow z-20"
+                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-rust border border-brand-brown/40 shadow z-20' + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
-                  title={'Bola ' + (i + 1) + ' de ' + nombreVisita}
+                  title={'Bola ' + (i + 1) + ' de ' + nombreVisita + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
               ))}
             </div>
@@ -109,19 +136,30 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
           )}
         </div>
 
-        {/* LEYENDA, SUGERENCIA Y TABLA DE DISTANCIAS */}
+        {/* LEYENDA, SUGERENCIA Y TABLA DE LANZAMIENTOS */}
         <div className="space-y-3">
           <div className="bg-brand-cream/60 border border-brand-gold/30 rounded-lg p-3 text-sm font-semibold text-brand-brown space-y-2">
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-white border border-brand-brown inline-block"></span> Mingo</div>
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-brand-blue inline-block"></span> {nombreLocal}</div>
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-brand-rust inline-block"></span> {nombreVisita}</div>
             <p className="text-xs text-brand-brown/60 font-normal pt-1">Reglas del torneo: {esferasPorEquipo} bolas por equipo (propiedad esferas_por_equipo de la plantilla de reglas).</p>
+            <p className="text-xs text-brand-brown/60 font-normal">Lanzamientos: Arrime y Boche. Las bolas con lanzamiento nulo se dibujan atenuadas con borde punteado y no puntúan.</p>
           </div>
 
           {veredicto && (
             <div className="bg-white border border-brand-gold/30 rounded-lg p-3 shadow-sm">
-              {veredicto.raya ? (
-                <p className="text-sm font-bold text-brand-brown">Caso de raya: la bola más cercana de cada equipo quedó a la misma distancia. Entrada nula, no se sugiere tanteo.</p>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className={'px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ' + (veredicto.raya || veredicto.sinValidas ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700')}>
+                  {veredicto.raya || veredicto.sinValidas ? 'Entrada nula' : 'Entrada válida'}
+                </span>
+                <span className="text-xs font-semibold text-brand-brown/60">
+                  {veredicto.sinValidas ? 'Sin bolas válidas' : 'Tipo de la bola más cercana: ' + veredicto.tipoGanador}
+                </span>
+              </div>
+              {veredicto.sinValidas ? (
+                <p className="text-sm font-bold text-brand-brown">Entrada nula: todos los lanzamientos quedaron anulados. No hay bolas válidas para el arrime.</p>
+              ) : veredicto.raya ? (
+                <p className="text-sm font-bold text-brand-brown">Caso de raya: la bola válida más cercana de cada equipo quedó a la misma distancia. Entrada nula, no se sugiere tanteo.</p>
               ) : (
                 <p className="text-sm font-bold text-brand-brown">
                   Sugerencia: Según la gráfica, anotar {veredicto.puntos} punto{veredicto.puntos === 1 ? '' : 's'} a {veredicto.ganador === 'Local' ? nombreLocal : nombreVisita}.
@@ -133,14 +171,23 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                     <tr className="text-left text-brand-brown/60 border-b border-brand-gold/20">
                       <th className="py-1 pr-2">#</th>
                       <th className="py-1 pr-2">Bola</th>
-                      <th className="py-1">Distancia al mingo</th>
+                      <th className="py-1 pr-2">Lanzamiento</th>
+                      <th className="py-1 pr-2">Estado</th>
+                      <th className="py-1">Distancia</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {veredicto.distancias.map((d, i) => (
-                      <tr key={'dist-' + i} className={veredicto.raya || i >= veredicto.puntos ? 'border-b border-brand-gold/10 text-brand-brown/60' : 'border-b border-brand-gold/10 font-bold text-brand-blue'}>
+                    {veredicto.filas.map((d, i) => (
+                      <tr
+                        key={'dist-' + i}
+                        className={d.valida && !veredicto.raya && !veredicto.sinValidas && i < veredicto.puntos
+                          ? 'border-b border-brand-gold/10 font-bold text-brand-blue'
+                          : (d.valida ? 'border-b border-brand-gold/10 text-brand-brown/60' : 'border-b border-brand-gold/10 text-brand-brown/40')}
+                      >
                         <td className="py-1 pr-2">{i + 1}</td>
                         <td className="py-1 pr-2">{d.equipo === 'Local' ? nombreLocal : nombreVisita} #{d.indice}</td>
+                        <td className="py-1 pr-2">{d.tipo}</td>
+                        <td className="py-1 pr-2">{d.valida ? 'Válido' : 'Nulo'}</td>
                         <td className="py-1">{d.distancia.toFixed(2)} %</td>
                       </tr>
                     ))}

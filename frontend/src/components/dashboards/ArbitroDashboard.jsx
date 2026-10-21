@@ -51,6 +51,10 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const filtrarTabla = (key, rows, categoryFields = [], dateFields = []) => rows.filter(row => rowMatchesFilter(row, getFilter(key), categoryFields, dateFields));
 
   const socketRef = useRef(null);
+  const partidoActivoRef = useRef(null); // LOTE T: espejo de partidoActivo para la reconexion del socket
+  const avisoSocketDadoRef = useRef(false); // LOTE T: aviso de caida del tiempo real mostrado una sola vez
+
+  useEffect(() => { partidoActivoRef.current = partidoActivo; }, [partidoActivo]);
 
   useEffect(() => {
     localStorage.setItem('arbitroPestana', pestana);
@@ -106,6 +110,21 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
         auth: { token: session?.access_token }
       });
       cargarDatosOficial();
+
+      // LOTE T: reconexion automatica. Tras un reinicio del servidor (deploy de Render) el socket
+      // se reconecta solo, pero hay que re-entrar a la sala y re-anunciar la presencia del rol.
+      socketRef.current.on('connect', () => {
+        const activo = partidoActivoRef.current;
+        if (!activo) return;
+        socketRef.current.emit('unirse_partido', activo.id);
+        socketRef.current.emit('presencia_oficial', { partidoId: activo.id, rol: 'arbitro', estado: true });
+      });
+
+      socketRef.current.on('connect_error', () => {
+        if (avisoSocketDadoRef.current) return;
+        avisoSocketDadoRef.current = true;
+        alert('Conexion en tiempo real no disponible. El sistema reintentara automaticamente.');
+      });
     })();
 
     return () => {
@@ -124,6 +143,7 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const formatoT = (t) => `${Math.floor(t / 60).toString().padStart(2, '0')}:${(t % 60).toString().padStart(2, '0')}`;
 
   const seleccionarPartido = async (partido) => {
+    setAnotadorConectado(false); // LOTE T: no heredar la presencia del partido anterior; el servidor envia la foto actual al unirse
     setPartidoActivo(partido);
     localStorage.setItem('partidoActivoId', partido.id);
     socketRef.current.emit('unirse_partido', partido.id);
