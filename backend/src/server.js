@@ -188,6 +188,7 @@ app.use('/api/delegado', delegadoRoutes);
 // ESTADO EN MEMORIA PARA LA PLANILLA EN VIVO
 // ==========================================
 const partidosEnMemoria = {};
+const presenciaOficiales = {}; // LOTE T: partidoId -> { arbitro: bool, anotador: bool }; presencia verificada en servidor
 
 // ============================================================
 // LOTE C/D: verificación de asignación del oficial al partido.
@@ -301,10 +302,19 @@ io.use(async (socket, next) => {
     }
     const { data, error } = await supabaseAuthSocket.auth.getUser(token);
     if (error || !data || !data.user) return next(new Error('Token inválido o expirado.'));
-    const { rows } = await db.query(
+    let { rows } = await db.query(
       'SELECT id, email, nombre, apellido, rol, organizacion_id FROM public.usuarios WHERE id = $1',
       [data.user.id]
     );
+    // LOTE T: si el UUID de auth.users no coincide con public.usuarios.id (desajuste de cuentas,
+    // mismo caso del 403 del Superadmin), se resuelve por email para no rechazar el socket en silencio.
+    if (!rows.length && data.user.email) {
+      ({ rows } = await db.query(
+        'SELECT id, email, nombre, apellido, rol, organizacion_id FROM public.usuarios WHERE lower(email) = lower($1)',
+        [data.user.email]
+      ));
+      if (rows.length) console.warn(`Socket resuelto por email (${data.user.email}) en lugar del id de auth.`);
+    }
     if (!rows.length) return next(new Error('Usuario no registrado en el sistema.'));
     socket.data.usuario = rows[0];
     socket.data.rolNormalizado = (rows[0].rol || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -466,11 +476,28 @@ io.on('connection', (socket) => {
     if (partidosEnMemoria[pid]) {
       socket.emit('actualizar_planilla', partidosEnMemoria[pid]);
     }
+
+    // LOTE T: foto de presencia al unirse. Antes el anuncio de presencia se emitia una sola vez
+    // al entrar al partido, asi que el oficial que entraba segundo nunca se enteraba de que el
+    // primero ya estaba conectado (indicadores siempre en Ausente). El servidor es la fuente de verdad.
+    const fotoPresencia = presenciaOficiales[pid] || {};
+    socket.emit('presencia_actualizada', { rol: 'arbitro', estado: !!fotoPresencia.arbitro });
+    socket.emit('presencia_actualizada', { rol: 'anotador', estado: !!fotoPresencia.anotador });
   });
 
   socket.on('presencia_oficial', async (data) => {
     if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
-    const { partidoId, rol, estado } = data;
+    const partidoId = parseInt(data.partidoId, 10);
+    if (isNaN(partidoId)) return;
+    // LOTE T: el rol lo determina el servidor a partir de la identidad verificada en io.use; el
+    // cliente solo elige cuando su rol dual es 'arbitro/anotador' (en que modulo esta trabajando).
+    let rol = rolNorm === 'arbitro/anotador' ? (data.rol === 'anotador' ? 'anotador' : 'arbitro') : rolNorm;
+    if (rol !== 'arbitro' && rol !== 'anotador') return;
+    const estado = !!data.estado;
+    if (!presenciaOficiales[partidoId]) presenciaOficiales[partidoId] = { arbitro: false, anotador: false };
+    presenciaOficiales[partidoId][rol] = estado;
+    // LOTE T: se recuerda la presencia activa de este socket para liberarla en disconnect.
+    socket.data.presenciaActiva = estado ? { pid: partidoId, rol } : null;
     io.to(`partido_${partidoId}`).emit('presencia_actualizada', { rol, estado });
   });
 
@@ -593,6 +620,14 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`Cliente desconectado: ${socket.id}`);
+    // LOTE T: si este socket tenia presencia activa en un partido, se libera y se avisa a la
+    // sala, para que el otro oficial vea Ausente de inmediato y no quede con un estado viejo.
+    const activa = socket.data.presenciaActiva;
+    if (activa && presenciaOficiales[activa.pid]) {
+      presenciaOficiales[activa.pid][activa.rol] = false;
+      socket.data.presenciaActiva = null;
+      io.to(`partido_${activa.pid}`).emit('presencia_actualizada', { rol: activa.rol, estado: false });
+    }
   });
 });
 

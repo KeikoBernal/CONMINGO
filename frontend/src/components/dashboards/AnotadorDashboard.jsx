@@ -42,6 +42,9 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const [destinatarioMsg, setDestinatarioMsg] = useState('rol_arbitro');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const socketRef = useRef(null);
+  const partidoActivoRef = useRef(null); // LOTE T: espejo de partidoActivo para la reconexion del socket
+  const estadoPlanillaRef = useRef(null); // LOTE T: ultima planilla local con datos, para resincronizar tras reconexion
+  const avisoSocketDadoRef = useRef(false); // LOTE T: aviso de caida del tiempo real mostrado una sola vez
 
   const [token, setToken] = useState(null);
 
@@ -58,6 +61,15 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   useEffect(() => {
     localStorage.setItem('anotadorPestana', pestana);
   }, [pestana]);
+
+  // LOTE T: espejos en refs para que los handlers del socket lean valores frescos
+  // (el efecto de conexion se monta una sola vez y su closure quedaria viejo).
+  useEffect(() => { partidoActivoRef.current = partidoActivo; }, [partidoActivo]);
+  useEffect(() => {
+    estadoPlanillaRef.current = (Object.keys(efectividadJugadores).length > 0 || puntosPorManoLocal.some(p => p !== '') || puntosPorManoVisita.some(p => p !== ''))
+      ? { efectividad: efectividadJugadores, manualStats, tantosLocal: puntosPorManoLocal, tantosVisita: puntosPorManoVisita }
+      : null;
+  }, [efectividadJugadores, manualStats, puntosPorManoLocal, puntosPorManoVisita]);
 
   const fetchConToken = async (endpoint, options = {}) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -109,6 +121,26 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
         auth: { token: session?.access_token }
       });
       cargarDatosOficial();
+
+      // LOTE T: reconexion automatica. Cuando Render reinicia el proceso, el socket se reconecta
+      // solo, pero antes nadie re-emitia unirse_partido ni presencia_oficial: la sincronizacion
+      // moria en silencio hasta refrescar la pagina. Al reconectar: re-entrar a la sala,
+      // re-anunciar presencia y, si hay datos locales, resincronizar la planilla en el servidor.
+      socketRef.current.on('connect', () => {
+        const activo = partidoActivoRef.current;
+        if (!activo) return;
+        socketRef.current.emit('unirse_partido', activo.id);
+        socketRef.current.emit('presencia_oficial', { partidoId: activo.id, rol: 'anotador', estado: true });
+        if (estadoPlanillaRef.current) {
+          socketRef.current.emit('sincronizar_planilla_completa', { partido_id: activo.id, ...estadoPlanillaRef.current });
+        }
+      });
+
+      socketRef.current.on('connect_error', () => {
+        if (avisoSocketDadoRef.current) return;
+        avisoSocketDadoRef.current = true;
+        alert('Conexion en tiempo real no disponible. El sistema reintentara automaticamente; tu planilla local sigue protegida.');
+      });
     })();
 
     return () => {
@@ -134,6 +166,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const formatoT = (t) => `${Math.floor(t / 60).toString().padStart(2, '0')}:${(t % 60).toString().padStart(2, '0')}`;
 
   const seleccionarPartido = async (partido) => {
+    setArbitroConectado(false); // LOTE T: no heredar la presencia del partido anterior; el servidor envia la foto actual al unirse
     setPartidoActivo(partido);
     localStorage.setItem('partidoActivoId', partido.id);
 
@@ -251,7 +284,18 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   };
 
   const registrarLanzamiento = (valor) => {
-    socketRef.current?.emit('proponer_jugada', { partido_id: partidoActivo.id, jugador_id: modalRegistro.jId, mano_index: modalRegistro.mIdx, valor });
+    // LOTE T: actualizacion optimista local. Antes la celda dependia al 100% del eco del socket,
+    // por lo que si el servidor se reiniciaba o el eco se perdia, el puntaje por mano se movia
+    // pero la tabla de lanzamientos quedaba vacia. El eco del servidor llega despues y coincide.
+    const { jId, mIdx } = modalRegistro;
+    setEfectividadJugadores(prev => {
+      const nuevo = { ...prev };
+      if (!nuevo[jId]) nuevo[jId] = {};
+      if (valor === '') delete nuevo[jId][mIdx];
+      else nuevo[jId][mIdx] = { valor, estado: 'validado' };
+      return nuevo;
+    });
+    socketRef.current?.emit('proponer_jugada', { partido_id: partidoActivo.id, jugador_id: jId, mano_index: mIdx, valor });
     setModalRegistro(null);
   };
 
