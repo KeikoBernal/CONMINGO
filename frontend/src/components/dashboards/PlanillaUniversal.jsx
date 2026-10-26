@@ -213,8 +213,10 @@ export default function PlanillaUniversal({
 
                     return (
                       <td key={m} onClick={() => rol !== 'espectador' && alHacerClicCelda(j.id, manoIndex)}
-                        className={`border border-brand-gold/20 p-2 text-center font-bold text-brand-brown cursor-${rol === 'espectador' ? 'default' : 'pointer'} ${bgCelda}`}>
-                        {jugada?.valor || ''}
+                        className={`border border-brand-gold/20 p-2 text-center font-bold text-brand-brown cursor-${rol === 'espectador' ? 'default' : 'pointer'} ${bgCelda} transition-colors`}>
+                        {jugada?.valor ? (
+                          <span key={`${jugada.valor}-${jugada.estado}`} className={rol === 'espectador' ? 'inline-block anim-marcador-pop' : 'inline-block'}>{jugada.valor}</span>
+                        ) : ''}
                       </td>
                     );
                   })}
@@ -257,8 +259,10 @@ export default function PlanillaUniversal({
                 return (
                   <td key={`pts-${i}`} 
                       onClick={() => rol === 'anotador' && alHacerClicPuntuacion(esLocal, i)}
-                      className={`border border-brand-gold/20 p-2 text-center font-black text-lg ${ptsValidados !== '' ? 'text-brand-blue' : 'text-transparent'} ${rol === 'anotador' ? 'cursor-pointer hover:bg-yellow-50' : 'cursor-default'}`}>
-                    {ptsValidados !== 0 && ptsValidados !== '' ? ptsValidados : '-'}
+                      className={`border border-brand-gold/20 p-2 text-center font-black text-lg transition-colors ${ptsValidados !== '' ? 'text-brand-blue' : 'text-transparent'} ${rol === 'anotador' ? 'cursor-pointer hover:bg-yellow-50' : 'cursor-default'}`}>
+                    {ptsValidados !== 0 && ptsValidados !== '' ? (
+                      <span key={`${esLocal ? 'L' : 'V'}-${i}-${ptsValidados}`} className={rol === 'espectador' ? 'inline-block anim-marcador-pop' : 'inline-block'}>{ptsValidados}</span>
+                    ) : '-'}
                   </td>
                 );
               })}
@@ -279,23 +283,23 @@ export default function PlanillaUniversal({
         
         <div className="flex flex-col items-center z-10 w-full md:w-1/3">
           <span className="text-xs uppercase tracking-widest text-brand-gold font-bold mb-1">{datosPartido.localNombre || 'Local'}</span>
-          <div className="text-6xl lg:text-7xl font-black tabular-nums tracking-tighter drop-shadow-md">{totalLocal}</div>
+          <div key={totalLocal} className="text-6xl lg:text-7xl font-black tabular-nums tracking-tighter drop-shadow-md anim-marcador-pop">{totalLocal}</div>
         </div>
 
         <div className="flex flex-col items-center z-10 text-center w-full md:w-1/3 border-y border-white/10 md:border-y-0 py-4 md:py-0">
-          <div className="text-xs uppercase tracking-[0.2em] text-brand-cream/50 mb-2 font-bold">{estadoPartido}</div>
+          <div className={`text-xs uppercase tracking-[0.2em] text-brand-cream/50 mb-2 font-bold ${String(estadoPartido).toLowerCase() === 'en curso' ? 'animate-pulse' : ''}`}>{estadoPartido}</div>
           <div className="flex items-center gap-2 mb-3">
             <svg className="w-5 h-5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             <div className="text-sm font-medium text-brand-cream/80">{datosPartido.horaInicio || '--:--'} - {datosPartido.horaFinal || '--:--'}</div>
           </div>
-          <div className="px-4 py-1.5 bg-brand-gold/20 border border-brand-gold/40 rounded-full text-brand-gold font-bold text-sm tracking-wider uppercase">
+          <div key={textoMarcador} className="px-4 py-1.5 bg-brand-gold/20 border border-brand-gold/40 rounded-full text-brand-gold font-bold text-sm tracking-wider uppercase anim-marcador-pop">
             {textoMarcador}
           </div>
         </div>
 
         <div className="flex flex-col items-center z-10 w-full md:w-1/3 relative">
           <span className="text-xs uppercase tracking-widest text-brand-gold font-bold mb-1">{datosPartido.visitaNombre || 'Visita'}</span>
-          <div className="text-6xl lg:text-7xl font-black tabular-nums tracking-tighter drop-shadow-md">{totalVisita}</div>
+          <div key={totalVisita} className="text-6xl lg:text-7xl font-black tabular-nums tracking-tighter drop-shadow-md anim-marcador-pop">{totalVisita}</div>
           
           {partidoId && (
             <button onClick={() => window.open(`/?vista=puntajes&partido_id=${partidoId}`, '_blank')} className="mt-4 md:absolute md:-bottom-2 md:-right-2 bg-brand-blue/20 hover:bg-brand-blue border border-brand-blue text-brand-blue hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 uppercase tracking-wider">
