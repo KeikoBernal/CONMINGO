@@ -12,6 +12,7 @@ import CampoTexto from '../CampoTexto';
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
 import FotoJugador from '../FotoJugador';
+import GraficasEstadisticas from '../GraficasEstadisticas';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -58,6 +59,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [recursosTorneo, setRecursosTorneo] = useState({ sedes: [], arbitros: [], anotadores: [], equipos: [] });
   const [usuariosOperativos, setUsuariosOperativos] = useState([]);
   const [estadisticas, setEstadisticas] = useState(null);
+  const [estadisticasGraficos, setEstadisticasGraficos] = useState(null);
   const [partidos, setPartidos] = useState([]);
   const [torneosList, setTorneosList] = useState([]);
   const [bitacora, setBitacora] = useState([]);
@@ -211,6 +213,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
         const resPart = await fetchConToken('/partidos-finalizados'); if (resPart.ok) setPartidos(await resPart.json());
       } else if (pestana === 'estadisticas') {
         const res = await fetchConToken('/estadisticas'); if (res.ok) setEstadisticas(await res.json());
+        const resGraf = await fetchConToken('/estadisticas/graficos'); if (resGraf.ok) setEstadisticasGraficos(await resGraf.json());
       } else if (pestana === 'historial') {
         const res = await fetchConToken('/partidos-finalizados'); if (res.ok) setPartidos(await res.json());
       } else if (pestana === 'bitacora') {
@@ -1370,6 +1373,8 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     </div>
                   ))}
                 </div>
+
+                <GraficasEstadisticas datos={estadisticasGraficos} />
 
                 <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
