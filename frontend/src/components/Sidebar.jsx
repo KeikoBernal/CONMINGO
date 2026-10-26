@@ -81,7 +81,7 @@ export default function Sidebar({
                       key={item.id}
                       onClick={() => onPestana(item.id)}
                       title={item.label}
-                      className={`w-full ${colapsado ? 'md:px-0' : 'px-6'} py-3 text-sm font-medium transition-colors ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold ${colapsado ? 'md:border-r-0' : ''}' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
+                      className={`w-full ${colapsado ? 'md:px-0' : 'px-6'} py-3 text-sm font-medium transition-colors ${isActive ? `bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold ${colapsado ? 'md:border-r-0' : ''}` : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
                     >
                       <div className={`flex items-center gap-3 w-full ${colapsado ? 'md:justify-center' : ''}`}>
                         {/* Envoltorio del icono para transformarlo en bola */}
