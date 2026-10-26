@@ -1386,6 +1386,49 @@ const totalJugadores = await db.query(`SELECT COUNT(j.id) FROM public.jugadores 
   } catch (error) { res.status(500).json({ error: 'Error estadísticas.' }); }
 });
 
+// N2: agregados para las graficas del panel de estadisticas global.
+router.get('/estadisticas/graficos', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+
+    // Partidos finalizados por mes (ultimos 6, en orden cronologico)
+    const partidosPorMes = await db.query(`
+      SELECT TO_CHAR(DATE_TRUNC('month', p.fecha_hora::timestamp), 'YYYY-MM') AS mes, COUNT(*) AS partidos
+      FROM public.partidos p
+      JOIN public.torneos t ON p.torneo_id = t.id
+      WHERE t.organizacion_id = $1 AND p.estado = 'Finalizado'
+      GROUP BY mes ORDER BY mes DESC LIMIT 6
+    `, [orgId]);
+
+    // Tarjetas por color (la tabla usa color: Amarilla / Azul / Roja)
+    const tarjetasPorColor = await db.query(`
+      SELECT tr.color AS color, COUNT(tr.id) AS total
+      FROM public.tarjetas tr
+      JOIN public.partidos p ON tr.partido_id = p.id
+      JOIN public.torneos t ON p.torneo_id = t.id
+      WHERE t.organizacion_id = $1
+      GROUP BY tr.color ORDER BY total DESC
+    `, [orgId]);
+
+    // Victorias por equipo (Top 8) segun resultados.equipos_ganador_id
+    const victoriasPorEquipo = await db.query(`
+      SELECT e.nombre AS equipo, COUNT(r.id) AS victorias
+      FROM public.resultados r
+      JOIN public.partidos p ON r.partido_id = p.id
+      JOIN public.torneos t ON p.torneo_id = t.id
+      JOIN public.equipos e ON r.equipo_ganador_id = e.id
+      WHERE t.organizacion_id = $1 AND r.equipo_ganador_id IS NOT NULL
+      GROUP BY e.nombre ORDER BY victorias DESC LIMIT 8
+    `, [orgId]);
+
+    res.json({
+      partidos_por_mes: partidosPorMes.rows.slice().reverse(),
+      tarjetas_por_color: tarjetasPorColor.rows,
+      victorias_por_equipo: victoriasPorEquipo.rows
+    });
+  } catch (error) { res.status(500).json({ error: 'Error estadisticas para graficos.' }); }
+});
+
 router.get('/partidos-finalizados', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
