@@ -693,7 +693,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       ) : (
                         documentosLiga.map(d => (
                           <tr key={d.id}>
-                            <td className="font-bold">{d.titulo}</td>
+                            <td className="font-bold">{d.titulo}{d.es_global && <span className="ml-2 bg-brand-blue/10 text-brand-blue px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase border border-brand-blue/20">Global</span>}</td>
                             <td><span className="bg-brand-cream text-brand-brown px-2 py-1 rounded-full text-xs font-bold border border-brand-gold/30">{d.tipo}</span></td>
                             <td className="text-brand-brown/80">{d.torneo_nombre || 'General'}</td>
                             <td className="text-center text-brand-brown/80">{formatearTamanoDoc(d.tamano_bytes)}</td>

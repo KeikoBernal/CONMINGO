@@ -521,4 +521,96 @@ router.get('/respaldo-completo', async (req, res) => {
   }
 });
 
+
+/**
+ * ========================================================
+ * LOTE 3B+: DOCUMENTOS GLOBALES COMPARTIDOS CON TODAS LAS LIGAS
+ * Bucket privado "documentos", carpeta reservada __global:
+ * __global/{uuid}.{ext}  ->  organizacion_id NULL en la tabla.
+ * ========================================================
+ */
+const TIPOS_DOCUMENTO_GLOBAL = ['Reglamento', 'Convocatoria', 'Acta', 'Inscripcion', 'Comunicado', 'Otro'];
+
+const construirUrlFirmadaDocGlobal = async (archivoPath) => {
+  try {
+    const { data, error } = await supabaseAdmin.storage.from('documentos').createSignedUrl(archivoPath, 3600);
+    if (error) throw error;
+    return data?.signedUrl || null;
+  } catch (error) {
+    console.error('[documentos] No se pudo firmar la URL de descarga:', { archivoPath, error: error?.message || error });
+    return null;
+  }
+};
+
+router.get('/documentos', async (req, res) => {
+  try {
+    const resultado = await db.query(`
+      SELECT d.id, d.titulo, d.tipo, d.archivo_path, d.tamano_bytes, d.mime_type,
+             TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TRIM(COALESCE(u.nombre || ' ' || u.apellido, u.email, '')) AS subido_por_nombre
+      FROM public.documentos d
+      LEFT JOIN public.usuarios u ON d.subido_por = u.id
+      WHERE d.organizacion_id IS NULL
+      ORDER BY d.creado_en DESC
+    `);
+    const documentos = await Promise.all(resultado.rows.map(async (doc) => {
+      const url = await construirUrlFirmadaDocGlobal(doc.archivo_path);
+      delete doc.archivo_path;
+      return { ...doc, url_firmada: url };
+    }));
+    res.json({ documentos });
+  } catch (error) {
+    console.error('Error al listar documentos globales:', error);
+    res.status(500).json({ error: 'Error al obtener los documentos globales.' });
+  }
+});
+
+router.post('/documentos', async (req, res) => {
+  const { titulo, tipo, archivo_path, tamano_bytes, mime_type } = req.body;
+  try {
+    const tituloLimpio = String(titulo || '').trim();
+    if (!tituloLimpio) return res.status(400).json({ error: 'El titulo del documento es obligatorio.' });
+    if (tituloLimpio.length > 200) return res.status(400).json({ error: 'El titulo no puede superar los 200 caracteres.' });
+    const tipoDoc = TIPOS_DOCUMENTO_GLOBAL.includes(tipo) ? tipo : 'Otro';
+    if (!archivo_path || typeof archivo_path !== 'string') return res.status(400).json({ error: 'Falta la ruta del archivo subido.' });
+    const ruta = archivo_path.trim();
+    if (!ruta.startsWith('__global/')) {
+      return res.status(403).json({ error: 'El archivo no pertenece a la carpeta global de documentos.' });
+    }
+    const tamano = parseInt(tamano_bytes, 10);
+    if (!tamano || tamano <= 0) return res.status(400).json({ error: 'Tamano de archivo invalido.' });
+    if (tamano > 10 * 1024 * 1024) return res.status(400).json({ error: 'El archivo supera los 10MB permitidos.' });
+    const resDb = await db.query(
+      `INSERT INTO public.documentos (organizacion_id, subido_por, titulo, tipo, torneo_id, archivo_path, tamano_bytes, mime_type)
+       VALUES (NULL, $1, $2, $3, NULL, $4, $5, $6) RETURNING *`,
+      [req.usuario.id, tituloLimpio, tipoDoc, ruta, tamano, mime_type || null]
+    );
+    await registrarAuditoria(req.usuario.id, 'CREAR_DOCUMENTO_GLOBAL', 'documentos', null, resDb.rows[0], req.ip, null);
+    res.status(201).json({ mensaje: 'Documento global registrado con exito.', documento: resDb.rows[0] });
+  } catch (error) {
+    console.error('Error al registrar documento global:', error);
+    res.status(500).json({ error: 'Error registrando el documento global.' });
+  }
+});
+
+router.delete('/documentos/:id', async (req, res) => {
+  try {
+    const chk = await db.query('SELECT * FROM public.documentos WHERE id = $1::uuid AND organizacion_id IS NULL', [req.params.id]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Documento global no encontrado.' });
+    const doc = chk.rows[0];
+    try {
+      const { error: errorStorage } = await supabaseAdmin.storage.from('documentos').remove([doc.archivo_path]);
+      if (errorStorage) console.error('[documentos] No se pudo borrar el objeto de Storage:', errorStorage?.message || errorStorage);
+    } catch (errorStorage) {
+      console.error('[documentos] No se pudo borrar el objeto de Storage:', errorStorage?.message || errorStorage);
+    }
+    await db.query('DELETE FROM public.documentos WHERE id = $1::uuid', [doc.id]);
+    await registrarAuditoria(req.usuario.id, 'ELIMINAR_DOCUMENTO_GLOBAL', 'documentos', doc, null, req.ip, null);
+    res.json({ mensaje: 'Documento global eliminado con exito.' });
+  } catch (error) {
+    console.error('Error al eliminar documento global:', error);
+    res.status(500).json({ error: 'Error al eliminar el documento global.' });
+  }
+});
+
 module.exports = router;
