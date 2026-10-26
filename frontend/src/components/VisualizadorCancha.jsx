@@ -41,6 +41,7 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
   const [bolasLocal, setBolasLocal] = useState([]);
   const [bolasVisita, setBolasVisita] = useState([]);
   const [veredicto, setVeredicto] = useState(null);
+  const [bolaSeleccionada, setBolaSeleccionada] = useState(null);
 
   const esferasPorEquipo = leerEsferasPorEquipo(plantillaReglas);
 
@@ -71,6 +72,7 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
     // Caso de raya: la bola válida más cercana de cada equipo quedó a la misma distancia.
     const esRayada = validas.length > 1 && validas[0].equipo !== validas[1].equipo && Math.abs(validas[0].distancia - validas[1].distancia) < 0.0001;
 
+    setBolaSeleccionada(null);
     setMingo(nuevoMingo);
     setBolasLocal(nuevasLocal);
     setBolasVisita(nuevasVisita);
@@ -85,6 +87,15 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
   };
 
   const hayLanzamiento = mingo && bolasLocal.length > 0 && bolasVisita.length > 0;
+
+  // M3: panel de referencia por lanzamiento. Todo se deriva del veredicto ya
+  // calculado; nada sale del componente (mantiene el contrato pasivo del Lote S).
+  const esSeleccion = (equipo, indice) => !!bolaSeleccionada && bolaSeleccionada.equipo === equipo && bolaSeleccionada.indice === indice;
+  const filaSel = veredicto && bolaSeleccionada ? veredicto.filas.find(f => f.equipo === bolaSeleccionada.equipo && f.indice === bolaSeleccionada.indice) : null;
+  const posicionSel = bolaSeleccionada ? (bolaSeleccionada.equipo === 'Local' ? bolasLocal[bolaSeleccionada.indice - 1] : bolasVisita[bolaSeleccionada.indice - 1]) : null;
+  const ordenValidas = filaSel && filaSel.valida ? veredicto.filas.filter(f => f.valida).findIndex(f => f.equipo === filaSel.equipo && f.indice === filaSel.indice) : -1;
+  const puntuaSel = !!(filaSel && filaSel.valida && !veredicto.raya && !veredicto.sinValidas && ordenValidas !== -1 && ordenValidas < veredicto.puntos);
+  const codigoSel = filaSel ? (filaSel.tipo === 'Arrime' ? (filaSel.valida ? 'A' : 'a') : (filaSel.valida ? 'B' : 'b')) : '';
 
   return (
     <div className="space-y-4">
@@ -111,17 +122,21 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                 title="Mingo (objetivo)"
               />
               {bolasLocal.map((bola, i) => (
-                <div
+                <button
+                  type="button"
                   key={'local-' + i}
-                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-blue border border-brand-brown/40 shadow z-20' + (bola.valida ? '' : ' opacity-40 border-dashed')}
+                  onClick={() => setBolaSeleccionada({ equipo: 'Local', indice: i + 1 })}
+                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-blue border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Local', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
                   title={'Bola ' + (i + 1) + ' de ' + nombreLocal + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
               ))}
               {bolasVisita.map((bola, i) => (
-                <div
+                <button
+                  type="button"
                   key={'visita-' + i}
-                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-rust border border-brand-brown/40 shadow z-20' + (bola.valida ? '' : ' opacity-40 border-dashed')}
+                  onClick={() => setBolaSeleccionada({ equipo: 'Visita', indice: i + 1 })}
+                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-rust border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Visita', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
                   title={'Bola ' + (i + 1) + ' de ' + nombreVisita + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
@@ -180,9 +195,10 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                     {veredicto.filas.map((d, i) => (
                       <tr
                         key={'dist-' + i}
-                        className={d.valida && !veredicto.raya && !veredicto.sinValidas && i < veredicto.puntos
+                        onClick={() => setBolaSeleccionada({ equipo: d.equipo, indice: d.indice })}
+                        className={(d.valida && !veredicto.raya && !veredicto.sinValidas && i < veredicto.puntos
                           ? 'border-b border-brand-gold/10 font-bold text-brand-blue'
-                          : (d.valida ? 'border-b border-brand-gold/10 text-brand-brown/60' : 'border-b border-brand-gold/10 text-brand-brown/40')}
+                          : (d.valida ? 'border-b border-brand-gold/10 text-brand-brown/60' : 'border-b border-brand-gold/10 text-brand-brown/40')) + (esSeleccion(d.equipo, d.indice) ? ' bg-brand-gold/20' : ' cursor-pointer hover:bg-brand-gold/10')}
                       >
                         <td className="py-1 pr-2">{i + 1}</td>
                         <td className="py-1 pr-2">{d.equipo === 'Local' ? nombreLocal : nombreVisita} #{d.indice}</td>
@@ -194,6 +210,55 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* M3: PANEL DE REFERENCIA POR LANZAMIENTO (solo lectura, pasivo) */}
+          {veredicto && (
+            <div className="bg-brand-brown text-brand-cream border border-brand-gold/40 rounded-lg p-4 shadow-sm">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-brand-gold mb-2">Panel de referencia por lanzamiento</h4>
+              {filaSel && posicionSel ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={'w-3 h-3 rounded-full inline-block ' + (filaSel.equipo === 'Local' ? 'bg-brand-blue' : 'bg-brand-rust')}></span>
+                    <span className="font-bold">{filaSel.equipo === 'Local' ? nombreLocal : nombreVisita} - Bola #{filaSel.indice}</span>
+                    <span className={'px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ' + (filaSel.valida ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300')}>
+                      {filaSel.tipo} {filaSel.valida ? 'válido' : 'nulo'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-brand-cream/10 rounded p-2">
+                      <p className="text-brand-gold font-bold uppercase tracking-wider text-[0.65rem] mb-1">Código en el registro manual</p>
+                      <p className="text-lg font-black leading-none">{codigoSel}</p>
+                      <p className="text-brand-cream/60 mt-1">Equivale a {filaSel.tipo.toLowerCase()} {filaSel.valida ? 'válido' : 'nulo'} del vocabulario del sistema (A/a, B/b).</p>
+                    </div>
+                    <div className="bg-brand-cream/10 rounded p-2">
+                      <p className="text-brand-gold font-bold uppercase tracking-wider text-[0.65rem] mb-1">Distancia al mingo</p>
+                      <p className="text-lg font-black leading-none">{filaSel.distancia.toFixed(2)} %</p>
+                      <p className="text-brand-cream/60 mt-1">Coordenadas: X {posicionSel.x.toFixed(1)} / Y {posicionSel.y.toFixed(1)}</p>
+                    </div>
+                  </div>
+                  <div className="bg-brand-cream/10 rounded p-2 text-xs">
+                    <p className="text-brand-gold font-bold uppercase tracking-wider text-[0.65rem] mb-1">Orden en el arrime</p>
+                    {filaSel.valida ? (
+                      <p className="text-brand-cream/90 font-semibold">Puesto {ordenValidas + 1} entre las {veredicto.filas.filter(f => f.valida).length} bolas válidas.</p>
+                    ) : (
+                      <p className="text-brand-cream/90 font-semibold">No participa del arrime: el lanzamiento quedó anulado.</p>
+                    )}
+                    <p className="text-brand-cream/70 mt-1">
+                      {puntuaSel
+                        ? 'Puntúa: es una de las ' + veredicto.puntos + ' bola' + (veredicto.puntos === 1 ? '' : 's') + ' de ' + (veredicto.ganador === 'Local' ? nombreLocal : nombreVisita) + ' antes de la primera bola válida del rival.'
+                        : filaSel.valida
+                          ? 'No puntúa: quedó por detrás de la primera bola válida del rival' + (veredicto.raya ? ' (entrada declarada raya)' : '') + '.'
+                          : 'No puntúa: lanzamiento nulo.'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-brand-cream/60 font-medium">
+                  Toca una bola del tablero o una fila de la tabla para ver su ficha de referencia: código del registro manual, distancia al mingo, orden del arrime y si puntúa.
+                </p>
+              )}
             </div>
           )}
         </div>
