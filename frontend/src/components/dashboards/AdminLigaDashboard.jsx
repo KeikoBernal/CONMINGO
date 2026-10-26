@@ -88,6 +88,13 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [busquedaSedes, setBusquedaSedes] = useState('');
   const [busquedaEquipos, setBusquedaEquipos] = useState('');
   const [busquedaCredenciales, setBusquedaCredenciales] = useState('');
+
+  // LOTE 3B: repositorio de documentos de la liga
+  const [documentos, setDocumentos] = useState([]);
+  const [orgIdDocumentos, setOrgIdDocumentos] = useState(null);
+  const [formDoc, setFormDoc] = useState({ titulo: '', tipo: 'Reglamento', torneo_id: '' });
+  const [archivoDoc, setArchivoDoc] = useState(null);
+  const [subiendoDoc, setSubiendoDoc] = useState(false);
   const [filtrosTablas, setFiltrosTablas] = useState({});
   const getFilter = key => filtrosTablas[key] || EMPTY_FILTER;
   const setTableFilter = key => next => setFiltrosTablas(previous => ({ ...previous, [key]: next }));
@@ -218,6 +225,14 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
         const res = await fetchConToken('/partidos-finalizados'); if (res.ok) setPartidos(await res.json());
       } else if (pestana === 'bitacora') {
         const res = await fetchConToken('/bitacora'); if (res.ok) setBitacora(await res.json());
+      } else if (pestana === 'documentos') {
+        const resDoc = await fetchConToken('/documentos');
+        if (resDoc.ok) {
+          const dataDoc = await resDoc.json();
+          setDocumentos(dataDoc.documentos || []);
+          setOrgIdDocumentos(dataDoc.organizacion_id || null);
+        }
+        const resTor = await fetchConToken('/torneos'); if (resTor.ok) setTorneosList(await resTor.json());
       }
     } catch (e) { setMensaje('Error cargando datos del servidor.'); }
   };
@@ -731,6 +746,63 @@ const confirmarReagendar = async (e) => {
   };
 
   // Íconos SVG para la barra lateral
+  // LOTE 3B: helpers y acciones del repositorio de documentos
+  const formatearTamano = (bytes) => {
+    const valor = parseInt(bytes, 10);
+    if (!valor || valor <= 0) return 'N/D';
+    if (valor < 1024) return valor + ' B';
+    if (valor < 1024 * 1024) return (valor / 1024).toFixed(1) + ' KB';
+    return (valor / (1024 * 1024)).toFixed(2) + ' MB';
+  };
+
+  const descargarDocumento = (doc) => {
+    if (!doc?.url_firmada) return mostrarToast('El enlace de descarga no está disponible. Recarga la pestaña.', 'error');
+    window.open(doc.url_firmada, '_blank', 'noopener');
+  };
+
+  const subirDocumento = async (e) => {
+    e.preventDefault();
+    if (subiendoDoc) return;
+    const titulo = formDoc.titulo.trim();
+    if (!titulo) return mostrarToast('El título del documento es obligatorio.', 'error');
+    if (!archivoDoc) return mostrarToast('Selecciona el archivo a subir.', 'error');
+    if (archivoDoc.size > 10 * 1024 * 1024) return mostrarToast('El archivo supera los 10MB permitidos.', 'error');
+    if (!orgIdDocumentos) return mostrarToast('No se pudo determinar la organización. Recarga la pestaña.', 'error');
+    setSubiendoDoc(true);
+    let ruta = null;
+    try {
+      const extension = ((archivoDoc.name.match(/\.([a-zA-Z0-9]{1,8})$/) || [null, 'bin'])[1]).toLowerCase();
+      ruta = orgIdDocumentos + '/' + crypto.randomUUID() + '.' + extension;
+      const { error: errorSubida } = await supabase.storage.from('documentos').upload(ruta, archivoDoc, { contentType: archivoDoc.type || 'application/octet-stream', upsert: false });
+      if (errorSubida) throw new Error(errorSubida.message || 'Error subiendo el archivo.');
+      const res = await fetchConToken('/documentos', {
+        method: 'POST',
+        body: JSON.stringify({ titulo, tipo: formDoc.tipo, torneo_id: formDoc.torneo_id || null, archivo_path: ruta, tamano_bytes: archivoDoc.size, mime_type: archivoDoc.type || 'application/octet-stream' })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        await supabase.storage.from('documentos').remove([ruta]).catch(() => {});
+        throw new Error(data.error || 'Error registrando el documento.');
+      }
+      mostrarToast('Documento subido correctamente.', 'exito');
+      setFormDoc({ titulo: '', tipo: 'Reglamento', torneo_id: '' });
+      setArchivoDoc(null);
+      cargarDatos();
+    } catch (err) {
+      mostrarToast(err.message || 'Error subiendo el documento.', 'error');
+    } finally {
+      setSubiendoDoc(false);
+    }
+  };
+
+  const eliminarDocumento = async (id) => {
+    if (!window.confirm('¿Eliminar este documento? El archivo se borrará del repositorio de la liga.')) return;
+    const res = await fetchConToken('/documentos/' + id, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { mostrarToast('Documento eliminado.', 'exito'); cargarDatos(); }
+    else mostrarToast(data.error || 'Error eliminando el documento.', 'error');
+  };
+
   const NavIcon = ({ pestanaId }) => {
     switch (pestanaId) {
       case 'equipos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>;
@@ -741,11 +813,13 @@ const confirmarReagendar = async (e) => {
       case 'estadisticas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
       case 'historial': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
       case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5h6m-8 4h10m-10 4h6m-6 4h10M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>;
+      case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
       default: return null;
     }
   };
 
   const filasSedes = filteredRows('sedes', sedes, ['nombre'], []);
+  const filasDocumentos = filteredRows('documentos', documentos, ['tipo'], []);
   const filasEquipos = filteredRows('equipos', equipos, ['categoria', 'tipo_genero'], []);
   const filasNomina = filteredRows('nomina', jugadores, ['genero', 'sexo'], ['fecha_nacimiento']);
   const credencialesConEquipo = usuariosOperativos.map(usuarioOperativo => ({
@@ -907,6 +981,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             { id: 'estadisticas', label: 'Estadísticas Globales' },
             { id: 'historial', label: 'Historial / Archivo' },
             { id: 'bitacora', label: 'Bitácora de actividad' },
+            { id: 'documentos', label: 'Documentos' },
           ]},
         ]}
         pestana={pestana}
@@ -1403,6 +1478,88 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </tbody>
                     </table>
                   </div>    
+                </div>
+              </div>
+            )}
+
+            {/* === VISTA: DOCUMENTOS === */}
+            {pestana === 'documentos' && (
+              <div className="space-y-6 animate-fade-in">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
+                  <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
+                    <NavIcon pestanaId="documentos" />
+                    Subir Documento
+                  </h3>
+                  <form onSubmit={subirDocumento} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <CampoTexto etiqueta="Título del documento" valor={formDoc.titulo} onChange={e => setFormDoc({ ...formDoc, titulo: e.target.value })} requerido />
+                    <CampoSelect etiqueta="Tipo de documento" valor={formDoc.tipo} onChange={e => setFormDoc({ ...formDoc, tipo: e.target.value })}>
+                      <option value="Reglamento">Reglamento</option>
+                      <option value="Convocatoria">Convocatoria</option>
+                      <option value="Acta">Acta</option>
+                      <option value="Inscripcion">Inscripción</option>
+                      <option value="Comunicado">Comunicado</option>
+                      <option value="Otro">Otro</option>
+                    </CampoSelect>
+                    <CampoSelect etiqueta="Torneo asociado (opcional)" valor={formDoc.torneo_id} onChange={e => setFormDoc({ ...formDoc, torneo_id: e.target.value })}>
+                      <option value="">-- Sin torneo asociado --</option>
+                      {torneosList.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                    </CampoSelect>
+                    <div>
+                      <label className="flex items-center gap-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-4 py-2.5 rounded-lg font-semibold text-sm cursor-pointer transition-colors shadow-sm w-fit">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                        {archivoDoc ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                        <input type="file" className="hidden" onChange={e => setArchivoDoc(e.target.files?.[0] || null)} accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp" />
+                      </label>
+                      {archivoDoc && <p className="mt-2 text-xs font-semibold text-brand-brown/70">{archivoDoc.name} ({formatearTamano(archivoDoc.size)})</p>}
+                    </div>
+                    <div className="md:col-span-2">
+                      <button type="submit" disabled={subiendoDoc} className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">
+                        {subiendoDoc ? 'Subiendo...' : 'Subir Documento'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <h3 className="text-lg font-bold text-brand-brown">Repositorio de Documentos</h3>
+                  </div>
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={documentos} filteredRows={filasDocumentos} filter={getFilter('documentos')} setFilter={setTableFilter('documentos')} columns={[{ key: 'titulo', label: 'Título' }, { key: 'tipo', label: 'Tipo' }, { key: 'torneo_nombre', label: 'Torneo' }]} filename="documentos_filtrados" />
+                  <div className="overflow-x-auto">
+                    <table className="tabla-admin">
+                      <thead>
+                        <tr>
+                          <th>Documento</th>
+                          <th>Tipo</th>
+                          <th>Torneo</th>
+                          <th className="text-center">Tamaño</th>
+                          <th>Subido por</th>
+                          <th>Fecha</th>
+                          <th className="text-center w-32">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filasDocumentos.length === 0 ? (
+                          <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">Aún no hay documentos registrados en la liga.</td></tr>
+                        ) : (
+                          filasDocumentos.map(d => (
+                            <tr key={d.id} className="group">
+                              <td className="font-bold">{d.titulo}</td>
+                              <td><span className="bg-brand-cream text-brand-brown px-2 py-1 rounded-full text-xs font-bold border border-brand-gold/30">{d.tipo}</span></td>
+                              <td className="text-brand-brown/80">{d.torneo_nombre || 'General'}</td>
+                              <td className="text-center text-brand-brown/80">{formatearTamano(d.tamano_bytes)}</td>
+                              <td className="text-brand-brown/80">{d.subido_por_nombre || 'N/D'}</td>
+                              <td className="text-brand-brown/80">{d.creado_en ? d.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
+                              <td className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => descargarDocumento(d)} disabled={!d.url_firmada} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="Descargar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
+                                <button onClick={() => eliminarDocumento(d.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}

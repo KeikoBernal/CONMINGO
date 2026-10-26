@@ -1801,4 +1801,104 @@ router.post('/partidos/:id/forzar-ganador', async (req, res) => {
 });
 
 
+
+/**
+ * ========================================================
+ * LOTE 3B: REPOSITORIO DE DOCUMENTOS (SUPABASE STORAGE + RLS)
+ * Bucket privado "documentos", carpeta por organizacion:
+ * {organizacion_id}/{uuid}.{ext}
+ * ========================================================
+ */
+const TIPOS_DOCUMENTO = ['Reglamento', 'Convocatoria', 'Acta', 'Inscripcion', 'Comunicado', 'Otro'];
+
+const construirUrlFirmadaDoc = async (archivoPath) => {
+  try {
+    const { data, error } = await supabaseAdmin.storage.from('documentos').createSignedUrl(archivoPath, 3600);
+    if (error) throw error;
+    return data?.signedUrl || null;
+  } catch (error) {
+    console.error('[documentos] No se pudo firmar la URL de descarga:', { archivoPath, error: error?.message || error });
+    return null;
+  }
+};
+
+router.get('/documentos', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const resultado = await db.query(`
+      SELECT d.id, d.titulo, d.tipo, d.torneo_id, d.archivo_path, d.tamano_bytes, d.mime_type,
+             TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             t.nombre AS torneo_nombre,
+             TRIM(COALESCE(u.nombre || ' ' || u.apellido, u.email, '')) AS subido_por_nombre
+      FROM public.documentos d
+      LEFT JOIN public.torneos t ON d.torneo_id = t.id
+      LEFT JOIN public.usuarios u ON d.subido_por = u.id
+      WHERE d.organizacion_id = $1
+      ORDER BY d.creado_en DESC
+    `, [orgId]);
+    const documentos = await Promise.all(resultado.rows.map(async (doc) => ({
+      ...doc,
+      url_firmada: await construirUrlFirmadaDoc(doc.archivo_path)
+    })));
+    res.json({ organizacion_id: orgId, documentos });
+  } catch (error) {
+    console.error('Error al listar documentos:', error);
+    res.status(500).json({ error: 'Error al obtener los documentos.' });
+  }
+});
+
+router.post('/documentos', async (req, res) => {
+  const { titulo, tipo, torneo_id, archivo_path, tamano_bytes, mime_type } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const tituloLimpio = String(titulo || '').trim();
+    if (!tituloLimpio) return res.status(400).json({ error: 'El titulo del documento es obligatorio.' });
+    if (tituloLimpio.length > 200) return res.status(400).json({ error: 'El titulo no puede superar los 200 caracteres.' });
+    const tipoDoc = TIPOS_DOCUMENTO.includes(tipo) ? tipo : 'Otro';
+    if (!archivo_path || typeof archivo_path !== 'string') return res.status(400).json({ error: 'Falta la ruta del archivo subido.' });
+    const ruta = archivo_path.trim();
+    if (!ruta.toLowerCase().startsWith(String(orgId).toLowerCase() + '/')) {
+      return res.status(403).json({ error: 'El archivo no pertenece a la carpeta de tu organizacion.' });
+    }
+    const tamano = parseInt(tamano_bytes, 10);
+    if (!tamano || tamano <= 0) return res.status(400).json({ error: 'Tamano de archivo invalido.' });
+    if (tamano > 10 * 1024 * 1024) return res.status(400).json({ error: 'El archivo supera los 10MB permitidos.' });
+    if (torneo_id) {
+      const torneoChk = await db.query('SELECT id FROM public.torneos WHERE id = $1 AND organizacion_id = $2', [parseInt(torneo_id, 10), orgId]);
+      if (torneoChk.rows.length === 0) return res.status(400).json({ error: 'El torneo indicado no pertenece a tu organizacion.' });
+    }
+    const resDb = await db.query(
+      `INSERT INTO public.documentos (organizacion_id, subido_por, titulo, tipo, torneo_id, archivo_path, tamano_bytes, mime_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [orgId, req.usuario.id, tituloLimpio, tipoDoc, torneo_id ? parseInt(torneo_id, 10) : null, ruta, tamano, mime_type || null]
+    );
+    await registrarAuditoria(req.usuario.id, 'CREAR_DOCUMENTO', 'documentos', null, resDb.rows[0], req.ip, orgId);
+    res.status(201).json({ mensaje: 'Documento registrado con exito.', documento: resDb.rows[0] });
+  } catch (error) {
+    console.error('Error al registrar documento:', error);
+    res.status(500).json({ error: 'Error registrando el documento.' });
+  }
+});
+
+router.delete('/documentos/:id', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const chk = await db.query('SELECT * FROM public.documentos WHERE id = $1::uuid AND organizacion_id = $2', [req.params.id, orgId]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado en tu organizacion.' });
+    const doc = chk.rows[0];
+    try {
+      const { error: errorStorage } = await supabaseAdmin.storage.from('documentos').remove([doc.archivo_path]);
+      if (errorStorage) console.error('[documentos] No se pudo borrar el objeto de Storage:', errorStorage?.message || errorStorage);
+    } catch (errorStorage) {
+      console.error('[documentos] No se pudo borrar el objeto de Storage:', errorStorage?.message || errorStorage);
+    }
+    await db.query('DELETE FROM public.documentos WHERE id = $1::uuid', [doc.id]);
+    await registrarAuditoria(req.usuario.id, 'ELIMINAR_DOCUMENTO', 'documentos', doc, null, req.ip, orgId);
+    res.json({ mensaje: 'Documento eliminado con exito.' });
+  } catch (error) {
+    console.error('Error al eliminar documento:', error);
+    res.status(500).json({ error: 'Error al eliminar el documento.' });
+  }
+});
+
 module.exports = router;
