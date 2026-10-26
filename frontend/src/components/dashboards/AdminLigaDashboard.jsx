@@ -8,6 +8,7 @@ import SistemaMensajeria from './SistemaMensajeria';
 import { useToasts, ToastContainer } from '../Toast';
 import CalendarioPartidos from '../CalendarioPartidos';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import CampoTexto from '../CampoTexto';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -1030,8 +1031,8 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     {sedeEditando ? 'Editar Sede Deportiva' : 'Registrar Nueva Sede'}
                   </h3>
                   <form onSubmit={guardarSede} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" placeholder="Nombre de la Sede" className="w-full p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-2 focus:ring-brand-rust/50 focus:border-brand-rust transition-colors" value={formSede.nombre} onChange={e => setFormSede({...formSede, nombre: e.target.value})} required />
-                    <input type="text" placeholder="Dirección / Ubicación" className="w-full p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-2 focus:ring-brand-rust/50 focus:border-brand-rust transition-colors" value={formSede.direccion} onChange={e => setFormSede({...formSede, direccion: e.target.value})} />
+                    <CampoTexto etiqueta="Nombre de la Sede" valor={formSede.nombre} onChange={e => setFormSede({...formSede, nombre: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Dirección / Ubicación" valor={formSede.direccion} onChange={e => setFormSede({...formSede, direccion: e.target.value})} />
                     <div className="md:col-span-2 flex gap-3">
                       <button type="submit" className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">{sedeEditando ? 'Actualizar Sede' : 'Guardar Sede'}</button>
                       {sedeEditando && <button type="button" onClick={() => { setSedeEditando(null); setFormSede({ nombre: '', direccion: '' }); }} className="bg-gray-200 text-brand-brown px-6 py-3 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>}
@@ -1085,18 +1086,18 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   </h3>
                   <form onSubmit={guardarPlantillaReglas} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="md:col-span-2 lg:col-span-4 space-y-4">
-                      <input type="text" placeholder="Nombre Plantilla (Ej. Reglas Oficiales 2026)" className="w-full p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={formReglas.nombre} onChange={e => setFormReglas({...formReglas, nombre: e.target.value})} required />
+                      <CampoTexto etiqueta="Nombre de la Plantilla" ayuda="Ej. Reglas Oficiales 2026" valor={formReglas.nombre} onChange={e => setFormReglas({...formReglas, nombre: e.target.value})} requerido />
                       <textarea placeholder="Descripción o detalles adicionales" className="w-full p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust resize-none h-20" value={formReglas.descripcion} onChange={e => setFormReglas({...formReglas, descripcion: e.target.value})} />
                     </div>
                     
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Puntos Victoria</label><input type="number" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.puntos_victoria} onChange={e => setFormReglas({...formReglas, puntos_victoria: e.target.value})} required /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Puntos Empate</label><input type="number" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.puntos_empate} onChange={e => setFormReglas({...formReglas, puntos_empate: e.target.value})} required /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Puntos Derrota</label><input type="number" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.puntos_derrota} onChange={e => setFormReglas({...formReglas, puntos_derrota: e.target.value})} required /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Límite Jugadores</label><input type="number" min="1" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.limite_jugadores} onChange={e => setFormReglas({...formReglas, limite_jugadores: e.target.value})} required /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Meta Tantos</label><input type="number" min="1" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.meta_puntos} onChange={e => setFormReglas({...formReglas, meta_puntos: e.target.value})} required /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Tiempo (Min)</label><input type="number" min="1" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.tiempo_minutos} onChange={e => setFormReglas({...formReglas, tiempo_minutos: e.target.value})} required /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Tarjetas Suspensión</label><input type="number" min="0" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.tarjetas_suspension} onChange={e => setFormReglas({...formReglas, tarjetas_suspension: e.target.value})} required /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-brand-brown/70 uppercase">Esferas por Equipo</label><input type="number" min="1" className="w-full p-2 border border-brand-gold/30 rounded-lg" value={formReglas.esferas_por_equipo} onChange={e => setFormReglas({...formReglas, esferas_por_equipo: e.target.value})} required title="Tope de lanzamientos permitidos por equipo en cada mano" /></div>
+                    <CampoTexto etiqueta="Puntos Victoria" tipo="number" valor={formReglas.puntos_victoria} onChange={e => setFormReglas({...formReglas, puntos_victoria: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Puntos Empate" tipo="number" valor={formReglas.puntos_empate} onChange={e => setFormReglas({...formReglas, puntos_empate: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Puntos Derrota" tipo="number" valor={formReglas.puntos_derrota} onChange={e => setFormReglas({...formReglas, puntos_derrota: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Límite Jugadores" tipo="number" min="1" valor={formReglas.limite_jugadores} onChange={e => setFormReglas({...formReglas, limite_jugadores: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Meta Tantos" tipo="number" min="1" valor={formReglas.meta_puntos} onChange={e => setFormReglas({...formReglas, meta_puntos: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Tiempo (Min)" tipo="number" min="1" valor={formReglas.tiempo_minutos} onChange={e => setFormReglas({...formReglas, tiempo_minutos: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Tarjetas Suspensión" tipo="number" min="0" valor={formReglas.tarjetas_suspension} onChange={e => setFormReglas({...formReglas, tarjetas_suspension: e.target.value})} requerido />
+                    <CampoTexto etiqueta="Esferas por Equipo" tipo="number" min="1" title="Tope de lanzamientos permitidos por equipo en cada mano" valor={formReglas.esferas_por_equipo} onChange={e => setFormReglas({...formReglas, esferas_por_equipo: e.target.value})} requerido />
                     
                     <div className="space-y-1 lg:col-span-1">
                       <label className="text-xs font-bold text-brand-brown/70 uppercase">Política Llaves</label>
@@ -1145,7 +1146,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     Registrar Nuevo Equipo
                   </h3>
                   <form onSubmit={guardarEquipo} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <input type="text" placeholder="Nombre Equipo" className="flex-1 p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={formEquipo.nombre} onChange={e => setFormEquipo({...formEquipo, nombre: e.target.value})} required />
+                    <CampoTexto etiqueta="Nombre del Equipo" className="flex-1" valor={formEquipo.nombre} onChange={e => setFormEquipo({...formEquipo, nombre: e.target.value})} requerido />
                     <select className="p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust" value={formEquipo.categoria} onChange={e => setFormEquipo({...formEquipo, categoria: e.target.value})}>
                       <option value="Pre-Infantil (<8)">Pre-Infantil (&lt;8)</option>
                       <option value="Infantil (8-13)">Infantil (8-13)</option>
@@ -1221,13 +1222,13 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                       <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename="nomina_filtrada" />
                       <form onSubmit={guardarJugador} className="bg-white p-5 rounded-lg border border-brand-gold/30 shadow-sm mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <input type="text" placeholder="Cédula (5-8 dígitos)" pattern="\d{5,8}" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.cedula} onChange={e => setFormJugador({...formJugador, cedula: e.target.value})} required />
-                        <input type="text" placeholder="Nombre" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.nombre} onChange={e => setFormJugador({...formJugador, nombre: e.target.value})} required />
-                        <input type="text" placeholder="Apellido" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.apellido} onChange={e => setFormJugador({...formJugador, apellido: e.target.value})} required />
-                        <input type="date" max={hoyStr} className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.fecha_nacimiento} onChange={e => setFormJugador({...formJugador, fecha_nacimiento: e.target.value})} required />
-                        <input type="email" placeholder="Correo" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.correo} onChange={e => setFormJugador({...formJugador, correo: e.target.value})} required />
-                        <input type="tel" pattern="[0-9\-\+ ]+" title="Solo se permiten números, espacios, guiones y el signo +" placeholder="Teléfono" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust invalid:border-red-500 invalid:text-red-600 focus:invalid:ring-red-500 transition-colors" value={formJugador.telefono} onChange={e => setFormJugador({...formJugador, telefono: e.target.value})} required />
-                        <input type="number" min="1" max="99" placeholder="Dorsal" className="p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formJugador.numero_dorsal} onChange={e => setFormJugador({...formJugador, numero_dorsal: e.target.value})} required />
+                        <CampoTexto etiqueta="Cédula (5-8 dígitos)" pattern="\d{5,8}" valor={formJugador.cedula} onChange={e => setFormJugador({...formJugador, cedula: e.target.value})} requerido />
+                        <CampoTexto etiqueta="Nombre" valor={formJugador.nombre} onChange={e => setFormJugador({...formJugador, nombre: e.target.value})} requerido />
+                        <CampoTexto etiqueta="Apellido" valor={formJugador.apellido} onChange={e => setFormJugador({...formJugador, apellido: e.target.value})} requerido />
+                        <CampoTexto etiqueta="Fecha de nacimiento" tipo="date" max={hoyStr} valor={formJugador.fecha_nacimiento} onChange={e => setFormJugador({...formJugador, fecha_nacimiento: e.target.value})} requerido />
+                        <CampoTexto etiqueta="Correo" tipo="email" valor={formJugador.correo} onChange={e => setFormJugador({...formJugador, correo: e.target.value})} requerido />
+                        <CampoTexto etiqueta="Teléfono" tipo="tel" pattern="[0-9\-\+ ]+" title="Solo se permiten números, espacios, guiones y el signo +" valor={formJugador.telefono} onChange={e => setFormJugador({...formJugador, telefono: e.target.value})} requerido />
+                        <CampoTexto etiqueta="Dorsal" tipo="number" min="1" max="99" valor={formJugador.numero_dorsal} onChange={e => setFormJugador({...formJugador, numero_dorsal: e.target.value})} requerido />
 
                         <div className="flex items-center gap-3 bg-brand-cream/20 px-3 rounded border border-brand-gold/30">
                           <label className="flex items-center gap-2 text-sm font-semibold text-brand-brown cursor-pointer flex-1">
@@ -1334,10 +1335,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <p className="text-sm text-brand-brown/70 leading-relaxed">Genera accesos para el personal operativo (Árbitros, Anotadores y Delegados). Ingresa la cédula primero para verificar si el usuario ya existe.</p>
                     
                     <form onSubmit={guardarCredencial} className="space-y-4 bg-brand-cream/20 p-5 rounded-lg border border-brand-gold/20">
-                      <div>
-                        <label className="block text-xs font-bold text-brand-brown uppercase mb-1">Cédula</label>
-                        <input type="text" placeholder="Ej: 12345678" className="w-full p-2.5 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formCredencial.cedula} onChange={e => setFormCredencial({...formCredencial, cedula: e.target.value.replace(/\D/g, '')})} onBlur={async (e) => { const ced = e.target.value; if(ced.length >= 5) { const res = await fetchConToken(`/verificar-cedula/${ced}`); const data = await res.json(); if(data.existe) { mostrarToast(`Usuario encontrado: ${data.usuario.nombre} ${data.usuario.apellido}.`, 'exito'); setFormCredencial(prev => ({...prev, nombre: data.usuario.nombre, apellido: data.usuario.apellido, email: data.usuario.email})); } } }} required />
-                      </div>
+                      <CampoTexto etiqueta="Cédula" ayuda="Ej: 12345678" valor={formCredencial.cedula} onChange={e => setFormCredencial({...formCredencial, cedula: e.target.value.replace(/\D/g, '')})} onBlur={async (e) => { const ced = e.target.value; if(ced.length >= 5) { const res = await fetchConToken(`/verificar-cedula/${ced}`); const data = await res.json(); if(data.existe) { mostrarToast(`Usuario encontrado: ${data.usuario.nombre} ${data.usuario.apellido}.`, 'exito'); setFormCredencial(prev => ({...prev, nombre: data.usuario.nombre, apellido: data.usuario.apellido, email: data.usuario.email})); } } }} requerido />
 
                       <div>
                         <label className="block text-xs font-bold text-brand-brown uppercase mb-1">Rol Operativo</label>
@@ -1359,14 +1357,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       )}
 
                       <div className="grid grid-cols-2 gap-3">
-                        <div><label className="block text-xs font-bold text-brand-brown uppercase mb-1">Nombre</label><input type="text" className="w-full p-2.5 border border-brand-gold/30 rounded" value={formCredencial.nombre} onChange={e => setFormCredencial({...formCredencial, nombre: e.target.value})} required /></div>
-                        <div><label className="block text-xs font-bold text-brand-brown uppercase mb-1">Apellido</label><input type="text" className="w-full p-2.5 border border-brand-gold/30 rounded" value={formCredencial.apellido} onChange={e => setFormCredencial({...formCredencial, apellido: e.target.value})} required /></div>
+                        <CampoTexto etiqueta="Nombre" valor={formCredencial.nombre} onChange={e => setFormCredencial({...formCredencial, nombre: e.target.value})} requerido />
+                        <CampoTexto etiqueta="Apellido" valor={formCredencial.apellido} onChange={e => setFormCredencial({...formCredencial, apellido: e.target.value})} requerido />
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-brand-brown uppercase mb-1">Correo Electrónico</label>
-                        <input type="email" className="w-full p-2.5 border border-brand-gold/30 rounded" value={formCredencial.email} onChange={e => setFormCredencial({...formCredencial, email: e.target.value})} required />
-                      </div>
+                      <CampoTexto etiqueta="Correo Electrónico" tipo="email" valor={formCredencial.email} onChange={e => setFormCredencial({...formCredencial, email: e.target.value})} requerido />
 
                       <button type="submit" className="w-full bg-brand-rust text-white py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-2">Generar Credencial</button>
                     </form>
@@ -1667,10 +1662,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       {pasoTorneo === 1 && (
                         <div className="space-y-5 animate-slide-up">
                           <h4 className="text-xl font-bold text-brand-brown border-b border-brand-gold/30 pb-2">Configuración Estructural</h4>
-                          <input type="text" placeholder="Nombre Oficial del Torneo" className="w-full p-3 border border-brand-gold/30 rounded focus:ring-brand-rust" value={formTorneo.nombre} onChange={e => setFormTorneo({...formTorneo, nombre: e.target.value})} required />
+                          <CampoTexto etiqueta="Nombre Oficial del Torneo" valor={formTorneo.nombre} onChange={e => setFormTorneo({...formTorneo, nombre: e.target.value})} requerido />
                           <div className="flex flex-col sm:flex-row gap-4">
-                            <label className="flex-1 text-sm font-bold text-brand-brown">Inicio: <input type="date" min={hoyStr} className="w-full mt-1 p-3 border border-brand-gold/30 rounded font-normal" value={formTorneo.fecha_inicio} onChange={e => setFormTorneo({...formTorneo, fecha_inicio: e.target.value})} required /></label>
-                            <label className="flex-1 text-sm font-bold text-brand-brown">Cierre: <input type="date" min={formTorneo.fecha_inicio || hoyStr} className="w-full mt-1 p-3 border border-brand-gold/30 rounded font-normal" value={formTorneo.fecha_fin} onChange={e => setFormTorneo({...formTorneo, fecha_fin: e.target.value})} required /></label>
+                            <CampoTexto className="flex-1" etiqueta="Inicio" tipo="date" min={hoyStr} valor={formTorneo.fecha_inicio} onChange={e => setFormTorneo({...formTorneo, fecha_inicio: e.target.value})} requerido />
+                            <CampoTexto className="flex-1" etiqueta="Cierre" tipo="date" min={formTorneo.fecha_inicio || hoyStr} valor={formTorneo.fecha_fin} onChange={e => setFormTorneo({...formTorneo, fecha_fin: e.target.value})} requerido />
                           </div>
                           
                           <div className="bg-brand-cream/20 p-4 rounded-lg border border-brand-gold/30">
@@ -1833,9 +1828,9 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           <h3 className="text-xl font-bold text-brand-brown mb-1 text-center">Torneo Flash</h3>
                           <p className="text-sm text-brand-brown/70 text-center mb-6">Anota a los asistentes del día, sortéalos y deja que el sistema arme los equipos y el calendario todos contra todos.</p>
 
-                          <input type="text" placeholder="Nombre del torneo (ej. Flash Sabatino)" className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formFlash.nombre} onChange={e => setFormFlash({ ...formFlash, nombre: e.target.value })} required />
+                          <CampoTexto etiqueta="Nombre del Torneo" ayuda="Ej. Flash Sabatino" valor={formFlash.nombre} onChange={e => setFormFlash({ ...formFlash, nombre: e.target.value })} requerido />
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <label className="text-sm font-bold text-brand-brown">Inicio: <input type="datetime-local" min={ahoraIsoLocal} className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.fecha_hora_inicio} onChange={e => setFormFlash({ ...formFlash, fecha_hora_inicio: e.target.value })} required /></label>
+                            <CampoTexto etiqueta="Inicio" tipo="datetime-local" min={ahoraIsoLocal} valor={formFlash.fecha_hora_inicio} onChange={e => setFormFlash({ ...formFlash, fecha_hora_inicio: e.target.value })} requerido />
                             <label className="text-sm font-bold text-brand-brown">Instalación:
                               <select className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.sede_id} onChange={e => setFormFlash({ ...formFlash, sede_id: e.target.value })} required>
                                 <option value="">-- Seleccionar --</option>
@@ -1844,7 +1839,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             </label>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <label className="text-sm font-bold text-brand-brown">Minutos entre partidos: <input type="number" min="10" max="240" className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.minutos_entre_partidos} onChange={e => setFormFlash({ ...formFlash, minutos_entre_partidos: e.target.value })} required /></label>
+                            <CampoTexto etiqueta="Minutos entre partidos" tipo="number" min="10" max="240" valor={formFlash.minutos_entre_partidos} onChange={e => setFormFlash({ ...formFlash, minutos_entre_partidos: e.target.value })} requerido />
                             <label className="text-sm font-bold text-brand-brown sm:col-span-2">Plantilla de Reglas (opcional):
                               <select className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.plantilla_id} onChange={e => setFormFlash({ ...formFlash, plantilla_id: e.target.value })}>
                                 <option value="">-- Sin plantilla --</option>
@@ -1973,7 +1968,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             ))}
                           </select>
                         </div>
-                        <input type="datetime-local" min={ahoraIsoLocal} className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-medium" value={formPartidoSuelto.fecha_hora} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, fecha_hora: e.target.value})} required />
+                        <CampoTexto etiqueta="Fecha y hora del encuentro" tipo="datetime-local" min={ahoraIsoLocal} valor={formPartidoSuelto.fecha_hora} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, fecha_hora: e.target.value})} requerido />
                         <button type="submit" className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-4">Confirmar Agendamiento</button>
                       </form>
                     </div>
