@@ -9,6 +9,7 @@ import { useToasts, ToastContainer } from '../Toast';
 import CalendarioPartidos from '../CalendarioPartidos';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CampoTexto from '../CampoTexto';
+import CampoSelect from '../CampoSelect';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -1831,35 +1832,27 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           <CampoTexto etiqueta="Nombre del Torneo" ayuda="Ej. Flash Sabatino" valor={formFlash.nombre} onChange={e => setFormFlash({ ...formFlash, nombre: e.target.value })} requerido />
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <CampoTexto etiqueta="Inicio" tipo="datetime-local" min={ahoraIsoLocal} valor={formFlash.fecha_hora_inicio} onChange={e => setFormFlash({ ...formFlash, fecha_hora_inicio: e.target.value })} requerido />
-                            <label className="text-sm font-bold text-brand-brown">Instalación:
-                              <select className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.sede_id} onChange={e => setFormFlash({ ...formFlash, sede_id: e.target.value })} required>
-                                <option value="">-- Seleccionar --</option>
-                                {recursosTorneo.sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                              </select>
-                            </label>
+                            <CampoSelect etiqueta="Instalación" valor={formFlash.sede_id} onChange={e => setFormFlash({ ...formFlash, sede_id: e.target.value })} requerido>
+                              <option value="">-- Seleccionar --</option>
+                              {recursosTorneo.sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                            </CampoSelect>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <CampoTexto etiqueta="Minutos entre partidos" tipo="number" min="10" max="240" valor={formFlash.minutos_entre_partidos} onChange={e => setFormFlash({ ...formFlash, minutos_entre_partidos: e.target.value })} requerido />
-                            <label className="text-sm font-bold text-brand-brown sm:col-span-2">Plantilla de Reglas (opcional):
-                              <select className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.plantilla_id} onChange={e => setFormFlash({ ...formFlash, plantilla_id: e.target.value })}>
-                                <option value="">-- Sin plantilla --</option>
-                                {plantillasReglas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                              </select>
-                            </label>
+                            <CampoSelect className="sm:col-span-2" etiqueta="Plantilla de Reglas (opcional)" valor={formFlash.plantilla_id} onChange={e => setFormFlash({ ...formFlash, plantilla_id: e.target.value })}>
+                              <option value="">-- Sin plantilla --</option>
+                              {plantillasReglas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                            </CampoSelect>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <label className="text-sm font-bold text-brand-brown">Árbitro (opcional):
-                              <select className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.arbitro_id} onChange={e => setFormFlash({ ...formFlash, arbitro_id: e.target.value })}>
-                                <option value="">-- Sin árbitro --</option>
-                                {recursosTorneo.arbitros.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}
-                              </select>
-                            </label>
-                            <label className="text-sm font-bold text-brand-brown">Anotador (opcional):
-                              <select className="w-full mt-1 p-3 border border-brand-gold/30 rounded-lg font-normal" value={formFlash.anotador_id} onChange={e => setFormFlash({ ...formFlash, anotador_id: e.target.value })}>
-                                <option value="">-- Sin anotador --</option>
-                                {recursosTorneo.anotadores.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}
-                              </select>
-                            </label>
+                            <CampoSelect etiqueta="Árbitro (opcional)" valor={formFlash.arbitro_id} onChange={e => setFormFlash({ ...formFlash, arbitro_id: e.target.value })}>
+                              <option value="">-- Sin árbitro --</option>
+                              {recursosTorneo.arbitros.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}
+                            </CampoSelect>
+                            <CampoSelect etiqueta="Anotador (opcional)" valor={formFlash.anotador_id} onChange={e => setFormFlash({ ...formFlash, anotador_id: e.target.value })}>
+                              <option value="">-- Sin anotador --</option>
+                              {recursosTorneo.anotadores.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}
+                            </CampoSelect>
                           </div>
                           <label className="flex items-center gap-3 cursor-pointer bg-brand-cream/20 p-3 rounded-lg border border-brand-gold/20">
                             <input type="checkbox" className="w-4 h-4 text-brand-rust focus:ring-brand-rust rounded" checked={formFlash.ida_y_vuelta} onChange={e => setFormFlash({ ...formFlash, ida_y_vuelta: e.target.checked })} />
@@ -1875,7 +1868,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               {participantesFlash.map((p, i) => (
                                 <div key={i} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-start">
                                   <div className="relative">
-                                    <input type="text" inputMode="numeric" placeholder="Cédula (autocompleta)" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.cedula} onChange={e => actualizarParticipanteFlash(i, 'cedula', e.target.value)} />
+                                    <CampoTexto etiqueta="Cédula" ayuda="Autocompleta" inputMode="numeric" valor={p.cedula} onChange={e => actualizarParticipanteFlash(i, 'cedula', e.target.value)} />
                                     {sugerenciasCedula.visible && sugerenciasCedula.idx === i && sugerenciasCedula.items.length > 0 && (
                                       <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-brand-gold/40 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                         {sugerenciasCedula.items.map(s => (
@@ -1888,10 +1881,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                       </div>
                                     )}
                                   </div>
-                                  <input type="text" placeholder="Nombre" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.nombre} onChange={e => actualizarParticipanteFlash(i, 'nombre', e.target.value)} />
-                                  <input type="text" placeholder="Apellido" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.apellido} onChange={e => actualizarParticipanteFlash(i, 'apellido', e.target.value)} />
-                                  <input type="date" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.fecha_nacimiento} onChange={e => actualizarParticipanteFlash(i, 'fecha_nacimiento', e.target.value)} title="Fecha de nacimiento" />
-                                  <input type="tel" placeholder="Teléfono" className="w-full p-2 border border-brand-gold/30 rounded-lg text-sm" value={p.telefono} onChange={e => actualizarParticipanteFlash(i, 'telefono', e.target.value)} />
+                                  <CampoTexto etiqueta="Nombre" valor={p.nombre} onChange={e => actualizarParticipanteFlash(i, 'nombre', e.target.value)} />
+                                  <CampoTexto etiqueta="Apellido" valor={p.apellido} onChange={e => actualizarParticipanteFlash(i, 'apellido', e.target.value)} />
+                                  <CampoTexto etiqueta="Fecha de nacimiento" tipo="date" valor={p.fecha_nacimiento} onChange={e => actualizarParticipanteFlash(i, 'fecha_nacimiento', e.target.value)} />
+                                  <CampoTexto etiqueta="Teléfono" tipo="tel" valor={p.telefono} onChange={e => actualizarParticipanteFlash(i, 'telefono', e.target.value)} />
                                   <button type="button" onClick={() => quitarParticipanteFlash(i)} className="text-red-600 hover:bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold transition-colors" title="Quitar asistente">✕</button>
                                 </div>
                               ))}
@@ -1913,60 +1906,60 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       
                       <form onSubmit={guardarPartidoSuelto} className="space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formPartidoSuelto.equipo_local_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_local_id: e.target.value})} required>
-                            <option value="">-- Local --</option>
+                          <CampoSelect etiqueta="Equipo Local" valor={formPartidoSuelto.equipo_local_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_local_id: e.target.value})} requerido>
+                            <option value="">-- Seleccionar --</option>
                             {recursosTorneo.equipos.map(eq => (
                               <option key={eq.id} value={eq.id}>
                                 {eq.nombre}
                               </option>
                             ))}
-                          </select>
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm font-semibold" value={formPartidoSuelto.equipo_visita_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_visita_id: e.target.value})} required>
-                            <option value="">-- Visitante --</option>
+                          </CampoSelect>
+                          <CampoSelect etiqueta="Equipo Visitante" valor={formPartidoSuelto.equipo_visita_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, equipo_visita_id: e.target.value})} requerido>
+                            <option value="">-- Seleccionar --</option>
                             {recursosTorneo.equipos.map(eq => (
                               <option key={eq.id} value={eq.id}>
                                 {eq.nombre}
                               </option>
                             ))}
-                          </select>
+                          </CampoSelect>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.sede_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, sede_id: e.target.value})} required>
-                            <option value="">-- Instalación --</option>
+                          <CampoSelect etiqueta="Instalación" valor={formPartidoSuelto.sede_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, sede_id: e.target.value})} requerido>
+                            <option value="">-- Seleccionar --</option>
                             {recursosTorneo.sedes.map(s => (
                               <option key={s.id} value={s.id}>
                                 {s.nombre}
                               </option>
                             ))}
-                          </select>
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.plantilla_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, plantilla_id: e.target.value})} required>
-                            <option value="">-- Plantilla de Reglas --</option>
+                          </CampoSelect>
+                          <CampoSelect etiqueta="Plantilla de Reglas" valor={formPartidoSuelto.plantilla_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, plantilla_id: e.target.value})} requerido>
+                            <option value="">-- Seleccionar --</option>
                             {plantillasReglas.map(p => (
                               <option key={p.id} value={p.id}>
                                 {p.nombre}
                               </option>
                             ))}
-                          </select>
+                          </CampoSelect>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.arbitro_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, arbitro_id: e.target.value})} required>
-                            <option value="">-- Árbitro Asignado --</option>
+                          <CampoSelect etiqueta="Árbitro Asignado" valor={formPartidoSuelto.arbitro_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, arbitro_id: e.target.value})} requerido>
+                            <option value="">-- Seleccionar --</option>
                             {recursosTorneo.arbitros.map(a => (
                               <option key={a.id} value={a.id}>
                                 {a.nombre} {a.apellido}
                               </option>
                             ))}
-                          </select>
-                          <select className="w-full p-3 border border-brand-gold/30 rounded-lg focus:ring-brand-rust text-sm" value={formPartidoSuelto.anotador_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, anotador_id: e.target.value})} required>
-                            <option value="">-- Anotador Asignado --</option>
+                          </CampoSelect>
+                          <CampoSelect etiqueta="Anotador Asignado" valor={formPartidoSuelto.anotador_id} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, anotador_id: e.target.value})} requerido>
+                            <option value="">-- Seleccionar --</option>
                             {recursosTorneo.anotadores.map(a => (
                               <option key={a.id} value={a.id}>
                                 {a.nombre} {a.apellido}
                               </option>
                             ))}
-                          </select>
+                          </CampoSelect>
                         </div>
                         <CampoTexto etiqueta="Fecha y hora del encuentro" tipo="datetime-local" min={ahoraIsoLocal} valor={formPartidoSuelto.fecha_hora} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, fecha_hora: e.target.value})} requerido />
                         <button type="submit" className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-4">Confirmar Agendamiento</button>
