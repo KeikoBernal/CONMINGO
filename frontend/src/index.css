@@ -147,3 +147,19 @@ body.modo-luz-solar button {
 body.modo-luz-solar .bg-brand-cream {
   background-color: #FFFDF4;
 }
+
+/* ==========================================
+   M4: ANIMACIONES DEL MARCADOR PUBLICO
+   Rebote del marcador cuando cambia un valor
+   (totales, lider, tantos y lanzamientos).
+   ========================================== */
+@keyframes marcador-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.15); }
+  70% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.anim-marcador-pop {
+  animation: marcador-pop 0.5s ease-out;
+}

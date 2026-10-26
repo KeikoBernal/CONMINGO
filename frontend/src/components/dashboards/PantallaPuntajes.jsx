@@ -114,7 +114,7 @@ export default function PantallaPuntajes() {
                 <button 
                   key={p.id} 
                   onClick={() => window.location.href=`/?vista=puntajes&partido_id=${p.id}`} 
-                  className="bg-brand-cream text-brand-brown p-6 rounded-xl border-2 border-brand-gold/30 hover:border-brand-gold hover:shadow-[0_0_20px_rgba(212,175,55,0.3)] transition-all text-left group relative overflow-hidden"
+                  className="bg-brand-cream text-brand-brown p-6 rounded-xl border-2 border-brand-gold/30 hover:border-brand-gold hover:shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:-translate-y-1 transition-all text-left group relative overflow-hidden"
                 >
                   <div className="absolute top-0 right-0 bg-brand-rust text-white text-[0.65rem] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
