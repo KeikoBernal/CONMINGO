@@ -5,6 +5,7 @@ import PlanillaUniversal from './PlanillaUniversal';
 import SistemaMensajeria from './SistemaMensajeria';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
+import BotonModoSolar from '../BotonModoSolar';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -468,7 +469,7 @@ const guardarSorteo = async () => {
         </div>
 
         <div className="p-4 border-t border-brand-gold/20 shrink-0">
-          <button onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-brand-rust text-brand-cream rounded transition-colors text-sm font-semibold">
+          <button onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-brand-rust text-brand-cream rounded-lg transition-colors text-sm font-semibold">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
             Cerrar Sesión
           </button>
@@ -488,12 +489,13 @@ const guardarSorteo = async () => {
             <button onClick={() => setMenuAbierto(true)} className="md:hidden p-2 text-brand-brown hover:bg-brand-cream rounded-md">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
-            <h2 className="text-xl sm:text-2xl font-bold text-brand-brown capitalize">
+            <h2 className="text-xl sm:text-2xl font-bold text-brand-brown capitalize truncate">
               {partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : 'Historial Reciente')}
             </h2>
           </div>
           
           <div className="flex items-center gap-3">
+            <BotonModoSolar />
             {ligas.length > 0 && (
               <select 
                 value={ligaFiltro} 
@@ -622,7 +624,7 @@ const guardarSorteo = async () => {
                             </span>
                             • {p.hora_final ? p.hora_final : 'Sin hora'}
                           </div>
-                          <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="w-full bg-brand-cream/50 text-brand-blue py-2 rounded border border-brand-blue/30 text-xs font-bold hover:bg-brand-blue hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
+                          <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="w-full bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                             Ver Acta / Descargar PDF
                           </button>

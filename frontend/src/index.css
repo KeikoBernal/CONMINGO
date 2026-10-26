@@ -128,3 +128,22 @@ body {
   25% { opacity: 0; transform: translateX(10px); }
   100% { opacity: 0; transform: translateX(10px); }
 }
+/* ==========================================
+   N7: MODO LUZ SOLAR (alta legibilidad al aire libre)
+   Se activa con BotonModoSolar, que agrega la clase
+   modo-luz-solar al body. Agranda todas las medidas rem
+   (texto, botones, tablas y espaciados crecen juntos),
+   refuerza el peso de los botones y aclara el fondo crema
+   para maximizar el contraste a plena luz del dia.
+   ========================================== */
+body.modo-luz-solar {
+  font-size: 18px;
+}
+
+body.modo-luz-solar button {
+  font-weight: 700;
+}
+
+body.modo-luz-solar .bg-brand-cream {
+  background-color: #FFFDF4;
+}
