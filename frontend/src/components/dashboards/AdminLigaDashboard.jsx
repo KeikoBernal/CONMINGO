@@ -95,6 +95,12 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [formDoc, setFormDoc] = useState({ titulo: '', tipo: 'Reglamento', torneo_id: '' });
   const [archivoDoc, setArchivoDoc] = useState(null);
   const [subiendoDoc, setSubiendoDoc] = useState(false);
+
+  // LOTE 3C: registro de pagos de inscripcion a torneos
+  const [pagos, setPagos] = useState([]);
+  const [formPago, setFormPago] = useState({ torneo_id: '', equipo_id: '', jugador_id: '', monto: '', moneda: 'Bs.', metodo: 'Efectivo', referencia: '', nota: '' });
+  const [jugadoresPago, setJugadoresPago] = useState([]);
+  const [guardandoPago, setGuardandoPago] = useState(false);
   const [filtrosTablas, setFiltrosTablas] = useState({});
   const getFilter = key => filtrosTablas[key] || EMPTY_FILTER;
   const setTableFilter = key => next => setFiltrosTablas(previous => ({ ...previous, [key]: next }));
@@ -233,6 +239,11 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
           setOrgIdDocumentos(dataDoc.organizacion_id || null);
         }
         const resTor = await fetchConToken('/torneos'); if (resTor.ok) setTorneosList(await resTor.json());
+      } else if (pestana === 'pagos') {
+        const resPagos = await fetchConToken('/pagos');
+        if (resPagos.ok) setPagos((await resPagos.json()).pagos || []);
+        const resTor = await fetchConToken('/torneos'); if (resTor.ok) setTorneosList(await resTor.json());
+        const resEq = await fetchConToken('/equipos'); if (resEq.ok) setEquipos(await resEq.json());
       }
     } catch (e) { setMensaje('Error cargando datos del servidor.'); }
   };
@@ -803,6 +814,58 @@ const confirmarReagendar = async (e) => {
     else mostrarToast(data.error || 'Error eliminando el documento.', 'error');
   };
 
+  // LOTE 3C: helpers y acciones de pagos de inscripcion
+  const seleccionarEquipoPago = async (equipoId) => {
+    setFormPago(prev => ({ ...prev, equipo_id: equipoId, jugador_id: '' }));
+    setJugadoresPago([]);
+    if (!equipoId) return;
+    const res = await fetchConToken('/equipos/' + equipoId + '/jugadores');
+    if (res.ok) setJugadoresPago(await res.json());
+  };
+
+  const registrarPago = async (e) => {
+    e.preventDefault();
+    if (guardandoPago) return;
+    if (!formPago.torneo_id) return mostrarToast('Selecciona el torneo de la inscripción.', 'error');
+    if (!formPago.equipo_id && !formPago.jugador_id) return mostrarToast('Indica el equipo o el jugador inscrito.', 'error');
+    const monto = parseFloat(formPago.monto);
+    if (!monto || monto <= 0) return mostrarToast('El monto del pago debe ser mayor a cero.', 'error');
+    setGuardandoPago(true);
+    try {
+      const res = await fetchConToken('/pagos', {
+        method: 'POST',
+        body: JSON.stringify({
+          torneo_id: parseInt(formPago.torneo_id, 10),
+          equipo_id: formPago.equipo_id ? parseInt(formPago.equipo_id, 10) : null,
+          jugador_id: formPago.jugador_id ? parseInt(formPago.jugador_id, 10) : null,
+          monto: monto,
+          moneda: formPago.moneda,
+          metodo: formPago.metodo,
+          referencia: formPago.referencia.trim() || null,
+          nota: formPago.nota.trim() || null
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Error registrando el pago.');
+      mostrarToast('Pago registrado correctamente.', 'exito');
+      setFormPago({ torneo_id: '', equipo_id: '', jugador_id: '', monto: '', moneda: 'Bs.', metodo: 'Efectivo', referencia: '', nota: '' });
+      setJugadoresPago([]);
+      cargarDatos();
+    } catch (err) {
+      mostrarToast(err.message || 'Error registrando el pago.', 'error');
+    } finally {
+      setGuardandoPago(false);
+    }
+  };
+
+  const eliminarPago = async (id) => {
+    if (!window.confirm('¿Eliminar este pago registrado?')) return;
+    const res = await fetchConToken('/pagos/' + id, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { mostrarToast('Pago eliminado.', 'exito'); cargarDatos(); }
+    else mostrarToast(data.error || 'Error eliminando el pago.', 'error');
+  };
+
   const NavIcon = ({ pestanaId }) => {
     switch (pestanaId) {
       case 'equipos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>;
@@ -814,12 +877,15 @@ const confirmarReagendar = async (e) => {
       case 'historial': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
       case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5h6m-8 4h10m-10 4h6m-6 4h10M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>;
       case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
+      case 'pagos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
       default: return null;
     }
   };
 
   const filasSedes = filteredRows('sedes', sedes, ['nombre'], []);
   const filasDocumentos = filteredRows('documentos', documentos, ['tipo'], []);
+  const pagosConTexto = pagos.map(p => ({ ...p, inscrito: p.jugador_nombre ? p.jugador_nombre + ' (jugador)' : (p.equipo_nombre || '') + ' (equipo)' }));
+  const filasPagos = filteredRows('pagos', pagosConTexto, ['metodo', 'moneda', 'torneo_nombre'], ['creado_en']);
   const filasEquipos = filteredRows('equipos', equipos, ['categoria', 'tipo_genero'], []);
   const filasNomina = filteredRows('nomina', jugadores, ['genero', 'sexo'], ['fecha_nacimiento']);
   const credencialesConEquipo = usuariosOperativos.map(usuarioOperativo => ({
@@ -982,6 +1048,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             { id: 'historial', label: 'Historial / Archivo' },
             { id: 'bitacora', label: 'Bitácora de actividad' },
             { id: 'documentos', label: 'Documentos' },
+            { id: 'pagos', label: 'Pagos de Inscripción' },
           ]},
         ]}
         pestana={pestana}
@@ -1558,6 +1625,92 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 {!d.es_global && (
                                   <button onClick={() => eliminarDocumento(d.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                 )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* === VISTA: PAGOS (LOTE 3C) === */}
+            {pestana === 'pagos' && (
+              <div className="space-y-6 animate-fade-in">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
+                  <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
+                    <NavIcon pestanaId="pagos" />
+                    Registrar Pago de Inscripción
+                  </h3>
+                  <form onSubmit={registrarPago} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <CampoSelect etiqueta="Torneo" valor={formPago.torneo_id} onChange={e => setFormPago({ ...formPago, torneo_id: e.target.value })}>
+                      <option value="">-- Selecciona el torneo --</option>
+                      {torneosList.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                    </CampoSelect>
+                    <CampoSelect etiqueta="Equipo inscrito" valor={formPago.equipo_id} onChange={e => seleccionarEquipoPago(e.target.value)}>
+                      <option value="">-- Inscripción de equipo --</option>
+                      {equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}
+                    </CampoSelect>
+                    <CampoSelect etiqueta="Jugador inscrito (opcional)" valor={formPago.jugador_id} onChange={e => setFormPago({ ...formPago, jugador_id: e.target.value })}>
+                      <option value="">-- Sin jugador específico --</option>
+                      {jugadoresPago.map(j => <option key={j.id} value={j.id}>{j.nombre} {j.apellido}</option>)}
+                    </CampoSelect>
+                    <CampoTexto etiqueta="Monto" tipo="number" step="0.01" min="0" valor={formPago.monto} onChange={e => setFormPago({ ...formPago, monto: e.target.value })} requerido />
+                    <CampoSelect etiqueta="Moneda" valor={formPago.moneda} onChange={e => setFormPago({ ...formPago, moneda: e.target.value })}>
+                      <option value="Bs.">Bolívares (Bs.)</option>
+                      <option value="USD">Dólares (USD)</option>
+                    </CampoSelect>
+                    <CampoSelect etiqueta="Método de pago" valor={formPago.metodo} onChange={e => setFormPago({ ...formPago, metodo: e.target.value })}>
+                      <option value="Efectivo">Efectivo</option>
+                      <option value="Pago Movil">Pago Móvil</option>
+                      <option value="Transferencia">Transferencia</option>
+                      <option value="Zelle">Zelle</option>
+                      <option value="Otro">Otro</option>
+                    </CampoSelect>
+                    <CampoTexto etiqueta="Referencia (opcional)" valor={formPago.referencia} onChange={e => setFormPago({ ...formPago, referencia: e.target.value })} />
+                    <CampoTexto etiqueta="Nota (opcional)" valor={formPago.nota} onChange={e => setFormPago({ ...formPago, nota: e.target.value })} />
+                    <div className="md:col-span-3">
+                      <button type="submit" disabled={guardandoPago} className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">
+                        {guardandoPago ? 'Registrando...' : 'Registrar Pago'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
+                  <h3 className="text-lg font-bold text-brand-brown mb-4">Pagos de Inscripción Registrados</h3>
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={pagosConTexto} filteredRows={filasPagos} filter={getFilter('pagos')} setFilter={setTableFilter('pagos')} columns={[{ key: 'torneo_nombre', label: 'Torneo' }, { key: 'inscrito', label: 'Inscrito' }, { key: 'monto', label: 'Monto' }, { key: 'metodo', label: 'Metodo' }]} filename="pagos_filtrados" />
+                  <div className="overflow-x-auto">
+                    <table className="tabla-admin">
+                      <thead>
+                        <tr>
+                          <th>Torneo</th>
+                          <th>Inscrito</th>
+                          <th className="text-center">Monto</th>
+                          <th>Método</th>
+                          <th>Referencia</th>
+                          <th>Registrado por</th>
+                          <th>Fecha</th>
+                          <th className="text-center w-20">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filasPagos.length === 0 ? (
+                          <tr><td colSpan={8} className="text-center p-6 text-brand-brown/50">Aún no hay pagos de inscripción registrados.</td></tr>
+                        ) : (
+                          filasPagos.map(p => (
+                            <tr key={p.id} className="group">
+                              <td className="font-bold">{p.torneo_nombre || 'N/D'}</td>
+                              <td className="text-brand-brown/80">{p.inscrito}</td>
+                              <td className="text-center font-bold text-brand-blue">{Number(p.monto).toFixed(2)} {p.moneda}</td>
+                              <td><span className="bg-brand-cream text-brand-brown px-2 py-1 rounded-full text-xs font-bold border border-brand-gold/30">{p.metodo}</span></td>
+                              <td className="text-brand-brown/80">{p.referencia || '—'}</td>
+                              <td className="text-brand-brown/80">{p.registrado_por_nombre || 'N/D'}</td>
+                              <td className="text-brand-brown/80">{p.creado_en ? p.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
+                              <td className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => eliminarPago(p.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                               </td>
                             </tr>
                           ))

@@ -1903,4 +1903,98 @@ router.delete('/documentos/:id', async (req, res) => {
   }
 });
 
+
+/**
+ * ========================================================
+ * LOTE 3C (N8): PAGOS DE INSCRIPCION A TORNEOS
+ * Registro manual del AdminLiga: equipo y/o jugador,
+ * monto, moneda (Bs./USD), metodo, referencia y nota.
+ * ========================================================
+ */
+const MONEDAS_PAGO = ['Bs.', 'USD'];
+const METODOS_PAGO = ['Efectivo', 'Pago Movil', 'Transferencia', 'Zelle', 'Otro'];
+
+router.get('/pagos', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const resultado = await db.query(`
+      SELECT p.id, p.torneo_id, p.equipo_id, p.jugador_id, p.monto, p.moneda, p.metodo, p.referencia, p.nota,
+             TO_CHAR(p.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             t.nombre AS torneo_nombre,
+             e.nombre AS equipo_nombre,
+             TRIM(j.nombre || ' ' || j.apellido) AS jugador_nombre,
+             TRIM(COALESCE(u.nombre || ' ' || u.apellido, u.email, '')) AS registrado_por_nombre
+      FROM public.pagos p
+      LEFT JOIN public.torneos t ON p.torneo_id = t.id
+      LEFT JOIN public.equipos e ON p.equipo_id = e.id
+      LEFT JOIN public.jugadores j ON p.jugador_id = j.id
+      LEFT JOIN public.usuarios u ON p.registrado_por = u.id
+      WHERE p.organizacion_id = $1
+      ORDER BY p.creado_en DESC
+    `, [orgId || null]);
+    res.json({ organizacion_id: orgId, pagos: resultado.rows });
+  } catch (error) {
+    console.error('Error al listar pagos:', error);
+    res.status(500).json({ error: 'Error al obtener los pagos de inscripcion.' });
+  }
+});
+
+router.post('/pagos', async (req, res) => {
+  const { torneo_id, equipo_id, jugador_id, monto, moneda, metodo, referencia, nota } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    if (!orgId) return res.status(400).json({ error: 'No se pudo determinar la organizacion.' });
+    const torneoId = parseInt(torneo_id, 10);
+    if (!torneoId) return res.status(400).json({ error: 'El torneo de la inscripcion es obligatorio.' });
+    const torneoChk = await db.query('SELECT id FROM public.torneos WHERE id = $1 AND organizacion_id = $2', [torneoId, orgId]);
+    if (torneoChk.rows.length === 0) return res.status(400).json({ error: 'El torneo indicado no pertenece a tu organizacion.' });
+    const equipoId = equipo_id ? parseInt(equipo_id, 10) : null;
+    const jugadorId = jugador_id ? parseInt(jugador_id, 10) : null;
+    if (!equipoId && !jugadorId) return res.status(400).json({ error: 'Indica el equipo o el jugador inscrito.' });
+    if (equipoId) {
+      const equipoChk = await db.query('SELECT id FROM public.equipos WHERE id = $1 AND organizacion_id = $2', [equipoId, orgId]);
+      if (equipoChk.rows.length === 0) return res.status(400).json({ error: 'El equipo indicado no pertenece a tu organizacion.' });
+    }
+    if (jugadorId) {
+      const jugadorChk = await db.query(
+        'SELECT j.id FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND e.organizacion_id = $2',
+        [jugadorId, orgId]
+      );
+      if (jugadorChk.rows.length === 0) return res.status(400).json({ error: 'El jugador indicado no pertenece a tu organizacion.' });
+    }
+    const montoNum = parseFloat(monto);
+    if (!montoNum || isNaN(montoNum) || montoNum <= 0) return res.status(400).json({ error: 'El monto del pago debe ser mayor a cero.' });
+    if (montoNum > 99999999.99) return res.status(400).json({ error: 'El monto supera el limite permitido.' });
+    const monedaPago = MONEDAS_PAGO.includes(moneda) ? moneda : 'Bs.';
+    const metodoPago = METODOS_PAGO.includes(metodo) ? metodo : 'Otro';
+    const referenciaLimpia = String(referencia || '').trim().slice(0, 100) || null;
+    const notaLimpia = String(nota || '').trim().slice(0, 500) || null;
+    const resDb = await db.query(
+      `INSERT INTO public.pagos (organizacion_id, torneo_id, equipo_id, jugador_id, monto, moneda, metodo, referencia, nota, registrado_por)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [orgId, torneoId, equipoId, jugadorId, montoNum, monedaPago, metodoPago, referenciaLimpia, notaLimpia, req.usuario.id]
+    );
+    await registrarAuditoria(req.usuario.id, 'REGISTRAR_PAGO', 'pagos', null, resDb.rows[0], req.ip, orgId);
+    res.status(201).json({ mensaje: 'Pago registrado con exito.', pago: resDb.rows[0] });
+  } catch (error) {
+    console.error('Error al registrar pago:', error);
+    res.status(500).json({ error: 'Error registrando el pago de inscripcion.' });
+  }
+});
+
+router.delete('/pagos/:id', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const chk = await db.query('SELECT * FROM public.pagos WHERE id = $1::uuid AND organizacion_id = $2', [req.params.id, orgId || null]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Pago no encontrado en tu organizacion.' });
+    const pago = chk.rows[0];
+    await db.query('DELETE FROM public.pagos WHERE id = $1::uuid', [pago.id]);
+    await registrarAuditoria(req.usuario.id, 'ELIMINAR_PAGO', 'pagos', pago, null, req.ip, orgId);
+    res.json({ mensaje: 'Pago eliminado con exito.' });
+  } catch (error) {
+    console.error('Error al eliminar pago:', error);
+    res.status(500).json({ error: 'Error al eliminar el pago.' });
+  }
+});
+
 module.exports = router;
