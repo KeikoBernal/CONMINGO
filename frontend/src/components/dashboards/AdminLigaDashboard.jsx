@@ -10,6 +10,8 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CampoTexto from '../CampoTexto';
 import CampoSelect from '../CampoSelect';
+import Sidebar from '../Sidebar';
+import FotoJugador from '../FotoJugador';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -885,105 +887,33 @@ const bitacoraConTexto = bitacora.map(evento => ({
         </div>
       )}
 
-  {/* SIDEBAR TIPO REFERENCE IMAGE */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-brand-brown text-brand-cream shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:shrink-0`}>
-        
-      {/* Logo y Nombre de Liga */}
-        <div className="p-6 border-b border-brand-gold/20 shrink-0 bg-brand-brown/50">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-brand-cream/10 border border-brand-gold/50 flex items-center justify-center shrink-0 overflow-hidden">
-              {orgData.logo_url ? (
-                <img src={orgData.logo_url} alt="Logo Liga" className="w-full h-full object-cover" />
-              ) : (
-                <svg className="w-6 h-6 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              )}
-            </div>
-            <div className="overflow-hidden">
-              <h1 className="text-lg font-bold text-brand-cream truncate" title={orgData.nombre}>
-                {orgData.nombre}
-              </h1>
-              <p className="text-xs text-brand-gold font-semibold uppercase tracking-wider mt-0.5">
-                Admin. de Liga
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto py-6 hide-scrollbar flex flex-col gap-6">
-          <div>
-            <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">General</div>
-            <nav className="space-y-1">
-              {[
-                { id: 'torneos', label: 'Torneos Activos' },
-                { id: 'equipos', label: 'Equipos y Nóminas' },
-                { id: 'sedes', label: 'Sedes Deportivas' }
-              ].map(item => {
-                const isAnimating = animandoBoton === item.id;
-                const isActive = pestana === item.id && !isAnimating;
-                
-                return (
-                  <button 
-                    key={item.id} 
-                    onClick={() => cambiarPestanaConAnimacion(item.id)} 
-                    className={`w-full px-6 py-3 text-sm font-medium transition-colors ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      {/* Envoltorio del ícono para transformarlo en bola */}
-                      <div className={`w-6 h-6 flex items-center justify-center shrink-0 ${isAnimating ? 'anim-icono-bola' : ''}`}>
-                        <NavIcon pestanaId={item.id} />
-                      </div>
-                      <span className={`transition-all ${isAnimating ? 'anim-texto-fade' : ''}`}>
-                        {item.label}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          <div>
-            <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Administración</div>
-            <nav className="space-y-1">
-              {[
-                { id: 'credenciales', label: 'Credenciales' },
-                { id: 'reglas', label: 'Plantillas y Reglas' },
-                { id: 'estadisticas', label: 'Estadísticas Globales' },
-                { id: 'historial', label: 'Historial / Archivo' },
-                { id: 'bitacora', label: 'Bitácora de actividad' }
-              ].map(item => {
-                const isAnimating = animandoBoton === item.id;
-                const isActive = pestana === item.id && !isAnimating;
-                
-                return (
-                  <button 
-                    key={item.id} 
-                    onClick={() => cambiarPestanaConAnimacion(item.id)} 
-                    className={`w-full px-6 py-3 text-sm font-medium transition-colors ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      {/* Envoltorio del ícono para transformarlo en bola */}
-                      <div className={`w-6 h-6 flex items-center justify-center shrink-0 ${isAnimating ? 'anim-icono-bola' : ''}`}>
-                        <NavIcon pestanaId={item.id} />
-                      </div>
-                      <span className={`transition-all ${isAnimating ? 'anim-texto-fade' : ''}`}>
-                        {item.label}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-      </aside>
-
-    {/* OVERLAY MOBILE */}
-      {menuAbierto && (
-        <div className="fixed inset-0 bg-brand-brown/50 z-30 md:hidden" onClick={() => setMenuAbierto(false)}></div>
-      )}
+  {/* C2: barra lateral retraible como componente compartido */}
+      <Sidebar
+        logoUrl={orgData.logo_url}
+        titulo={orgData.nombre}
+        subtitulo="Admin. de Liga"
+        grupos={[
+          { etiqueta: 'General', items: [
+            { id: 'torneos', label: 'Torneos Activos' },
+            { id: 'equipos', label: 'Equipos y Nóminas' },
+            { id: 'sedes', label: 'Sedes Deportivas' },
+          ]},
+          { etiqueta: 'Administración', items: [
+            { id: 'credenciales', label: 'Credenciales' },
+            { id: 'reglas', label: 'Plantillas y Reglas' },
+            { id: 'estadisticas', label: 'Estadísticas Globales' },
+            { id: 'historial', label: 'Historial / Archivo' },
+            { id: 'bitacora', label: 'Bitácora de actividad' },
+          ]},
+        ]}
+        pestana={pestana}
+        onPestana={cambiarPestanaConAnimacion}
+        animandoBoton={animandoBoton}
+        renderIcono={(id) => <NavIcon pestanaId={id} />}
+        menuAbierto={menuAbierto}
+        onCerrarMenu={() => setMenuAbierto(false)}
+        claveColapso="adminLigaSidebarColapsada"
+      />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto"> {/* INSERCIÓN: overflow-y-auto */}
@@ -1277,7 +1207,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               <td>
                                 <div className="flex items-center gap-3">
                                   {j.foto_url ? (
-                                    <img src={j.foto_url} alt="foto" className="w-8 h-8 rounded-full object-cover border border-brand-gold/50" />
+                                    <FotoJugador src={j.foto_url} nombre={`${j.nombre} ${j.apellido}`} className="w-8 h-8 rounded-full border border-brand-gold/50" />
                                   ) : (
                                     <div className="w-8 h-8 rounded-full bg-brand-cream flex items-center justify-center text-xs font-bold text-brand-brown border border-brand-gold/50">
                                       {j.nombre.charAt(0)}{j.apellido.charAt(0)}
