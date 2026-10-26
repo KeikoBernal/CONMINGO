@@ -1522,7 +1522,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <h3 className="text-lg font-bold text-brand-brown">Repositorio de Documentos</h3>
+                    <div>
+                      <h3 className="text-lg font-bold text-brand-brown">Repositorio de Documentos</h3>
+                      <p className="text-sm text-brand-brown/70 mt-1">Los documentos con distintivo Global los comparte el Superadmin con todas las ligas y solo él puede eliminarlos.</p>
+                    </div>
                   </div>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={documentos} filteredRows={filasDocumentos} filter={getFilter('documentos')} setFilter={setTableFilter('documentos')} columns={[{ key: 'titulo', label: 'Título' }, { key: 'tipo', label: 'Tipo' }, { key: 'torneo_nombre', label: 'Torneo' }]} filename="documentos_filtrados" />
                   <div className="overflow-x-auto">
@@ -1544,7 +1547,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         ) : (
                           filasDocumentos.map(d => (
                             <tr key={d.id} className="group">
-                              <td className="font-bold">{d.titulo}</td>
+                              <td className="font-bold">{d.titulo}{d.es_global && <span className="ml-2 bg-brand-blue/10 text-brand-blue px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase border border-brand-blue/20">Global</span>}</td>
                               <td><span className="bg-brand-cream text-brand-brown px-2 py-1 rounded-full text-xs font-bold border border-brand-gold/30">{d.tipo}</span></td>
                               <td className="text-brand-brown/80">{d.torneo_nombre || 'General'}</td>
                               <td className="text-center text-brand-brown/80">{formatearTamano(d.tamano_bytes)}</td>
@@ -1552,7 +1555,9 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               <td className="text-brand-brown/80">{d.creado_en ? d.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
                               <td className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button onClick={() => descargarDocumento(d)} disabled={!d.url_firmada} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="Descargar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
-                                <button onClick={() => eliminarDocumento(d.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                                {!d.es_global && (
+                                  <button onClick={() => eliminarDocumento(d.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                                )}
                               </td>
                             </tr>
                           ))

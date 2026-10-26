@@ -49,6 +49,12 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [token, setToken] = useState(null);
 
   const [partidosGlobales, setPartidosGlobales] = useState([]);
+
+  // LOTE 3B+: repositorio global de documentos (compartidos con todas las ligas)
+  const [documentosGlobales, setDocumentosGlobales] = useState([]);
+  const [formDocGlobal, setFormDocGlobal] = useState({ titulo: '', tipo: 'Reglamento' });
+  const [archivoDocGlobal, setArchivoDocGlobal] = useState(null);
+  const [subiendoDocGlobal, setSubiendoDocGlobal] = useState(false);
   const [filtrosTablas, setFiltrosTablas] = useState({});
 
   // LOTE R: filtrado, busqueda y descargas compartidos para las tablas del Superadmin.
@@ -133,6 +139,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       } else if (pestana === 'calendario') {
         const resPartidos = await fetchOperativo('/mis-partidos');
         if (resPartidos.ok) setPartidosGlobales(await resPartidos.json());
+      } else if (pestana === 'documentos') {
+        const res = await fetchConToken('/documentos');
+        if (res.ok) setDocumentosGlobales((await res.json()).documentos || []);
       } else if (pestana === 'bitacora') {
         const resUsers = await fetchConToken('/usuarios');
         if (resUsers.ok) setUsuariosList(await resUsers.json());
@@ -544,6 +553,66 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+  // LOTE 3B+: helpers del repositorio global de documentos
+  const formatearTamanoDocGlobal = (bytes) => {
+    const valor = parseInt(bytes, 10);
+    if (!valor || valor <= 0) return 'N/D';
+    if (valor < 1024) return valor + ' B';
+    if (valor < 1024 * 1024) return (valor / 1024).toFixed(1) + ' KB';
+    return (valor / (1024 * 1024)).toFixed(2) + ' MB';
+  };
+
+  const recargarDocumentosGlobales = async () => {
+    const res = await fetchConToken('/documentos');
+    if (res.ok) setDocumentosGlobales((await res.json()).documentos || []);
+  };
+
+  const subirDocumentoGlobal = async (e) => {
+    e.preventDefault();
+    if (subiendoDocGlobal) return;
+    const titulo = formDocGlobal.titulo.trim();
+    if (!titulo) return setMensaje({ texto: 'El título del documento es obligatorio.', tipo: 'error' });
+    if (!archivoDocGlobal) return setMensaje({ texto: 'Selecciona el archivo a subir.', tipo: 'error' });
+    if (archivoDocGlobal.size > 10 * 1024 * 1024) return setMensaje({ texto: 'El archivo supera los 10MB permitidos.', tipo: 'error' });
+    setSubiendoDocGlobal(true);
+    let ruta = null;
+    try {
+      const extension = ((archivoDocGlobal.name.match(/\.([a-zA-Z0-9]{1,8})$/) || [null, 'bin'])[1]).toLowerCase();
+      ruta = '__global/' + crypto.randomUUID() + '.' + extension;
+      const { error: errorSubida } = await supabase.storage.from('documentos').upload(ruta, archivoDocGlobal, { contentType: archivoDocGlobal.type || 'application/octet-stream', upsert: false });
+      if (errorSubida) throw new Error(errorSubida.message || 'Error subiendo el archivo.');
+      const res = await fetchConToken('/documentos', {
+        method: 'POST',
+        body: JSON.stringify({ titulo, tipo: formDocGlobal.tipo, archivo_path: ruta, tamano_bytes: archivoDocGlobal.size, mime_type: archivoDocGlobal.type || 'application/octet-stream' })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        await supabase.storage.from('documentos').remove([ruta]).catch(() => {});
+        throw new Error(data.error || 'Error registrando el documento global.');
+      }
+      setMensaje({ texto: 'Documento compartido con todas las ligas.', tipo: 'exito' });
+      setFormDocGlobal({ titulo: '', tipo: 'Reglamento' });
+      setArchivoDocGlobal(null);
+      await recargarDocumentosGlobales();
+    } catch (err) {
+      setMensaje({ texto: err.message || 'Error subiendo el documento global.', tipo: 'error' });
+    } finally {
+      setSubiendoDocGlobal(false);
+    }
+  };
+
+  const eliminarDocumentoGlobal = async (id) => {
+    if (!window.confirm('¿Eliminar este documento global? Dejará de estar disponible para todas las ligas.')) return;
+    const res = await fetchConToken('/documentos/' + id, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setMensaje({ texto: 'Documento global eliminado.', tipo: 'exito' });
+      await recargarDocumentosGlobales();
+    } else {
+      setMensaje({ texto: data.error || 'Error eliminando el documento global.', tipo: 'error' });
+    }
+  };
+
   const NavIcon = ({ id }) => {
     switch (id) {
       case 'metricas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
@@ -551,6 +620,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       case 'usuarios': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
       case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>;
       case 'calendario': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
+      case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
       default: return null;
     }
   };
@@ -607,7 +677,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           <div>
             <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Módulos del Sistema</div>
             <nav className="space-y-1">
-              {['metricas', 'calendario', 'ligas', 'usuarios', 'bitacora'].map(item => {
+              {['metricas', 'calendario', 'documentos', 'ligas', 'usuarios', 'bitacora'].map(item => {
                 const isActive = pestana === item;
                 return (
                   <button 
@@ -1010,6 +1080,99 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {pestana === 'documentos' && (
+            <div className="animate-fade-in space-y-6">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
+                <h3 className="text-lg font-bold text-brand-brown mb-2 flex items-center gap-2">
+                  <NavIcon id="documentos" />
+                  Documentos Compartidos con Todas las Ligas
+                </h3>
+                <p className="text-sm text-brand-brown/70 mb-6">
+                  Reglamentos, convocatorias y comunicados de carácter general. Cada documento subido aquí
+                  queda visible y descargable para todas las ligas del sistema.
+                </p>
+                <form onSubmit={subirDocumentoGlobal} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-brand-brown mb-1">Título del documento</label>
+                    <input
+                      type="text"
+                      value={formDocGlobal.titulo}
+                      onChange={(e) => setFormDocGlobal({ ...formDocGlobal, titulo: e.target.value })}
+                      required
+                      maxLength={200}
+                      className="w-full px-4 py-2.5 bg-brand-cream/20 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-rust focus:ring-2 focus:ring-brand-rust/20 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-brand-brown mb-1">Tipo de documento</label>
+                    <select
+                      value={formDocGlobal.tipo}
+                      onChange={(e) => setFormDocGlobal({ ...formDocGlobal, tipo: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-brand-rust focus:ring-2 focus:ring-brand-rust/20 transition-all"
+                    >
+                      <option value="Reglamento">Reglamento</option>
+                      <option value="Convocatoria">Convocatoria</option>
+                      <option value="Acta">Acta</option>
+                      <option value="Inscripcion">Inscripción</option>
+                      <option value="Comunicado">Comunicado</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-4 py-2.5 rounded-lg font-semibold text-sm cursor-pointer transition-colors shadow-sm w-fit">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                      {archivoDocGlobal ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                      <input type="file" className="hidden" onChange={(e) => setArchivoDocGlobal(e.target.files?.[0] || null)} accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp" />
+                    </label>
+                    {archivoDocGlobal && <p className="mt-2 text-xs font-semibold text-brand-brown/70">{archivoDocGlobal.name} ({formatearTamanoDocGlobal(archivoDocGlobal.size)})</p>}
+                  </div>
+                  <div className="md:col-span-2">
+                    <button type="submit" disabled={subiendoDocGlobal} className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">
+                      {subiendoDocGlobal ? 'Subiendo...' : 'Compartir con Todas las Ligas'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
+                <h3 className="text-lg font-bold text-brand-brown mb-4">Repositorio Global</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-xs font-bold">
+                      <tr>
+                        <th className="p-4 border-b border-brand-gold/30">Documento</th>
+                        <th className="p-4 border-b border-brand-gold/30">Tipo</th>
+                        <th className="p-4 border-b border-brand-gold/30">Subido por</th>
+                        <th className="p-4 border-b border-brand-gold/30">Tamaño</th>
+                        <th className="p-4 border-b border-brand-gold/30">Fecha</th>
+                        <th className="p-4 border-b border-brand-gold/30 text-center w-28">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-brand-gold/10 text-brand-brown font-medium">
+                      {documentosGlobales.length === 0 ? (
+                        <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">Aún no hay documentos globales compartidos.</td></tr>
+                      ) : (
+                        documentosGlobales.map(d => (
+                          <tr key={d.id} className="group hover:bg-brand-cream/5 transition-colors">
+                            <td className="p-4 font-bold">{d.titulo}</td>
+                            <td className="p-4"><span className="bg-brand-cream text-brand-brown px-2 py-1 rounded-full text-xs font-bold border border-brand-gold/30">{d.tipo}</span></td>
+                            <td className="p-4 text-brand-brown/80">{d.subido_por_nombre || 'N/D'}</td>
+                            <td className="p-4 text-brand-brown/80">{formatearTamanoDocGlobal(d.tamano_bytes)}</td>
+                            <td className="p-4 text-xs text-brand-brown/70">{d.creado_en ? d.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
+                            <td className="p-4 flex gap-2 justify-center opacity-60 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => d.url_firmada && window.open(d.url_firmada, '_blank', 'noopener')} disabled={!d.url_firmada} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="Descargar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
+                              <button onClick={() => eliminarDocumentoGlobal(d.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

@@ -1827,15 +1827,16 @@ router.get('/documentos', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const resultado = await db.query(`
       SELECT d.id, d.titulo, d.tipo, d.torneo_id, d.archivo_path, d.tamano_bytes, d.mime_type,
+             (d.organizacion_id IS NULL) AS es_global,
              TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              t.nombre AS torneo_nombre,
              TRIM(COALESCE(u.nombre || ' ' || u.apellido, u.email, '')) AS subido_por_nombre
       FROM public.documentos d
       LEFT JOIN public.torneos t ON d.torneo_id = t.id
       LEFT JOIN public.usuarios u ON d.subido_por = u.id
-      WHERE d.organizacion_id = $1
+      WHERE (d.organizacion_id IS NULL OR d.organizacion_id = $1)
       ORDER BY d.creado_en DESC
-    `, [orgId]);
+    `, [orgId || null]);
     const documentos = await Promise.all(resultado.rows.map(async (doc) => ({
       ...doc,
       url_firmada: await construirUrlFirmadaDoc(doc.archivo_path)
@@ -1883,9 +1884,10 @@ router.post('/documentos', async (req, res) => {
 router.delete('/documentos/:id', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const chk = await db.query('SELECT * FROM public.documentos WHERE id = $1::uuid AND organizacion_id = $2', [req.params.id, orgId]);
+    const chk = await db.query('SELECT * FROM public.documentos WHERE id = $1::uuid AND (organizacion_id = $2 OR organizacion_id IS NULL)', [req.params.id, orgId || null]);
     if (chk.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado en tu organizacion.' });
     const doc = chk.rows[0];
+    if (doc.organizacion_id === null) return res.status(403).json({ error: 'Los documentos globales solo pueden eliminarse por el Superadmin.' });
     try {
       const { error: errorStorage } = await supabaseAdmin.storage.from('documentos').remove([doc.archivo_path]);
       if (errorStorage) console.error('[documentos] No se pudo borrar el objeto de Storage:', errorStorage?.message || errorStorage);

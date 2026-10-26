@@ -345,11 +345,12 @@ router.get('/documentos', async (req, res) => {
     if (!orgId) return res.json({ organizacion_id: null, documentos: [] });
     const resultado = await db.query(`
       SELECT d.id, d.titulo, d.tipo, d.torneo_id, d.archivo_path, d.tamano_bytes, d.mime_type,
+             (d.organizacion_id IS NULL) AS es_global,
              TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              t.nombre AS torneo_nombre
       FROM public.documentos d
       LEFT JOIN public.torneos t ON d.torneo_id = t.id
-      WHERE d.organizacion_id = $1
+      WHERE (d.organizacion_id IS NULL OR d.organizacion_id = $1)
       ORDER BY d.creado_en DESC
     `, [orgId]);
     const documentos = await Promise.all(resultado.rows.map(async (doc) => {
