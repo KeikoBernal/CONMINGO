@@ -318,4 +318,50 @@ router.get('/mi-equipo', async (req, res) => {
   }
 });
 
+
+/**
+ * ========================================================
+ * 4. DOCUMENTOS DE LA LIGA (SOLO LECTURA, LOTE 3B)
+ * ========================================================
+ */
+const construirUrlFirmadaDoc = async (archivoPath) => {
+  try {
+    const { data, error } = await supabaseAdmin.storage.from('documentos').createSignedUrl(archivoPath, 3600);
+    if (error) throw error;
+    return data?.signedUrl || null;
+  } catch (error) {
+    console.error('[documentos] No se pudo firmar la URL de descarga:', { archivoPath, error: error?.message || error });
+    return null;
+  }
+};
+
+router.get('/documentos', async (req, res) => {
+  try {
+    let orgId = req.usuario?.organizacion_id || null;
+    if (!orgId) {
+      const resOrg = await db.query('SELECT organizacion_id FROM public.usuarios WHERE id = $1', [req.usuario.id]);
+      orgId = resOrg.rows[0]?.organizacion_id || null;
+    }
+    if (!orgId) return res.json({ organizacion_id: null, documentos: [] });
+    const resultado = await db.query(`
+      SELECT d.id, d.titulo, d.tipo, d.torneo_id, d.archivo_path, d.tamano_bytes, d.mime_type,
+             TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             t.nombre AS torneo_nombre
+      FROM public.documentos d
+      LEFT JOIN public.torneos t ON d.torneo_id = t.id
+      WHERE d.organizacion_id = $1
+      ORDER BY d.creado_en DESC
+    `, [orgId]);
+    const documentos = await Promise.all(resultado.rows.map(async (doc) => {
+      const url = await construirUrlFirmadaDoc(doc.archivo_path);
+      delete doc.archivo_path;
+      return { ...doc, url_firmada: url };
+    }));
+    res.json({ organizacion_id: orgId, documentos });
+  } catch (error) {
+    console.error('Error al listar documentos para el delegado:', error);
+    res.status(500).json({ error: 'Error al obtener los documentos de la liga.' });
+  }
+});
+
 module.exports = router;
