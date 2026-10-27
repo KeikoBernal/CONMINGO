@@ -7,6 +7,7 @@ import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla'
 import CalendarioPartidos from '../CalendarioPartidos';
 import BotonModoSolar from '../BotonModoSolar';
 import VotacionMvp from '../VotacionMvp';
+import ConfirmarProtestas from '../ConfirmarProtestas';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -448,7 +449,8 @@ const guardarSorteo = async () => {
                 { id: 'proximos', label: 'Próximos Partidos', badge: partidosAgendados.length },
                 { id: 'historial', label: 'Historial Reciente', badge: partidosFinalizados.length },
                 { id: 'calendario', label: 'Calendario de Partidos', badge: partidosFiltrados.length },
-                { id: 'votacion', label: 'Votación MVP', badge: 0 }
+                { id: 'votacion', label: 'Votación MVP', badge: 0 },
+                { id: 'protestas', label: 'Protestas', badge: 0 }
               ].map(item => {
                 const isActive = pestana === item.id;
                 return (
@@ -495,7 +497,7 @@ const guardarSorteo = async () => {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <h2 className="text-xl sm:text-2xl font-bold text-brand-brown capitalize truncate">
-              {partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : 'Historial Reciente')}
+              {partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Historial Reciente')}
             </h2>
           </div>
           
@@ -611,6 +613,14 @@ const guardarSorteo = async () => {
                 <div className="space-y-4 animate-fade-in">
                   <h3 className="text-lg font-bold text-brand-rust border-b-2 border-brand-rust/30 pb-2">Votación MVP del Torneo</h3>
                   <VotacionMvp />
+                </div>
+              )}
+
+              {/* PESTAÑA: PROTESTAS (LOTE 4D P1) */}
+              {pestana === 'protestas' && (
+                <div className="space-y-4 animate-fade-in">
+                  <h3 className="text-lg font-bold text-brand-rust border-b-2 border-brand-rust/30 pb-2">Protestas por confirmar</h3>
+                  <ConfirmarProtestas fetchConToken={fetchConToken} />
                 </div>
               )}
 

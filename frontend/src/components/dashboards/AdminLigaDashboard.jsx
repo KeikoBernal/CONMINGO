@@ -14,6 +14,7 @@ import Sidebar from '../Sidebar';
 import FotoJugador from '../FotoJugador';
 import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
+import ProtestasAdmin from '../ProtestasAdmin';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -1168,6 +1169,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             { id: 'reglas', label: 'Plantillas y Reglas' },
             { id: 'estadisticas', label: 'Estadísticas Globales' },
                         { id: 'sanciones', label: 'Sanciones' },
+                        { id: 'protestas', label: 'Protestas' },
 { id: 'historial', label: 'Historial / Archivo' },
             { id: 'bitacora', label: 'Bitácora de actividad' },
             { id: 'documentos', label: 'Documentos' },
@@ -2139,6 +2141,13 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   </div>
                   <p className="text-xs text-brand-brown/50 mt-3">El cumplimiento se evalúa automáticamente al consultar la lista. Alcance 'Liga' suspende a la persona (por cédula) en todos sus equipos de la liga; 'Levantar' reactiva al jugador si no tiene otra sanción activa.</p>
                 </div>
+              </div>
+            )}
+
+            {/* === VISTA: PROTESTAS (LOTE 4D P1) === */}
+            {pestana === 'protestas' && (
+              <div className="animate-fade-in">
+                <ProtestasAdmin fetchConToken={fetchConToken} />
               </div>
             )}
 
