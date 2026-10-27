@@ -373,7 +373,7 @@ router.get('/documentos', async (req, res) => {
  */
 router.get('/pagos', async (req, res) => {
   try {
-    const resEquipos = await db.query('SELECT id FROM public.equipos WHERE delegado_id = $1 AND estado = 'Activo'', [req.usuario.id]);
+    const resEquipos = await db.query("SELECT id FROM public.equipos WHERE delegado_id = $1 AND estado = 'Activo'", [req.usuario.id]);
     const equipoIds = resEquipos.rows.map(r => r.id);
     if (equipoIds.length === 0) return res.json({ pagos: [] });
     const resultado = await db.query(`
