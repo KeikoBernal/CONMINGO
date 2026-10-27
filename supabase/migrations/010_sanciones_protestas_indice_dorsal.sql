@@ -11,16 +11,22 @@
 -- Contenido:
 --   N6 - Tabla public.sanciones: suspensiones de jugadores con duracion en
 --        partidos, generadas por Tarjeta Roja, por Acumulacion de tarjetas
---        o de forma Manual por el AdminLiga. Incluye levantamiento explícito.
+--        o de forma Manual por el AdminLiga. Incluye levantamiento explicito.
 --   P1 - Tabla public.protestas: protesta formal de un partido presentada por
---        el delegado del equipo, resuelta por el AdminLiga, que puede incluir
---        una medida contra el equipo infractor (ej. W.O. o descuento).
+--        el delegado del equipo, resuelta por el AdminLiga. Si la resolucion es
+--        Procedente con medida, la medida SOLO puede aplicarse cuando el
+--        arbitro y el anotador que presidieron el partido confirman: la
+--        protesta pasa por 'Pendiente Confirmacion' y el CHECK de la tabla
+--        impide llegar a 'Resuelta' sin AMBAS confirmaciones.
 --   M1 - Indice unico de dorsal por equipo entre jugadores NO inactivos
 --        (activos y suspendidos: el dorsal queda reservado mientras dura
 --        una suspension).
 --
 -- RLS: usa las funciones puente SECURITY DEFINER ya existentes
 -- (es_miembro_organizacion y es_admin_organizacion, migraciones 005/006/007).
+-- Las confirmaciones de los oficiales se registran via backend (dueno de
+-- las tablas, RLS no lo restringe); la politica UPDATE de protestas solo
+-- cubre al admin como defensa en profundidad.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -65,10 +71,17 @@ CREATE POLICY sanciones_update_admin ON public.sanciones
   USING (public.es_admin_organizacion(organizacion_id))
   WITH CHECK (public.es_admin_organizacion(organizacion_id));
 
-COMMENT ON TABLE public.sanciones IS 'LOTE 4A (N6): suspensiones de jugadores con duracion en partidos (Tarjeta Roja, Acumulacion de tarjetas o Manual), con levantamiento explícito.';
+COMMENT ON TABLE public.sanciones IS 'LOTE 4A (N6): suspensiones de jugadores con duracion en partidos (Tarjeta Roja, Acumulacion de tarjetas o Manual), con levantamiento explicito.';
 
 -- ----------------------------------------------------------------------------
 -- 2. P1: TABLA DE PROTESTAS FORMALES DE PARTIDO
+-- Flujo: Delegado presenta ('Pendiente') -> AdminLiga resuelve:
+--   - 'Improcedente' -> 'Resuelta' (el resultado no cambia).
+--   - 'Procedente' con medida -> 'Pendiente Confirmacion' -> el arbitro y el
+--     anotador del partido confirman (columna por cada uno) -> 'Resuelta'.
+-- El CHECK protestas_medida_requiere_confirmaciones impide en la BD misma
+-- que una protesta Procedente llegue a 'Resuelta' sin AMBAS confirmaciones:
+-- sin ellas, la medida nunca se aplica al resultado del partido.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.protestas (
   id BIGSERIAL PRIMARY KEY,
@@ -79,13 +92,23 @@ CREATE TABLE IF NOT EXISTS public.protestas (
   motivo character varying(200) NOT NULL,
   descripcion text NOT NULL,
   documento_id uuid REFERENCES public.documentos(id),
-  estado character varying(20) NOT NULL DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente','Resuelta','Retirada')),
+  estado character varying(30) NOT NULL DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente','Pendiente Confirmacion','Resuelta','Retirada')),
   resolucion character varying(20) CHECK (resolucion IN ('Procedente','Improcedente')),
   medida text,
+  confirmacion_arbitro uuid REFERENCES public.usuarios(id),
+  confirmacion_arbitro_en timestamptz,
+  confirmacion_anotador uuid REFERENCES public.usuarios(id),
+  confirmacion_anotador_en timestamptz,
   resuelta_por uuid REFERENCES public.usuarios(id),
   resuelta_en timestamptz,
   nota_resolucion text,
-  creado_en timestamptz NOT NULL DEFAULT now()
+  creado_en timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT protestas_medida_requiere_confirmaciones CHECK (
+    estado <> 'Resuelta'
+    OR resolucion IS NULL
+    OR resolucion = 'Improcedente'
+    OR (confirmacion_arbitro IS NOT NULL AND confirmacion_anotador IS NOT NULL)
+  )
 );
 
 CREATE INDEX IF NOT EXISTS protestas_organizacion_idx ON public.protestas (organizacion_id, creado_en DESC);
@@ -96,7 +119,7 @@ CREATE INDEX IF NOT EXISTS protestas_estado_idx ON public.protestas (organizacio
 -- (una protesta Retirada si puede reemplazarse por una nueva).
 CREATE UNIQUE INDEX IF NOT EXISTS protestas_partido_equipo_unicas
   ON public.protestas (partido_id, equipo_protestante_id)
-  WHERE estado IN ('Pendiente','Resuelta');
+  WHERE estado IN ('Pendiente','Pendiente Confirmacion','Resuelta');
 
 ALTER TABLE public.protestas ENABLE ROW LEVEL SECURITY;
 
@@ -116,7 +139,7 @@ CREATE POLICY protestas_update_admin ON public.protestas
   USING (public.es_admin_organizacion(organizacion_id))
   WITH CHECK (public.es_admin_organizacion(organizacion_id));
 
-COMMENT ON TABLE public.protestas IS 'LOTE 4A (P1): protestas formales de partido presentadas por el delegado del equipo y resueltas por el AdminLiga (Procedente/Improcedente, con medida opcional).';
+COMMENT ON TABLE public.protestas IS 'LOTE 4A (P1): protestas formales de partido del delegado, resueltas por el AdminLiga. Una resolucion Procedente con medida requiere la confirmacion del arbitro y del anotador del partido antes de poder aplicarse (CHECK en la tabla).';
 
 -- ----------------------------------------------------------------------------
 -- 3. M1: INDICE UNICO DE DORSAL POR EQUIPO
