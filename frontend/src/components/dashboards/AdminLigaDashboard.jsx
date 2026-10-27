@@ -116,7 +116,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [torneoMvpId, setTorneoMvpId] = useState('');
   const [votacionMvpData, setVotacionMvpData] = useState(null);
   const [formJugadasAdmin, setFormJugadasAdmin] = useState({ partido_id: '', numero_mano: '1', equipo_id: '', jugador_id: '', tipo_destreza: 'a', efectividad: 'true' });
-  const [jugadoresJugadasAdmin, setJugadoresJugadasAdmin] = useState([]);  const [guardandoPago, setGuardandoPago] = useState(false);
+  const [jugadoresJugadasAdmin, setJugadoresJugadasAdmin] = useState([]);
   const [filtrosTablas, setFiltrosTablas] = useState({});
   const getFilter = key => filtrosTablas[key] || EMPTY_FILTER;
   const setTableFilter = key => next => setFiltrosTablas(previous => ({ ...previous, [key]: next }));
