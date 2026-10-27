@@ -9,6 +9,7 @@ const { Server } = require('socket.io');
 const db = require('./config/db');
 const { createClient } = require('@supabase/supabase-js'); // FIX #6: validar tokens de sockets
 const { origenPermitido } = require('./config/corsOrigenes'); // FIX #9: lista blanca de orígenes
+const { manejarErroresIntegridad } = require('./middleware/errorHandlerMiddleware'); // LOTE 4B (M1): errores de integridad como respuestas amigables
 const supabaseAuthSocket = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const app = express();
@@ -183,6 +184,14 @@ app.use('/api/mensajeria', mensajeriaRoutes);
 
 const delegadoRoutes = require('./routes/delegadoRoutes');
 app.use('/api/delegado', delegadoRoutes);
+
+// ==========================================
+// LOTE 4B (M1): MIDDLEWARE DE ERRORES DE INTEGRIDAD
+// Red de seguridad global: convierte violaciones crudas de PostgreSQL
+// (unique 23505 / CHECK 23514 / FK 23503) en respuestas amigables 409/400
+// para cualquier error que las rutas no capturen antes.
+// ==========================================
+app.use(manejarErroresIntegridad);
 
 // ==========================================
 // ESTADO EN MEMORIA PARA LA PLANILLA EN VIVO
