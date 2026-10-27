@@ -7,7 +7,8 @@ import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla'
 import CalendarioPartidos from '../CalendarioPartidos';
 import VisualizadorCancha from '../VisualizadorCancha';
 import BotonModoSolar from '../BotonModoSolar';
-import VotacionMvp from '../VotacionMvp';import BotonModoSolar from '../BotonModoSolar';
+import VotacionMvp from '../VotacionMvp';
+
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -431,7 +432,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                   <button onClick={() => registrarLanzamiento('r')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">r <span className="text-sm block font-medium">Nulo</span></button>
                 </>
               )}
-              <button onClick={() => registrarLanzamiento('N')} className="col-span-2 py-3 bg-gray-500 text-white rounded-lg text-xl font-bold shadow-sm hover:bg-gray-600 transition-colors">N <span className="text-sm font-medium ml-2">(Nulo General)</span></button><button onClick={() => registrarLanzamiento('N')} className="col-span-2 py-3 bg-gray-500 text-white rounded-lg text-xl font-bold shadow-sm hover:bg-gray-600 transition-colors">N <span className="text-sm font-medium ml-2">(Nulo General)</span></button>
+              <button onClick={() => registrarLanzamiento('N')} className="col-span-2 py-3 bg-gray-500 text-white rounded-lg text-xl font-bold shadow-sm hover:bg-gray-600 transition-colors">N <span className="text-sm font-medium ml-2">(Nulo General)</span></button>
               <button onClick={() => registrarLanzamiento('')} className="col-span-2 py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors mt-2">Borrar Celda</button>
             </div>
             <button onClick={() => setModalRegistro(null)} className="mt-5 w-full py-3 bg-transparent text-brand-brown font-bold hover:bg-brand-cream rounded-lg transition-colors">Cancelar</button>

@@ -6,7 +6,8 @@ import SistemaMensajeria from './SistemaMensajeria';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
 import BotonModoSolar from '../BotonModoSolar';
-import VotacionMvp from '../VotacionMvp';import BotonModoSolar from '../BotonModoSolar';
+import VotacionMvp from '../VotacionMvp';
+
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
