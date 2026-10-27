@@ -294,14 +294,14 @@ router.post('/partidos/:id/manos', async (req, res) => {
     // LOTE 4C (N3): boche rastrero parametrizable por liga (se copia de la
     // plantilla de reglas a torneos.reglas.registrar_boche_rastrero).
     const permitirRastrero = reglas.registrar_boche_rastrero === true;
-    const tiposLanzamiento = permitirRastrero ? ['a', 'b', 'r'] : ['a', 'b'];const limiteEsferas = reglas.esferas_por_equipo || 8; 
+    const tiposLanzamiento = permitirRastrero ? ['a', 'b', 'r'] : ['a', 'b'];
 
     // LOTE G: Validaciones de integridad del partido y sanitización de entradas
     const filaPartido = torneoRes.rows[0];
     const equiposDelPartido = [filaPartido.equipo_local_id, filaPartido.equipo_visita_id].map(String);
     // LOTE 4C: el equipo_ganador_id llega como string y los ids de la tabla
     // como enteros; se normaliza una sola vez para comparar de verdad.
-    const ganadorId = equipo_ganador_id ? String(equipo_ganador_id).trim().toLowerCase() : null;const equiposDelPartido = [filaPartido.equipo_local_id, filaPartido.equipo_visita_id].map(String);
+    const ganadorId = equipo_ganador_id ? String(equipo_ganador_id).trim().toLowerCase() : null;
     const numeroMano = Number(numero_mano);
     const tantosValor = Number(tantos_anotados);
     if (filaPartido.estado === 'Finalizado' || filaPartido.estado === 'Cancelado') {
@@ -344,7 +344,7 @@ router.post('/partidos/:id/manos', async (req, res) => {
         // LOTE 4C (N3): solo se aceptan los lanzamientos habilitados por la liga.
         if (tipo !== 'n' && !tiposLanzamiento.includes(tipo)) {
           return res.status(400).json({ error: permitirRastrero ? "El tipo de lanzamiento debe ser 'a' (arrime), 'b' (boche de aire), 'r' (rastrero) o 'n' (nulo)." : "El tipo de lanzamiento debe ser 'a' (arrime), 'b' (boche de aire) o 'n' (nulo). Este torneo no registra boche rastrero." });
-        }const tipo = (dj.tipo_destreza || '').toLowerCase().trim();
+        }
         if (tiposLanzamiento.includes(tipo)) { // Arrime, Boche y Rastrero (si la liga lo permite)
           jugadasPorEquipo[eqId]++;
           // Contamos las esferas que ganan el punto
