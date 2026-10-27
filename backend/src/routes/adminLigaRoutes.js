@@ -2183,39 +2183,39 @@ router.post('/partidos/:id/jugadas', async (req, res) => {
 
 /**
  * ========================================================
- * LOTE 4D (P1): PROTESTAS — LISTADO Y RESOLUCION DEL ADMINLIGA
- * Flujo: Delegado presenta ('Pendiente') -> AdminLiga resuelve:
- *   - 'Improcedente' -> 'Resuelta' (el resultado no cambia).
- *   - 'Procedente' con medida -> 'Pendiente Confirmacion' -> arbitro y
- *     anotador confirman -> 'Resuelta' y el resultado oficial se corrige
- *     en public.resultados (el CHECK de la tabla lo garantiza).
+ * LOTE 4D (P1): PROTESTAS FORMALES DE PARTIDO
+ * El AdminLiga ve todas las protestas de su organizacion y las
+ * resuelve. Una resolucion Procedente con marcador corregido
+ * requiere la confirmacion posterior del arbitro y del
+ * anotador del partido antes de aplicarse.
  * ========================================================
  */
 router.get('/protestas', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
     const resultado = await db.query(`
-      SELECT pr.id, pr.partido_id, pr.equipo_protestante_id, pr.motivo, pr.descripcion,
-             pr.estado, pr.resolucion, pr.medida, pr.nota_resolucion,
-             pr.medida_marcador_local, pr.medida_marcador_visita,
-             pr.confirmacion_arbitro, pr.confirmacion_anotador,
+      SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.estado, pr.resolucion,
+             pr.medida, pr.nota_resolucion,
              TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
-             p.equipo_local_id, p.equipo_visita_id,
-             el.nombre AS local_nombre, ev.nombre AS visita_nombre,
-             ep.nombre AS equipo_protestante_nombre,
-             TRIM(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellido, '')) AS presentada_por_nombre,
-             r.marcador_local AS resultado_local, r.marcador_visita AS resultado_visita
+             pr.confirmacion_arbitro, pr.confirmacion_anotador,
+             TO_CHAR(pr.resuelta_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS resuelta_en,
+             pr.medida_marcador_local, pr.medida_marcador_visita,
+             el.nombre AS equipo_local,
+             ev.nombre AS equipo_visita,
+             eq.nombre AS equipo_protestante,
+             TRIM(u.nombre || ' ' || u.apellido) AS presentada_por_nombre,
+             r.marcador_local, r.marcador_visita
       FROM public.protestas pr
       JOIN public.partidos p ON pr.partido_id = p.id
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
       LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
-      LEFT JOIN public.equipos ep ON pr.equipo_protestante_id = ep.id
+      LEFT JOIN public.equipos eq ON pr.equipo_protestante_id = eq.id
       LEFT JOIN public.usuarios u ON pr.presentada_por = u.id
       LEFT JOIN public.resultados r ON r.partido_id = p.id
       WHERE pr.organizacion_id = $1
       ORDER BY pr.creado_en DESC
-    `, [orgId]);
-    res.json(resultado.rows);
+    `, [orgId || null]);
+    res.json({ protestas: resultado.rows });
   } catch (error) {
     console.error('Error al listar protestas:', error);
     res.status(500).json({ error: 'Error al obtener las protestas de la liga.' });
@@ -2223,57 +2223,54 @@ router.get('/protestas', async (req, res) => {
 });
 
 router.put('/protestas/:id/resolver', async (req, res) => {
-  const { resolucion, nota_resolucion, medida, medida_marcador_local, medida_marcador_visita } = req.body;
+  const { resolucion, medida, nota, marcador_local, marcador_visita } = req.body;
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const chk = await db.query('SELECT * FROM public.protestas WHERE id = $1 AND organizacion_id = $2', [req.params.id, orgId]);
-    if (chk.rows.length === 0) return res.status(404).json({ error: 'Protesta no encontrada en tu organizacion.' });
+    const protestaId = parseInt(req.params.id, 10);
+    const chk = await db.query('SELECT * FROM public.protestas WHERE id = $1', [protestaId]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Protesta no encontrada.' });
     const protesta = chk.rows[0];
-    if (protesta.estado !== 'Pendiente') {
-      return res.status(400).json({ error: `Solo se pueden resolver protestas en estado 'Pendiente'. Estado actual: ${protesta.estado}` });
+    if (protesta.organizacion_id !== orgId) return res.status(403).json({ error: 'Esta protesta no pertenece a tu organización.' });
+    if (protesta.estado !== 'Pendiente') return res.status(400).json({ error: 'Solo se pueden resolver protestas en estado Pendiente.' });
+    const resolucionNorm = String(resolucion || '').trim();
+    if (!['Procedente', 'Improcedente'].includes(resolucionNorm)) {
+      return res.status(400).json({ error: 'La resolución debe ser Procedente o Improcedente.' });
     }
-    const resolNorm = String(resolucion || '').trim();
-    if (resolNorm !== 'Procedente' && resolNorm !== 'Improcedente') {
-      return res.status(400).json({ error: "La resolucion debe ser 'Procedente' o 'Improcedente'." });
-    }
-    const nota = String(nota_resolucion || '').trim().slice(0, 500) || null;
-    if (resolNorm === 'Improcedente') {
-      const resDb = await db.query(
-        "UPDATE public.protestas SET estado = 'Resuelta', resolucion = 'Improcedente', nota_resolucion = $1, resuelta_por = $2, resuelta_en = now() WHERE id = $3 RETURNING *",
-        [nota, req.usuario.id, req.params.id]
+    const notaLimpia = String(nota || '').trim().slice(0, 500) || null;
+    if (resolucionNorm === 'Improcedente') {
+      await db.query(
+        "UPDATE public.protestas SET estado = 'Resuelta', resolucion = 'Improcedente', nota_resolucion = $1, resuelta_por = $2, resuelta_en = now() WHERE id = $3",
+        [notaLimpia, req.usuario.id, protestaId]
       );
-      await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: parseInt(req.params.id, 10), estado: 'Pendiente' }, { estado: 'Resuelta', resolucion: 'Improcedente' }, req.ip, orgId);
-      return res.json({ mensaje: 'Protesta resuelta como Improcedente. El resultado del partido no cambia.', protesta: resDb.rows[0] });
+      await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: protestaId, estado: 'Pendiente' }, { resolucion: 'Improcedente' }, req.ip, orgId);
+      return res.json({ mensaje: 'Protesta resuelta como Improcedente. El resultado del partido no cambia.' });
     }
-    const medidaLimpia = String(medida || '').trim();
+    const medidaLimpia = String(medida || '').trim().slice(0, 2000);
     if (medidaLimpia.length < 5) {
-      return res.status(400).json({ error: 'Describe la medida a aplicar (al menos 5 caracteres).' });
+      return res.status(400).json({ error: 'Una protesta Procedente exige describir la medida aplicada (mínimo 5 caracteres).' });
     }
-    const rawLocal = medida_marcador_local;
-    const rawVisita = medida_marcador_visita;
-    const hayLocal = rawLocal !== undefined && rawLocal !== null && String(rawLocal).trim() !== '';
-    const hayVisita = rawVisita !== undefined && rawVisita !== null && String(rawVisita).trim() !== '';
-    if (hayLocal !== hayVisita) {
-      return res.status(400).json({ error: 'Indica el marcador corregido completo (tantos del local y del visita) o deja ambos vacios si la medida no cambia el resultado.' });
+    const tieneLocal = marcador_local !== undefined && marcador_local !== null && String(marcador_local).trim() !== '';
+    const tieneVisita = marcador_visita !== undefined && marcador_visita !== null && String(marcador_visita).trim() !== '';
+    if (tieneLocal !== tieneVisita) {
+      return res.status(400).json({ error: 'El marcador corregido debe estar completo (ambos equipos) o vacío.' });
     }
-    let marcadorLocal = null;
-    let marcadorVisita = null;
-    if (hayLocal) {
-      marcadorLocal = parseInt(rawLocal, 10);
-      marcadorVisita = parseInt(rawVisita, 10);
-      if (!Number.isInteger(marcadorLocal) || !Number.isInteger(marcadorVisita) || marcadorLocal < 0 || marcadorVisita < 0) {
-        return res.status(400).json({ error: 'El marcador corregido debe ser un numero entero no negativo.' });
+    let medidaLocal = null;
+    let medidaVisita = null;
+    if (tieneLocal) {
+      medidaLocal = parseInt(marcador_local, 10);
+      medidaVisita = parseInt(marcador_visita, 10);
+      if (isNaN(medidaLocal) || isNaN(medidaVisita) || medidaLocal < 0 || medidaVisita < 0) {
+        return res.status(400).json({ error: 'El marcador corregido debe ser numérico y mayor o igual a cero.' });
       }
     }
-    const resDb = await db.query(
-      "UPDATE public.protestas SET estado = 'Pendiente Confirmacion', resolucion = 'Procedente', medida = $1, nota_resolucion = $2, medida_marcador_local = $3, medida_marcador_visita = $4 WHERE id = $5 RETURNING *",
-      [medidaLimpia, nota, marcadorLocal, marcadorVisita, req.params.id]
+    await db.query(
+      "UPDATE public.protestas SET estado = 'Pendiente Confirmacion', resolucion = 'Procedente', medida = $1, nota_resolucion = $2, medida_marcador_local = $3, medida_marcador_visita = $4 WHERE id = $5",
+      [medidaLimpia, notaLimpia, medidaLocal, medidaVisita, protestaId]
     );
-    await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: parseInt(req.params.id, 10), estado: 'Pendiente' }, { estado: 'Pendiente Confirmacion', resolucion: 'Procedente', medida_marcador_local: marcadorLocal, medida_marcador_visita: marcadorVisita }, req.ip, orgId);
-    res.json({ mensaje: 'Protesta declarada Procedente. Pendiente la confirmacion del arbitro y del anotador del partido.', protesta: resDb.rows[0] });
+    await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: protestaId, estado: 'Pendiente' }, { resolucion: 'Procedente', medida_marcador_local: medidaLocal, medida_marcador_visita: medidaVisita }, req.ip, orgId);
+    res.json({ mensaje: 'Protesta marcada Procedente. El árbitro y el anotador del partido deben confirmar antes de aplicar la medida.' });
   } catch (error) {
-    if (responderSiErrorIntegridad(error, req, res)) return;
-    console.error('Error al resolver protesta:', error);
+    console.error('Error al resolver la protesta:', error);
     res.status(500).json({ error: 'Error al resolver la protesta.' });
   }
 });

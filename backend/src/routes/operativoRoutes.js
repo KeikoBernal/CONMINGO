@@ -7,6 +7,58 @@ const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddle
 router.use(verificarToken);
 
 // ============================================================
+// LOTE 4D (P1): RESULTADO OFICIAL DE PARTIDO
+// El marcador final de un partido se calcula desde las manos
+// registradas y se persiste en public.resultados (la tabla de
+// posiciones se calcula desde esa tabla).
+// ============================================================
+const marcadorDesdeManos = async (partidoId) => {
+  try {
+    const eqRes = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [partidoId]);
+    if (eqRes.rows.length === 0) return { local: 0, visita: 0 };
+    const localId = String(eqRes.rows[0].equipo_local_id);
+    const visitaId = String(eqRes.rows[0].equipo_visita_id);
+    const manosRes = await db.query(
+      'SELECT equipo_ganador_id, SUM(tantos_anotados) AS total FROM public.manos WHERE partido_id = $1 GROUP BY equipo_ganador_id',
+      [partidoId]
+    );
+    let local = 0;
+    let visita = 0;
+    for (const fila of manosRes.rows) {
+      if (String(fila.equipo_ganador_id) === localId) local += parseInt(fila.total, 10) || 0;
+      if (String(fila.equipo_ganador_id) === visitaId) visita += parseInt(fila.total, 10) || 0;
+    }
+    return { local, visita };
+  } catch (error) {
+    console.error('[resultados] No se pudo calcular el marcador desde las manos:', { partidoId, error: error?.message || error });
+    return { local: 0, visita: 0 };
+  }
+};
+
+const registrarResultadoOficial = async (partidoId, marcadorLocal, marcadorVisita, tipoResolucion, aprobadoPor, observaciones) => {
+  try {
+    const eqRes = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [partidoId]);
+    if (eqRes.rows.length === 0) return false;
+    const localId = eqRes.rows[0].equipo_local_id;
+    const visitaId = eqRes.rows[0].equipo_visita_id;
+    const localNum = parseInt(marcadorLocal, 10) || 0;
+    const visitaNum = parseInt(marcadorVisita, 10) || 0;
+    const ganadorId = localNum > visitaNum ? localId : (visitaNum > localNum ? visitaId : null);
+    await db.query(
+      `INSERT INTO public.resultados (partido_id, marcador_local, marcador_visita, equipo_ganador_id, tipo_resolucion, aprobado_por, observaciones)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (partido_id) DO UPDATE
+       SET marcador_local = $2, marcador_visita = $3, equipo_ganador_id = $4, tipo_resolucion = $5, aprobado_por = $6, observaciones = $7`,
+      [partidoId, localNum, visitaNum, ganadorId, tipoResolucion, aprobadoPor, observaciones]
+    );
+    return true;
+  } catch (error) {
+    console.error('[resultados] No se pudo registrar el resultado oficial:', { partidoId, error: error?.message || error });
+    return false;
+  }
+};
+
+// ============================================================
 // LOTE O: TRAZABILIDAD — bitácora de acciones del operativo
 // ============================================================
 // Helper: organización a la que pertenece un partido (vía su torneo).
@@ -26,64 +78,6 @@ const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = nul
     );
   } catch (error) {
     console.error('[auditoría] No se pudo registrar en la bitácora:', { usuarioId, accion, tabla, error: error?.message || error });
-  }
-};
-
-// ============================================================
-// LOTE 4D (P1): RESULTADO OFICIAL DEL PARTIDO EN public.resultados
-// La tabla de posiciones se alimenta de resultados. Si no hay fila se
-// inserta y si hay se actualiza. tipoResolucion: 'Acta' al finalizar el
-// partido, 'Protesta' al aplicar la medida confirmada por los oficiales.
-// ============================================================
-const marcadorDesdeManos = async (partidoId) => {
-  try {
-    const pRes = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [partidoId]);
-    if (pRes.rows.length === 0) return null;
-    const { rows } = await db.query(
-      'SELECT m.equipo_ganador_id, SUM(m.tantos_anotados) AS total FROM public.manos m WHERE m.partido_id = $1 GROUP BY m.equipo_ganador_id',
-      [partidoId]
-    );
-    let local = 0;
-    let visita = 0;
-    const localId = String(pRes.rows[0].equipo_local_id);
-    const visitaId = String(pRes.rows[0].equipo_visita_id);
-    for (const fila of rows) {
-      if (fila.equipo_ganador_id === null) continue;
-      if (String(fila.equipo_ganador_id) === localId) local += parseInt(fila.total, 10) || 0;
-      else if (String(fila.equipo_ganador_id) === visitaId) visita += parseInt(fila.total, 10) || 0;
-    }
-    return { local, visita };
-  } catch (error) {
-    console.error('[resultados] No se pudo calcular el marcador del acta:', { partidoId, error: error?.message || error });
-    return null;
-  }
-};
-
-const registrarResultadoOficial = async (partidoId, marcadorLocal, marcadorVisita, tipoResolucion, aprobadoPor, observaciones = null) => {
-  try {
-    const pRes = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [partidoId]);
-    if (pRes.rows.length === 0) return null;
-    const fila = pRes.rows[0];
-    let ganadorId = null;
-    if (marcadorLocal > marcadorVisita) ganadorId = fila.equipo_local_id;
-    else if (marcadorVisita > marcadorLocal) ganadorId = fila.equipo_visita_id;
-    await db.query(
-      `INSERT INTO public.resultados (partido_id, marcador_local, marcador_visita, equipo_ganador_id, tipo_resolucion, aprobado_por, observaciones)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (partido_id) DO UPDATE SET
-         marcador_local = EXCLUDED.marcador_local,
-         marcador_visita = EXCLUDED.marcador_visita,
-         equipo_ganador_id = EXCLUDED.equipo_ganador_id,
-         tipo_resolucion = EXCLUDED.tipo_resolucion,
-         aprobado_por = EXCLUDED.aprobado_por,
-         observaciones = EXCLUDED.observaciones,
-         fecha_registro = now()`,
-      [partidoId, marcadorLocal, marcadorVisita, ganadorId, tipoResolucion, aprobadoPor, observaciones]
-    );
-    return ganadorId;
-  } catch (error) {
-    console.error('[resultados] No se pudo registrar el resultado oficial:', { partidoId, error: error?.message || error });
-    return null;
   }
 };
 
@@ -270,10 +264,9 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
       [hora_final, req.params.id]
     );
     await registrarAuditoria(req.usuario.id, 'FINALIZAR_PARTIDO', 'partidos', { id: req.params.id }, { estado: 'Finalizado', hora_final }, req.ip, await obtenerOrgDePartido(req.params.id));
-    // LOTE 4D (P1): resultado oficial calculado desde el acta (manos); es el
-    // que alimenta la tabla de posiciones y las estadisticas de la liga.
-    const marcadorFinal = await marcadorDesdeManos(req.params.id);
-    if (marcadorFinal) await registrarResultadoOficial(req.params.id, marcadorFinal.local, marcadorFinal.visita, 'Acta', req.usuario.id);
+    // LOTE 4D (P1): el marcador de las manos queda como resultado oficial.
+    const marcadorOficial = await marcadorDesdeManos(parseInt(req.params.id, 10));
+    await registrarResultadoOficial(parseInt(req.params.id, 10), marcadorOficial.local, marcadorOficial.visita, 'Acta', req.usuario.id, null);
     res.json({ mensaje: 'Partido finalizado con éxito.', partido: resDb.rows[0], hora_final: hora_final });
   } catch (error) { res.status(500).json({ error: 'Error al finalizar el partido.' }); }
 });
@@ -464,9 +457,9 @@ router.post('/partidos/:id/manos', async (req, res) => {
          const horaFinal = new Date().toISOString();
          await db.query(`UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2`, [horaFinal, partidoId]);
          partidoFinalizado = true;
-         // LOTE 4D (P1): resultado oficial al cerrar el partido por meta de puntos
-         const marcadorMeta = await marcadorDesdeManos(partidoId);
-         if (marcadorMeta) await registrarResultadoOficial(partidoId, marcadorMeta.local, marcadorMeta.visita, 'Acta', req.usuario.id);
+         // LOTE 4D (P1): el cierre por meta tambien deja resultado oficial.
+         const marcadorOficialMeta = await marcadorDesdeManos(partidoId);
+         await registrarResultadoOficial(partidoId, marcadorOficialMeta.local, marcadorOficialMeta.visita, 'Acta', req.usuario.id, null);
          
          const io = req.app.get('io');
          if (io) {
@@ -702,21 +695,21 @@ router.post('/votacion-mvp', async (req, res) => {
   }
 });
 
+
 // ============================================================
 // LOTE 4D (P1): CONFIRMACION DE PROTESTAS POR LOS OFICIALES
-// El arbitro y el anotador que presidieron el partido confirman la
-// medida declarada Procedente por el AdminLiga. Con ambas
-// confirmaciones la protesta queda 'Resuelta' (el CHECK de la tabla
-// lo exige) y el resultado oficial se corrige en public.resultados.
 // ============================================================
 router.get('/protestas-confirmacion', async (req, res) => {
   try {
     const resultado = await db.query(`
-      SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.medida,
-             pr.medida_marcador_local, pr.medida_marcador_visita,
+      SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.medida, pr.nota_resolucion,
+             TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              pr.confirmacion_arbitro, pr.confirmacion_anotador,
-             el.nombre AS local_nombre, ev.nombre AS visita_nombre,
-             r.marcador_local AS resultado_local, r.marcador_visita AS resultado_visita
+             pr.medida_marcador_local, pr.medida_marcador_visita,
+             p.arbitro_id, p.anotador_id,
+             el.nombre AS equipo_local,
+             ev.nombre AS equipo_visita,
+             r.marcador_local, r.marcador_visita
       FROM public.protestas pr
       JOIN public.partidos p ON pr.partido_id = p.id
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
@@ -724,9 +717,9 @@ router.get('/protestas-confirmacion', async (req, res) => {
       LEFT JOIN public.resultados r ON r.partido_id = p.id
       WHERE pr.estado = 'Pendiente Confirmacion'
         AND (p.arbitro_id = $1 OR p.anotador_id = $1)
-      ORDER BY pr.creado_en DESC
+      ORDER BY pr.creado_en ASC
     `, [req.usuario.id]);
-    res.json(resultado.rows);
+    res.json({ protestas: resultado.rows });
   } catch (error) {
     console.error('Error al listar protestas por confirmar:', error);
     res.status(500).json({ error: 'Error al obtener las protestas por confirmar.' });
@@ -735,50 +728,47 @@ router.get('/protestas-confirmacion', async (req, res) => {
 
 router.put('/protestas/:id/confirmar', async (req, res) => {
   try {
+    const protestaId = parseInt(req.params.id, 10);
     const chk = await db.query(
-      'SELECT pr.id, pr.estado, pr.medida, pr.medida_marcador_local, pr.medida_marcador_visita, pr.confirmacion_arbitro, pr.confirmacion_anotador, p.arbitro_id, p.anotador_id, p.equipo_local_id, p.equipo_visita_id, pr.partido_id FROM public.protestas pr JOIN public.partidos p ON pr.partido_id = p.id WHERE pr.id = $1',
-      [req.params.id]
+      `SELECT pr.id, pr.partido_id, pr.estado, pr.medida, pr.medida_marcador_local, pr.medida_marcador_visita,
+              pr.confirmacion_arbitro, pr.confirmacion_anotador, p.arbitro_id, p.anotador_id
+       FROM public.protestas pr JOIN public.partidos p ON pr.partido_id = p.id
+       WHERE pr.id = $1`,
+      [protestaId]
     );
     if (chk.rows.length === 0) return res.status(404).json({ error: 'Protesta no encontrada.' });
-    const protesta = chk.rows[0];
-    if (protesta.estado !== 'Pendiente Confirmacion') {
-      return res.status(400).json({ error: `Esta protesta no espera confirmaciones. Estado actual: ${protesta.estado}` });
-    }
-    const esArbitro = String(protesta.arbitro_id) === String(req.usuario.id);
-    const esAnotador = String(protesta.anotador_id) === String(req.usuario.id);
-    if (!esArbitro && !esAnotador) {
-      return res.status(403).json({ error: 'Solo el arbitro y el anotador que presidieron este partido pueden confirmar la medida.' });
-    }
-    let resDb;
-    if (esArbitro && esAnotador) {
-      // Rol dual arbitro/anotador en el mismo partido: confirma ambas voces.
-      resDb = await db.query('UPDATE public.protestas SET confirmacion_arbitro = $1, confirmacion_arbitro_en = now(), confirmacion_anotador = $1, confirmacion_anotador_en = now() WHERE id = $2 RETURNING *', [req.usuario.id, req.params.id]);
-    } else if (esArbitro) {
-      resDb = await db.query('UPDATE public.protestas SET confirmacion_arbitro = $1, confirmacion_arbitro_en = now() WHERE id = $2 RETURNING *', [req.usuario.id, req.params.id]);
-    } else {
-      resDb = await db.query('UPDATE public.protestas SET confirmacion_anotador = $1, confirmacion_anotador_en = now() WHERE id = $2 RETURNING *', [req.usuario.id, req.params.id]);
-    }
-    const actualizada = resDb.rows[0];
-    let resuelta = false;
-    if (actualizada.confirmacion_arbitro !== null && actualizada.confirmacion_anotador !== null) {
-      // Ambas confirmaciones: la protesta queda resuelta y la medida se
-      // aplica sobre el resultado oficial del partido.
-      await db.query("UPDATE public.protestas SET estado = 'Resuelta', resuelta_por = $1, resuelta_en = now() WHERE id = $2", [req.usuario.id, req.params.id]);
-      if (actualizada.medida_marcador_local !== null && actualizada.medida_marcador_visita !== null) {
-        await registrarResultadoOficial(protesta.partido_id, actualizada.medida_marcador_local, actualizada.medida_marcador_visita, 'Protesta', req.usuario.id, actualizada.medida);
+    const fila = chk.rows[0];
+    if (fila.estado !== 'Pendiente Confirmacion') return res.status(400).json({ error: 'Esta protesta no está esperando confirmaciones.' });
+    const esArbitro = String(fila.arbitro_id || '') === String(req.usuario.id);
+    const esAnotador = String(fila.anotador_id || '') === String(req.usuario.id);
+    if (!esArbitro && !esAnotador) return res.status(403).json({ error: 'Solo el árbitro o el anotador asignados al partido pueden confirmar esta protesta.' });
+    const nuevoArbitro = esArbitro ? req.usuario.id : fila.confirmacion_arbitro;
+    const nuevoAnotador = esAnotador ? req.usuario.id : fila.confirmacion_anotador;
+    await db.query(
+      'UPDATE public.protestas SET confirmacion_arbitro = $1, confirmacion_anotador = $2 WHERE id = $3',
+      [nuevoArbitro, nuevoAnotador, protestaId]
+    );
+    const completa = Boolean(nuevoArbitro) && Boolean(nuevoAnotador);
+    if (completa) {
+      await db.query(
+        "UPDATE public.protestas SET estado = 'Resuelta', resuelta_por = $1, resuelta_en = now() WHERE id = $2",
+        [req.usuario.id, protestaId]
+      );
+      if (fila.medida_marcador_local !== null && fila.medida_marcador_local !== undefined
+          && fila.medida_marcador_visita !== null && fila.medida_marcador_visita !== undefined) {
+        await registrarResultadoOficial(fila.partido_id, fila.medida_marcador_local, fila.medida_marcador_visita, 'Protesta', req.usuario.id, 'Marcador corregido por protesta procedente.');
       }
-      resuelta = true;
     }
-    await registrarAuditoria(req.usuario.id, 'CONFIRMAR_PROTESTA', 'protestas', { id: parseInt(req.params.id, 10) }, { confirmo_como: esArbitro ? 'arbitro' : 'anotador', resuelta }, req.ip, await obtenerOrgDePartido(protesta.partido_id));
+    await registrarAuditoria(req.usuario.id, 'CONFIRMAR_PROTESTA', 'protestas', { id: protestaId, estado: 'Pendiente Confirmacion' }, { confirmada: true, resuelta: completa }, req.ip, await obtenerOrgDePartido(fila.partido_id));
     res.json({
-      mensaje: resuelta
-        ? 'Confirmacion registrada. Ambos oficiales confirmaron: la protesta queda resuelta y el resultado oficial del partido fue corregido.'
-        : 'Confirmacion registrada. Falta la confirmacion del otro oficial del partido.',
-      protesta: { ...actualizada, estado: resuelta ? 'Resuelta' : actualizada.estado },
-      medida_aplicada: resuelta
+      mensaje: completa
+        ? 'Confirmación registrada. La protesta quedó resuelta y el resultado oficial actualizado.'
+        : 'Confirmación registrada. Falta la confirmación del otro oficial del partido.',
+      resuelta: completa
     });
   } catch (error) {
-    console.error('Error al confirmar protesta:', error);
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al confirmar la protesta:', error);
     res.status(500).json({ error: 'Error al confirmar la protesta.' });
   }
 });
