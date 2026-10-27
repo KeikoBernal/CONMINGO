@@ -25,6 +25,30 @@ const formatearTexto = (texto) => {
   return texto.trim().toLowerCase().split(' ').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
 };
 
+// LOTE 4B: una persona puede inscribirse en varios equipos de la liga
+// (categorias distintas), pero su cedula no puede repetirse en la misma
+// categoria y genero. Devuelve la inscripcion en conflicto o null.
+// Los equipos de torneos flash (categoria 'Flash') no cuentan para el chequeo.
+const buscarCedulaDuplicada = async (cedula, equipoReferenciaId, jugadorIdIgnorado = null) => {
+  if (!cedula) return null;
+  const resultado = await db.query(
+    `SELECT j.id, j.nombre, j.apellido, e.nombre AS equipo_nombre
+     FROM public.jugadores j
+     JOIN public.equipos e ON j.equipo_id = e.id
+     WHERE TRIM(j.cedula) = $1
+       AND j.estado <> 'Inactivo'
+       AND e.estado = 'Activo'
+       AND e.categoria IS DISTINCT FROM 'Flash'
+       AND e.categoria IS NOT DISTINCT FROM (SELECT categoria FROM public.equipos WHERE id = $2)
+       AND e.tipo_genero IS NOT DISTINCT FROM (SELECT tipo_genero FROM public.equipos WHERE id = $2)
+       AND e.organizacion_id IS NOT DISTINCT FROM (SELECT organizacion_id FROM public.equipos WHERE id = $2)
+       AND ($3::int IS NULL OR j.id != $3::int)
+     LIMIT 1`,
+    [cedula, equipoReferenciaId, jugadorIdIgnorado]
+  );
+  return resultado.rows[0] || null;
+};
+
 const obtenerOrgId = async (usuario) => {
   if (usuario.organizacion_id) return usuario.organizacion_id;
   const res = await db.query('SELECT organizacion_id FROM public.usuarios WHERE id = $1', [usuario.id]);
@@ -431,6 +455,13 @@ router.post('/jugadores', async (req, res) => {
       const sufijo = ocupante.estado === 'Suspendido' ? ' (suspendido: su dorsal queda reservado)' : '';
       return res.status(409).json({ error: `El número dorsal #${dorsalNum} ya está asignado a ${ocupante.nombre} ${ocupante.apellido}${sufijo}.` });
     }
+    // LOTE 4B: una persona puede inscribirse en varios equipos de la liga
+    // (categorias distintas), pero su cedula no puede repetirse en la misma
+    // categoria y genero dentro de la liga.
+    const dupCedula = await buscarCedulaDuplicada(cedula.trim(), equipo_id);
+    if (dupCedula) {
+      return res.status(409).json({ error: 'La cédula ' + cedula.trim() + ' ya está inscrita en ' + dupCedula.nombre + ' ' + dupCedula.apellido + ' (' + dupCedula.equipo_nombre + '), de la misma categoría y género. Una persona solo puede inscribirse una vez por categoría en la liga.' });
+    }
     const resDb = await db.query(
       `INSERT INTO public.jugadores (equipo_id, cedula, nombre, apellido, fecha_nacimiento, correo, telefono, numero_dorsal, foto_url, estado) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Activo') RETURNING *`,
@@ -472,7 +503,7 @@ router.put('/jugadores/:id', async (req, res) => {
   
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const jugadorPrevio = await db.query(`SELECT j.equipo_id FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)`, [id, orgId]);
+    const jugadorPrevio = await db.query(`SELECT j.equipo_id, j.cedula FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)`, [id, orgId]);
     if (jugadorPrevio.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado en tu organización.' });
     
     const equipoId = jugadorPrevio.rows[0].equipo_id;
@@ -508,6 +539,15 @@ router.put('/jugadores/:id', async (req, res) => {
         const ocupante = dorsalCheck.rows[0];
         const sufijo = ocupante.estado === 'Suspendido' ? ' (suspendido: su dorsal queda reservado)' : '';
         return res.status(409).json({ error: `El dorsal #${dorsalNum} ya está en uso por ${ocupante.nombre} ${ocupante.apellido}${sufijo}.` });
+      }
+    }
+
+    // LOTE 4B: si se cambia la cedula, no puede chocar con otra inscripcion
+    // activa de la misma persona en la misma categoria y genero de la liga.
+    if (cedula && cedula.trim() !== String(jugadorPrevio.rows[0].cedula || '').trim()) {
+      const dupCedula = await buscarCedulaDuplicada(cedula.trim(), equipoId, parseInt(id));
+      if (dupCedula) {
+        return res.status(409).json({ error: 'La cédula ' + cedula.trim() + ' ya está inscrita en ' + dupCedula.nombre + ' ' + dupCedula.apellido + ' (' + dupCedula.equipo_nombre + '), de la misma categoría y género. Una persona solo puede inscribirse una vez por categoría en la liga.' });
       }
     }
 
@@ -621,6 +661,13 @@ router.post('/jugadores/:id/transferencia', async (req, res) => {
       const ocupante = dorsalCheck.rows[0];
       const sufijo = ocupante.estado === 'Suspendido' ? ' (suspendido: su dorsal queda reservado)' : '';
       return res.status(409).json({ error: 'El dorsal #' + dorsalNum + ' ya lo usa ' + ocupante.nombre + ' ' + ocupante.apellido + sufijo + ' en el equipo destino.' });
+    }
+
+    // LOTE 4B: la cedula no puede quedar duplicada en la categoria y genero
+    // del equipo destino (la persona si puede tener equipos en otras categorias).
+    const dupCedula = await buscarCedulaDuplicada(String(jugador.cedula || '').trim(), destino.id, parseInt(id));
+    if (dupCedula) {
+      return res.status(409).json({ error: 'La cédula ' + String(jugador.cedula || '').trim() + ' ya está inscrita en ' + dupCedula.nombre + ' ' + dupCedula.apellido + ' (' + dupCedula.equipo_nombre + '), de la misma categoría y género del equipo destino. Una persona solo puede inscribirse una vez por categoría en la liga.' });
     }
 
     // 4. Validar edad vs categoría del destino (mismas reglas de alta/edición)
