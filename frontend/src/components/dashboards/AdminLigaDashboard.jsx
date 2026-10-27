@@ -105,6 +105,18 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [formPago, setFormPago] = useState({ torneo_id: '', equipo_id: '', jugador_id: '', monto: '', moneda: 'Bs.', metodo: 'Efectivo', referencia: '', nota: '' });
   const [jugadoresPago, setJugadoresPago] = useState([]);
   const [guardandoPago, setGuardandoPago] = useState(false);
+  // LOTE 4C (N6): sanciones con alcance y modo de cumplimiento
+  const [sanciones, setSanciones] = useState([]);
+  const [formSancion, setFormSancion] = useState({ equipo_id: '', jugador_id: '', tipo: 'Manual', motivo: '', partidos_suspension: '1', alcance: 'Equipo', modo_cumplimiento: 'Partidos del equipo', fecha_inicio: '' });
+  const [jugadoresSancion, setJugadoresSancion] = useState([]);
+  const [guardandoSancion, setGuardandoSancion] = useState(false);
+  // LOTE 4C (N3): estadisticas individuales, votacion MVP y jugadas post-partido
+  const [torneoStatsIndId, setTorneoStatsIndId] = useState('');
+  const [statsIndividuales, setStatsIndividuales] = useState(null);
+  const [torneoMvpId, setTorneoMvpId] = useState('');
+  const [votacionMvpData, setVotacionMvpData] = useState(null);
+  const [formJugadasAdmin, setFormJugadasAdmin] = useState({ partido_id: '', numero_mano: '1', equipo_id: '', jugador_id: '', tipo_destreza: 'a', efectividad: 'true' });
+  const [jugadoresJugadasAdmin, setJugadoresJugadasAdmin] = useState([]);
   const [filtrosTablas, setFiltrosTablas] = useState({});
   const getFilter = key => filtrosTablas[key] || EMPTY_FILTER;
   const setTableFilter = key => next => setFiltrosTablas(previous => ({ ...previous, [key]: next }));
@@ -112,7 +124,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   
   const [formJugador, setFormJugador] = useState({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false });
   const [formCredencial, setFormCredencial] = useState({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' });
-  const [formPartidoSuelto, setFormPartidoSuelto] = useState({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '', plantilla_id: '' });  const [formReglas, setFormReglas] = useState({ nombre: '', descripcion: '', puntos_victoria: 3, puntos_empate: 1, puntos_derrota: 0, limite_jugadores: 8, meta_puntos: 15, tiempo_minutos: 60, tarjetas_suspension: 2, esferas_por_equipo: 8, politica_clasificacion: 'ganador_vs_ganador' });  
+  const [formPartidoSuelto, setFormPartidoSuelto] = useState({ equipo_local_id: '', equipo_visita_id: '', sede_id: '', arbitro_id: '', anotador_id: '', fecha_hora: '', plantilla_id: '' });  const [formReglas, setFormReglas] = useState({ nombre: '', descripcion: '', puntos_victoria: 3, puntos_empate: 1, puntos_derrota: 0, limite_jugadores: 8, meta_puntos: 15, tiempo_minutos: 60, tarjetas_suspension: 2, esferas_por_equipo: 8, politica_clasificacion: 'ganador_vs_ganador', registrar_boche_rastrero: false });  
   const [subPestanaTorneo, setSubPestanaTorneo] = useState('lista');
   const [pasoTorneo, setPasoTorneo] = useState(1);
   const [formTorneo, setFormTorneo] = useState({ nombre: '', fecha_inicio: '', fecha_fin: '', plantilla_id: '', categoria: 'Adulto 22+', tipo_genero: 'Mixto', sistema_clasificacion: 'liga_semifinales', opcion_grupos: 'cruc_semis', incluir_tercer_lugar: true, temporada: '2026' });
@@ -231,6 +243,15 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       } else if (pestana === 'estadisticas') {
         const res = await fetchConToken('/estadisticas'); if (res.ok) setEstadisticas(await res.json());
         const resGraf = await fetchConToken('/estadisticas/graficos'); if (resGraf.ok) setEstadisticasGraficos(await resGraf.json());
+        // LOTE 4C (N3): torneos, partidos y equipos para estadisticas
+        // individuales, votacion MVP y registro de jugadas posterior.
+        const resTorEst = await fetchConToken('/torneos'); if (resTorEst.ok) setTorneosList(await resTorEst.json());
+        const resPartEst = await fetchConToken('/partidos-finalizados'); if (resPartEst.ok) setPartidos(await resPartEst.json());
+        const resEqEst = await fetchConToken('/equipos'); if (resEqEst.ok) setEquipos(await resEqEst.json());
+      } else if (pestana === 'sanciones') {
+        // LOTE 4C (N6): listado de sanciones con cumplimiento auto-evaluado.
+        const resSanc = await fetchConToken('/sanciones'); if (resSanc.ok) setSanciones(await resSanc.json());
+        const resEqSanc = await fetchConToken('/equipos'); if (resEqSanc.ok) setEquipos(await resEqSanc.json());
       } else if (pestana === 'historial') {
         const res = await fetchConToken('/partidos-finalizados'); if (res.ok) setPartidos(await res.json());
       } else if (pestana === 'bitacora') {
@@ -343,7 +364,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const guardarPlantillaReglas = async (e) => {
     e.preventDefault();
     const res = await fetchConToken('/plantillas-reglas', {
-      method: 'POST', body: JSON.stringify({ nombre: formReglas.nombre, descripcion: formReglas.descripcion, reglas: { puntos_victoria: parseInt(formReglas.puntos_victoria), puntos_empate: parseInt(formReglas.puntos_empate), puntos_derrota: parseInt(formReglas.puntos_derrota), limite_jugadores: parseInt(formReglas.limite_jugadores), meta_puntos: parseInt(formReglas.meta_puntos), tiempo_minutos: parseInt(formReglas.tiempo_minutos), tarjetas_suspension: parseInt(formReglas.tarjetas_suspension), esferas_por_equipo: parseInt(formReglas.esferas_por_equipo), politica_clasificacion: formReglas.politica_clasificacion }})
+      method: 'POST', body: JSON.stringify({ nombre: formReglas.nombre, descripcion: formReglas.descripcion, reglas: { puntos_victoria: parseInt(formReglas.puntos_victoria), puntos_empate: parseInt(formReglas.puntos_empate), puntos_derrota: parseInt(formReglas.puntos_derrota), limite_jugadores: parseInt(formReglas.limite_jugadores), meta_puntos: parseInt(formReglas.meta_puntos), tiempo_minutos: parseInt(formReglas.tiempo_minutos), tarjetas_suspension: parseInt(formReglas.tarjetas_suspension), esferas_por_equipo: parseInt(formReglas.esferas_por_equipo), politica_clasificacion: formReglas.politica_clasificacion, registrar_boche_rastrero: formReglas.registrar_boche_rastrero === true }})
     });
     const data = await res.json();
     if (res.ok) { setMensaje('Plantilla guardada.'); cargarDatos(); } else { mostrarToast(data.error, 'error'); }
@@ -628,6 +649,70 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     e.preventDefault();
     const res = await fetchConToken('/cambiar-password-obligatorio', { method: 'POST', body: JSON.stringify({ nueva_password: nuevaClave }) });
     if (res.ok) { mostrarToast('Contraseña actualizada.', 'exito'); setDebeCambiarPass(false); }
+  };
+
+  // LOTE 4C (N6): jugadores no inactivos de un equipo (sanciones y jugadas)
+  const cargarJugadoresDeEquipo = async (equipoId, setter) => {
+    if (!equipoId) { setter([]); return; }
+    const res = await fetchConToken(`/equipos/${equipoId}/jugadores`);
+    if (res.ok) setter((await res.json()).filter(j => j.estado !== 'Inactivo'));
+  };
+
+  const registrarSancion = async (e) => {
+    e.preventDefault();
+    if (guardandoSancion) return;
+    if (!formSancion.equipo_id || !formSancion.jugador_id) return mostrarToast('Selecciona el equipo y el jugador sancionado.', 'error');
+    const cantidad = parseInt(formSancion.partidos_suspension, 10);
+    if (isNaN(cantidad) || cantidad < 0) return mostrarToast('La cantidad debe ser un número mayor o igual a 0.', 'error');
+    setGuardandoSancion(true);
+    try {
+      const res = await fetchConToken('/sanciones', { method: 'POST', body: JSON.stringify({ jugador_id: formSancion.jugador_id, tipo: formSancion.tipo, motivo: formSancion.motivo || null, partidos_suspension: cantidad, alcance: formSancion.alcance, modo_cumplimiento: formSancion.modo_cumplimiento, fecha_inicio: formSancion.fecha_inicio || null }) });
+      const data = await res.json();
+      setGuardandoSancion(false);
+      if (res.ok) {
+        mostrarToast(data.mensaje || 'Sanción registrada.', 'exito');
+        setFormSancion({ equipo_id: '', jugador_id: '', tipo: 'Manual', motivo: '', partidos_suspension: '1', alcance: 'Equipo', modo_cumplimiento: 'Partidos del equipo', fecha_inicio: '' });
+        setJugadoresSancion([]);
+        cargarDatos();
+      } else { mostrarToast(data.error || 'No se pudo registrar la sanción.', 'error'); }
+    } catch (err) { setGuardandoSancion(false); mostrarToast('Error de conexión al registrar la sanción.', 'error'); }
+  };
+
+  const levantarSancion = async (id) => {
+    if (!window.confirm('¿Levantar esta sanción y reactivar al jugador?')) return;
+    const res = await fetchConToken(`/sanciones/${id}/levantar`, { method: 'PUT' });
+    const data = await res.json();
+    if (res.ok) { mostrarToast(data.mensaje || 'Sanción levantada.', 'exito'); cargarDatos(); } else mostrarToast(data.error || 'No se pudo levantar la sanción.', 'error');
+  };
+
+  // LOTE 4C (N3): estadisticas individuales (average estilo federacion)
+  const consultarStatsIndividuales = async (torneoId) => {
+    const res = await fetchConToken('/estadisticas/individuales' + (torneoId ? '?torneo_id=' + encodeURIComponent(torneoId) : ''));
+    const data = await res.json();
+    if (res.ok) setStatsIndividuales(data); else mostrarToast(data.error || 'No se pudieron calcular las estadísticas.', 'error');
+  };
+
+  const consultarVotacionMvp = async (torneoId) => {
+    if (!torneoId) { setVotacionMvpData(null); return; }
+    const res = await fetchConToken(`/torneos/${torneoId}/votacion-mvp`);
+    const data = await res.json();
+    if (res.ok) setVotacionMvpData(data); else mostrarToast(data.error || 'No se pudo consultar la votación.', 'error');
+  };
+
+  const cambiarVotacionMvp = async (torneoId, abierta) => {
+    const res = await fetchConToken(`/torneos/${torneoId}/votacion-mvp`, { method: 'PUT', body: JSON.stringify({ abierta }) });
+    const data = await res.json();
+    if (res.ok) { mostrarToast(data.mensaje || 'Votación actualizada.', 'exito'); consultarVotacionMvp(torneoId); } else mostrarToast(data.error || 'No se pudo cambiar la votación.', 'error');
+  };
+
+  // LOTE 4C (N3): registro o correccion de jugadas despues del partido
+  const registrarJugadasAdmin = async (e) => {
+    e.preventDefault();
+    if (!formJugadasAdmin.partido_id) return mostrarToast('Selecciona el partido.', 'error');
+    if (!formJugadasAdmin.equipo_id || !formJugadasAdmin.jugador_id) return mostrarToast('Selecciona el equipo y el jugador.', 'error');
+    const res = await fetchConToken(`/partidos/${formJugadasAdmin.partido_id}/jugadas`, { method: 'POST', body: JSON.stringify({ numero_mano: parseInt(formJugadasAdmin.numero_mano, 10) || 1, jugadas: [{ jugador_id: formJugadasAdmin.jugador_id, tipo_destreza: formJugadasAdmin.tipo_destreza, efectividad: formJugadasAdmin.efectividad === 'true' }] }) });
+    const data = await res.json();
+    if (res.ok) mostrarToast(data.mensaje || 'Jugada registrada.', 'exito'); else mostrarToast(data.error || 'No se pudo registrar la jugada.', 'error');
   };
 
 const confirmarReagendar = async (e) => {
@@ -1082,7 +1167,8 @@ const bitacoraConTexto = bitacora.map(evento => ({
             { id: 'credenciales', label: 'Credenciales' },
             { id: 'reglas', label: 'Plantillas y Reglas' },
             { id: 'estadisticas', label: 'Estadísticas Globales' },
-            { id: 'historial', label: 'Historial / Archivo' },
+                        { id: 'sanciones', label: 'Sanciones' },
+{ id: 'historial', label: 'Historial / Archivo' },
             { id: 'bitacora', label: 'Bitácora de actividad' },
             { id: 'documentos', label: 'Documentos' },
             { id: 'pagos', label: 'Pagos de Inscripción' },
@@ -1219,6 +1305,13 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         <option value="perdedor_vs_perdedor">Consolación</option>
                         <option value="cruzado">Cruce Olímpico</option>
                       </select>
+                    </div>
+
+                    <div className="md:col-span-2 lg:col-span-4">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-brand-brown cursor-pointer">
+                        <input type="checkbox" className="w-4 h-4" checked={formReglas.registrar_boche_rastrero} onChange={e => setFormReglas({ ...formReglas, registrar_boche_rastrero: e.target.checked })} />
+                        Registrar boche rastrero ('R') en la planilla del anotador
+                      </label>
                     </div>
 
                     <div className="md:col-span-2 lg:col-span-4 mt-2">
@@ -1564,6 +1657,159 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                 <GraficasEstadisticas datos={estadisticasGraficos} />
 
+                {/* LOTE 4C (N3): ESTADISTICAS INDIVIDUALES (AVERAGE) */}
+                <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <h3 className="text-lg font-bold text-brand-brown">Estadísticas Individuales (Average)</h3>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <select value={torneoStatsIndId} onChange={e => setTorneoStatsIndId(e.target.value)} className="flex-1 sm:w-64 p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="">Toda la liga</option>
+                        {torneosList.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                      </select>
+                      <button onClick={() => consultarStatsIndividuales(torneoStatsIndId)} className="bg-brand-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-brown transition-colors whitespace-nowrap">Calcular</button>
+                    </div>
+                  </div>
+                  {statsIndividuales && (statsIndividuales.ranking.length === 0 ? (
+                    <p className="text-brand-brown/50 text-sm py-4 text-center">Aún no hay lanzamientos registrados. El anotador los guarda en el acta al finalizar cada partido.</p>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {[{ titulo: 'Campeón Arrimador', c: 'arrimador', a: 'average_arrime' }, { titulo: 'Campeón Bochador', c: 'bochador', a: 'average_boche' }, { titulo: 'Campeón Rastrero', c: 'rastrero', a: 'average_rastrero' }, { titulo: 'Jugador Más Útil', c: 'mas_util', a: 'average_global' }].map((c, i) => {
+                          const d = statsIndividuales.campeones[c.c];
+                          return (
+                            <div key={i} className="bg-brand-cream/20 rounded-xl p-4 border border-brand-gold/30 text-center">
+                              <h4 className="text-xs font-bold text-brand-brown/60 uppercase tracking-wider mb-2">{c.titulo}</h4>
+                              {d ? (
+                                <>
+                                  <p className="font-black text-brand-rust">{d.nombre} {d.apellido}</p>
+                                  <p className="text-xs text-brand-brown/70">{d.equipo_nombre}</p>
+                                  <p className="text-sm font-bold text-brand-blue mt-1">Average {d[c.a]}</p>
+                                </>
+                              ) : (
+                                <p className="text-brand-brown/40 text-sm py-2">Sin lances mínimos ({statsIndividuales.lances_minimos})</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="tabla-admin">
+                          <thead>
+                            <tr><th>#</th><th>Jugador</th><th>Equipo</th><th>Dorsal</th><th>Lances</th><th>Buenos</th><th>Avg Global</th><th>Avg Arrime</th><th>Avg Boche</th><th>Avg Rastrero</th></tr>
+                          </thead>
+                          <tbody>
+                            {statsIndividuales.ranking.map((j, idx) => (
+                              <tr key={j.jugador_id}>
+                                <td className="font-bold text-brand-brown/40">#{idx + 1}</td>
+                                <td className="font-bold">{j.nombre} {j.apellido}</td>
+                                <td>{j.equipo_nombre}</td>
+                                <td>{j.numero_dorsal}</td>
+                                <td>{j.lances}</td>
+                                <td>{j.buenos}</td>
+                                <td className="font-black text-brand-rust">{j.average_global}</td>
+                                <td>{j.average_arrime ?? '—'}</td>
+                                <td>{j.average_boche ?? '—'}</td>
+                                <td>{j.average_rastrero ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-brand-brown/50">Average = (buenos x 1000) / lances. Los campeonatos exigen {statsIndividuales.lances_minimos} lances mínimos por especialidad.</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* LOTE 4C (N3): VOTACION MVP DEL TORNEO */}
+                <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
+                  <h3 className="text-lg font-bold text-brand-brown mb-4">Votación MVP del Torneo</h3>
+                  <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                    <select value={torneoMvpId} onChange={e => { setTorneoMvpId(e.target.value); consultarVotacionMvp(e.target.value); }} className="flex-1 p-2 border border-brand-gold/30 rounded-lg">
+                      <option value="">-- Seleccione el torneo --</option>
+                      {torneosList.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                    </select>
+                    {torneoMvpId && (
+                      <button onClick={() => cambiarVotacionMvp(torneoMvpId, !(votacionMvpData && votacionMvpData.abierta))} className={(votacionMvpData && votacionMvpData.abierta) ? 'bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600 transition-colors whitespace-nowrap' : 'bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition-colors whitespace-nowrap'}>
+                        {(votacionMvpData && votacionMvpData.abierta) ? 'Cerrar votación' : 'Abrir votación'}
+                      </button>
+                    )}
+                  </div>
+                  {votacionMvpData && (
+                    <div className="space-y-4">
+                      <p className="text-sm font-semibold text-brand-brown">Estado: <span className={votacionMvpData.abierta ? 'text-green-700' : 'text-brand-brown/60'}>{votacionMvpData.abierta ? 'Abierta' : 'Cerrada'}</span> — {votacionMvpData.total_votos} voto(s)</p>
+                      {(!votacionMvpData.resultados || votacionMvpData.resultados.length === 0) ? (
+                        <p className="text-brand-brown/50 text-sm">Todavía no hay votos registrados.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="tabla-admin">
+                            <thead><tr><th>#</th><th>Jugador</th><th>Equipo</th><th>Votos</th></tr></thead>
+                            <tbody>
+                              {votacionMvpData.resultados.map((r, i) => (
+                                <tr key={r.jugador_id} className={i === 0 ? 'bg-brand-gold/10' : ''}>
+                                  <td className="font-bold text-brand-brown/40">#{i + 1}</td>
+                                  <td className="font-bold">{r.jugador_nombre}</td>
+                                  <td>{r.equipo_nombre}</td>
+                                  <td className="font-black text-brand-rust">{r.votos}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <p className="text-xs text-brand-brown/50">Votan todos los usuarios de la liga (delegados, árbitros y anotadores) desde su panel; un voto por persona. Los resultados se muestran al cerrar la votación.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* LOTE 4C (N3): REGISTRO DE JUGADAS DESPUES DEL PARTIDO */}
+                <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
+                  <h3 className="text-lg font-bold text-brand-brown mb-1">Registrar Jugadas de un Partido</h3>
+                  <p className="text-sm text-brand-brown/70 mb-4">El anotador guarda las jugadas al finalizar el acta. Aquí puedes añadir o corregir jugadas de un partido ya jugado, mano por mano.</p>
+                  <form onSubmit={registrarJugadasAdmin} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
+                    <div className="lg:col-span-2 space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Partido</label>
+                      <select value={formJugadasAdmin.partido_id} onChange={e => setFormJugadasAdmin({ ...formJugadasAdmin, partido_id: e.target.value })} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="">-- Partido finalizado --</option>
+                        {partidos.filter(p => p.estado === 'Finalizado').map(p => <option key={p.id} value={p.id}>{p.local_nombre} vs {p.visita_nombre} — {String(p.fecha_hora || '').slice(0, 10)}</option>)}
+                      </select>
+                    </div>
+                    <CampoTexto etiqueta="Mano #" tipo="number" min="1" valor={formJugadasAdmin.numero_mano} onChange={e => setFormJugadasAdmin({ ...formJugadasAdmin, numero_mano: e.target.value })} requerido />
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Equipo</label>
+                      <select value={formJugadasAdmin.equipo_id} onChange={e => { const v = e.target.value; setFormJugadasAdmin(fm => ({ ...fm, equipo_id: v, jugador_id: '' })); cargarJugadoresDeEquipo(v, setJugadoresJugadasAdmin); }} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="">-- Equipo --</option>
+                        {equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Jugador</label>
+                      <select value={formJugadasAdmin.jugador_id} onChange={e => setFormJugadasAdmin({ ...formJugadasAdmin, jugador_id: e.target.value })} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="">-- Jugador --</option>
+                        {jugadoresJugadasAdmin.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Tipo</label>
+                      <select value={formJugadasAdmin.tipo_destreza} onChange={e => setFormJugadasAdmin({ ...formJugadasAdmin, tipo_destreza: e.target.value })} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="a">A — Arrime</option>
+                        <option value="b">B — Boche de aire</option>
+                        <option value="r">R — Boche rastrero</option>
+                        <option value="n">N — Nulo</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Efectividad</label>
+                      <select value={formJugadasAdmin.efectividad} onChange={e => setFormJugadasAdmin({ ...formJugadasAdmin, efectividad: e.target.value })} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="true">Validada</option>
+                        <option value="false">Nula</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-3 lg:col-span-6">
+                      <button type="submit" className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">Registrar Jugada</button>
+                    </div>
+                  </form>
+                </div>
+
                 <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
                     <svg className="w-5 h-5 text-brand-gold" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
@@ -1808,6 +2054,90 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* === VISTA: SANCIONES (LOTE 4C N6) === */}
+            {pestana === 'sanciones' && (
+              <div className="space-y-8 animate-fade-in">
+                <div className="rounded-xl border border-brand-gold/20 bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-bold text-brand-brown mb-4">Registrar Sanción</h3>
+                  <form onSubmit={registrarSancion} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Equipo</label>
+                      <select value={formSancion.equipo_id} onChange={e => { const v = e.target.value; setFormSancion(fm => ({ ...fm, equipo_id: v, jugador_id: '' })); cargarJugadoresDeEquipo(v, setJugadoresSancion); }} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="">-- Seleccionar --</option>
+                        {equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Jugador</label>
+                      <select value={formSancion.jugador_id} onChange={e => setFormSancion(fm => ({ ...fm, jugador_id: e.target.value }))} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="">-- Seleccionar --</option>
+                        {jugadoresSancion.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Tipo</label>
+                      <select value={formSancion.tipo} onChange={e => setFormSancion(fm => ({ ...fm, tipo: e.target.value }))} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="Manual">Manual</option>
+                        <option value="Tarjeta Roja">Tarjeta Roja</option>
+                        <option value="Acumulacion">Acumulación de tarjetas</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Alcance</label>
+                      <select value={formSancion.alcance} onChange={e => setFormSancion(fm => ({ ...fm, alcance: e.target.value }))} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="Equipo">Solo este equipo</option>
+                        <option value="Liga">Toda la liga (todos sus equipos)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-brand-brown/70 uppercase">Modo de cumplimiento</label>
+                      <select value={formSancion.modo_cumplimiento} onChange={e => setFormSancion(fm => ({ ...fm, modo_cumplimiento: e.target.value }))} className="w-full p-2 border border-brand-gold/30 rounded-lg">
+                        <option value="Partidos del equipo">Partidos del equipo</option>
+                        <option value="Partidos de cualquiera">Partidos de cualquiera de sus equipos</option>
+                        <option value="Dias">Días</option>
+                      </select>
+                    </div>
+                    <CampoTexto etiqueta={formSancion.modo_cumplimiento === 'Dias' ? 'Días de suspensión' : 'Partidos de suspensión'} tipo="number" min="0" max="365" valor={formSancion.partidos_suspension} onChange={e => setFormSancion(fm => ({ ...fm, partidos_suspension: e.target.value }))} requerido />
+                    <CampoTexto etiqueta="Fecha de inicio (opcional)" tipo="date" valor={formSancion.fecha_inicio} onChange={e => setFormSancion(fm => ({ ...fm, fecha_inicio: e.target.value }))} />
+                    <div className="md:col-span-2 lg:col-span-3">
+                      <textarea placeholder="Motivo de la sanción" className="w-full p-3 bg-brand-cream/30 border border-brand-gold/30 rounded-lg focus:ring-brand-rust resize-none h-20" value={formSancion.motivo} onChange={e => setFormSancion(fm => ({ ...fm, motivo: e.target.value }))} />
+                    </div>
+                    <div className="md:col-span-2 lg:col-span-3">
+                      <button type="submit" disabled={guardandoSancion} className="bg-brand-rust text-white px-8 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:opacity-50">{guardandoSancion ? 'Registrando...' : 'Registrar Sanción'}</button>
+                    </div>
+                  </form>
+                </div>
+                <div className="rounded-xl border border-brand-gold/20 bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-bold text-brand-brown mb-4">Sanciones de la Liga</h3>
+                  <div className="overflow-x-auto">
+                    <table className="tabla-admin">
+                      <thead>
+                        <tr><th>Jugador</th><th>Equipo</th><th>Tipo</th><th>Motivo</th><th>Alcance</th><th>Cumplimiento</th><th>Progreso</th><th>Estado</th><th></th></tr>
+                      </thead>
+                      <tbody>
+                        {sanciones.length === 0 ? (
+                          <tr><td colSpan="9" className="text-center p-6 text-brand-brown/50">No hay sanciones registradas.</td></tr>
+                        ) : sanciones.map(s => (
+                          <tr key={s.id}>
+                            <td className="font-bold">{s.jugador_nombre} {s.jugador_apellido} <span className="text-brand-brown/50">#{s.numero_dorsal}</span></td>
+                            <td>{s.equipo_nombre}</td>
+                            <td>{s.tipo}</td>
+                            <td>{s.motivo || '—'}</td>
+                            <td>{s.alcance === 'Liga' ? 'Liga completa' : 'Equipo'}</td>
+                            <td className="text-xs">{s.modo_cumplimiento === 'Dias' ? `${s.partidos_suspension} día(s) desde ${String(s.fecha_inicio || '').slice(0, 10)}` : `${s.partidos_suspension} partido(s) — ${s.modo_cumplimiento}`}</td>
+                            <td>{s.modo_cumplimiento === 'Dias' ? 'Por fecha' : `${s.partidos_cumplidos || 0}/${s.partidos_suspension}`}</td>
+                            <td><span className={(s.estado === 'Activa' ? 'bg-red-100 text-red-800' : s.estado === 'Cumplida' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') + ' px-3 py-1 rounded-full text-xs font-bold'}>{s.estado}</span></td>
+                            <td className="text-center">{s.estado !== 'Levantada' && <button onClick={() => levantarSancion(s.id)} className="bg-brand-cream text-brand-brown px-3 py-1 rounded-lg text-xs font-bold hover:bg-brand-gold/40 transition-colors">Levantar</button>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-brand-brown/50 mt-3">El cumplimiento se evalúa automáticamente al consultar la lista. Alcance 'Liga' suspende a la persona (por cédula) en todos sus equipos de la liga; 'Levantar' reactiva al jugador si no tiene otra sanción activa.</p>
                 </div>
               </div>
             )}

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const { verificarToken } = require('../middleware/authMiddleware');
+const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4C
 
 router.use(verificarToken);
 
@@ -289,11 +290,18 @@ router.post('/partidos/:id/manos', async (req, res) => {
     
     const reglas = torneoRes.rows[0].reglas || {};
     const metaPuntos = reglas.meta_puntos || 15;
-    const limiteEsferas = reglas.esferas_por_equipo || 8; 
+    const limiteEsferas = reglas.esferas_por_equipo || 8;
+    // LOTE 4C (N3): boche rastrero parametrizable por liga (se copia de la
+    // plantilla de reglas a torneos.reglas.registrar_boche_rastrero).
+    const permitirRastrero = reglas.registrar_boche_rastrero === true;
+    const tiposLanzamiento = permitirRastrero ? ['a', 'b', 'r'] : ['a', 'b'];
 
     // LOTE G: Validaciones de integridad del partido y sanitización de entradas
     const filaPartido = torneoRes.rows[0];
     const equiposDelPartido = [filaPartido.equipo_local_id, filaPartido.equipo_visita_id].map(String);
+    // LOTE 4C: el equipo_ganador_id llega como string y los ids de la tabla
+    // como enteros; se normaliza una sola vez para comparar de verdad.
+    const ganadorId = equipo_ganador_id ? String(equipo_ganador_id).trim().toLowerCase() : null;
     const numeroMano = Number(numero_mano);
     const tantosValor = Number(tantos_anotados);
     if (filaPartido.estado === 'Finalizado' || filaPartido.estado === 'Cancelado') {
@@ -302,7 +310,7 @@ router.post('/partidos/:id/manos', async (req, res) => {
     if (!Number.isInteger(numeroMano) || numeroMano < 1) {
       return res.status(400).json({ error: 'El número de mano debe ser un entero mayor o igual a 1.' });
     }
-    if (equipo_ganador_id && !equiposDelPartido.includes(String(equipo_ganador_id).trim().toLowerCase())) {
+    if (ganadorId && !equiposDelPartido.includes(ganadorId)) {
       return res.status(400).json({ error: 'El equipo ganador indicado no participa en este partido.' });
     }
     if (!Number.isInteger(tantosValor) || tantosValor < 0 || tantosValor > 6) {
@@ -333,10 +341,14 @@ router.post('/partidos/:id/manos', async (req, res) => {
         if (!jugadasPorEquipo[eqId]) jugadasPorEquipo[eqId] = 0;
         
         const tipo = (dj.tipo_destreza || '').toLowerCase().trim();
-        if (tipo === 'a' || tipo === 'b') { // Arrime o Boche
+        // LOTE 4C (N3): solo se aceptan los lanzamientos habilitados por la liga.
+        if (tipo !== 'n' && !tiposLanzamiento.includes(tipo)) {
+          return res.status(400).json({ error: permitirRastrero ? "El tipo de lanzamiento debe ser 'a' (arrime), 'b' (boche de aire), 'r' (rastrero) o 'n' (nulo)." : "El tipo de lanzamiento debe ser 'a' (arrime), 'b' (boche de aire) o 'n' (nulo). Este torneo no registra boche rastrero." });
+        }
+        if (tiposLanzamiento.includes(tipo)) { // Arrime, Boche y Rastrero (si la liga lo permite)
           jugadasPorEquipo[eqId]++;
           // Contamos las esferas que ganan el punto
-          if (eqId === equipo_ganador_id && dj.efectividad === true) {
+          if (String(eqId) === ganadorId && dj.efectividad === true) {
             esferasExitosasGanador++;
           }
         }
@@ -355,11 +367,29 @@ router.post('/partidos/:id/manos', async (req, res) => {
       }
     }
     
-    // Insertar la mano en BD
-    const manoDb = await db.query(
-      `INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [partidoId, numeroMano, equipo_ganador_id || null, tantosValor]
-    );
+    // LOTE 4C (N3): la mano es idempotente (upsert). Si ya existe para este
+    // partido y numero, se actualiza y su detalle se reemplaza; asi el acta
+    // se puede corregir sin duplicados.
+    const previaRes = await db.query('SELECT id FROM public.manos WHERE partido_id = $1 AND numero_mano = $2', [partidoId, numeroMano]);
+    let manoId;
+    let manoDb;
+    if (previaRes.rows.length > 0) {
+      manoId = previaRes.rows[0].id;
+      manoDb = await db.query('UPDATE public.manos SET equipo_ganador_id = $1, tantos_anotados = $2 WHERE id = $3 RETURNING *', [ganadorId, tantosValor, manoId]);
+      await db.query('DELETE FROM public.detalle_jugadas WHERE mano_id = $1', [manoId]);
+    } else {
+      manoDb = await db.query('INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados) VALUES ($1, $2, $3, $4) RETURNING *', [partidoId, numeroMano, ganadorId, tantosValor]);
+      manoId = manoDb.rows[0].id;
+    }
+    // LOTE 4C (N3): persistencia de los lanzamientos individuales (arrime 'a',
+    // boche de aire 'b', rastrero 'r' si la liga lo permite, nulo 'n').
+    if (detalle_jugadas && detalle_jugadas.length > 0) {
+      for (const dj of detalle_jugadas) {
+        const tipoJug = (dj.tipo_destreza || '').toLowerCase().trim();
+        await db.query('INSERT INTO public.detalle_jugadas (mano_id, jugador_id, tipo_destreza, efectividad) VALUES ($1, $2, $3, $4)', [manoId, parseInt(dj.jugador_id, 10), tipoJug, dj.efectividad === true]);
+      }
+    }
+    await registrarAuditoria(req.usuario.id, 'REGISTRAR_MANO', 'manos', null, { partido_id: parseInt(partidoId), numero_mano: numeroMano }, req.ip, await obtenerOrgDePartido(partidoId));
     
     // Regla 1: Comprobar límite de puntuación global para Finalización Automática
     const puntosRes = await db.query(`
@@ -509,6 +539,101 @@ router.post('/partidos/:id/incidencias', async (req, res) => {
   } catch (error) {
     console.error('Error al registrar incidencia:', error);
     res.status(500).json({ error: 'Error al registrar la incidencia.' });
+  }
+});
+
+// ============================================================
+// LOTE 4C (N3): VOTACION MVP DEL TORNEO
+// Votan todos los usuarios de la liga (solo verificarToken). El
+// AdminLiga abre y cierra la votacion por torneo y cada persona
+// emite un solo voto (unique votos_mvp_un_voto_por_votante).
+// ============================================================
+const esMiembroDeOrg = async (usuario, organizacionId) => {
+  if (!organizacionId) return false;
+  const rolNorm = (usuario.rol || '').toLowerCase();
+  if (rolNorm === 'superadmin') return true;
+  if (usuario.organizacion_id && String(usuario.organizacion_id) === String(organizacionId)) return true;
+  const res = await db.query('SELECT 1 FROM public.usuario_organizaciones WHERE usuario_id = $1 AND organizacion_id = $2', [usuario.id, organizacionId]);
+  return res.rows.length > 0;
+};
+
+router.get('/torneos-votacion', async (req, res) => {
+  try {
+    const resDb = await db.query(
+      "SELECT DISTINCT t.id, t.nombre, t.reglas FROM public.torneos t WHERE t.tipo IS DISTINCT FROM 'Flash' AND t.organizacion_id IN (SELECT organizacion_id FROM public.usuario_organizaciones WHERE usuario_id = $1 UNION SELECT organizacion_id FROM public.usuarios WHERE id = $1 AND organizacion_id IS NOT NULL) ORDER BY t.nombre ASC",
+      [req.usuario.id]
+    );
+    res.json(resDb.rows.map(t => ({ id: t.id, nombre: t.nombre, votacion_mvp: (t.reglas && t.reglas.votacion_mvp) || null })));
+  } catch (error) {
+    console.error('Error al listar torneos para votacion:', error);
+    res.status(500).json({ error: 'Error al obtener los torneos.' });
+  }
+});
+
+router.get('/votacion-mvp', async (req, res) => {
+  const { torneo_id } = req.query;
+  try {
+    const torneoId = parseInt(torneo_id, 10);
+    if (!torneoId) return res.status(400).json({ error: 'Indica el torneo de la votación.' });
+    const torneoRes = await db.query('SELECT organizacion_id, reglas FROM public.torneos WHERE id = $1', [torneoId]);
+    if (torneoRes.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado.' });
+    const torneo = torneoRes.rows[0];
+    if (!(await esMiembroDeOrg(req.usuario, torneo.organizacion_id))) {
+      return res.status(403).json({ error: 'Ese torneo no pertenece a tu liga.' });
+    }
+    const abierta = ((torneo.reglas || {}).votacion_mvp) === 'Abierta';
+    const candidatos = await db.query(
+      "SELECT j.id, j.nombre, j.apellido, j.numero_dorsal, e.nombre AS equipo_nombre FROM public.torneo_equipos te JOIN public.equipos e ON te.equipo_id = e.id JOIN public.jugadores j ON j.equipo_id = e.id AND j.estado = 'Activo' WHERE te.torneo_id = $1 ORDER BY e.nombre ASC, j.numero_dorsal ASC",
+      [torneoId]
+    );
+    const miVoto = await db.query('SELECT v.jugador_id, j.nombre, j.apellido FROM public.votos_mvp v JOIN public.jugadores j ON v.jugador_id = j.id WHERE v.torneo_id = $1 AND v.votante_id = $2', [torneoId, req.usuario.id]);
+    let resultados = null;
+    // LOTE 4C: los resultados solo se muestran con la votacion cerrada;
+    // el AdminLiga siempre los ve desde su propio panel.
+    if (!abierta) {
+      const conteo = await db.query(
+        "SELECT j.id AS jugador_id, TRIM(j.nombre || ' ' || j.apellido) AS jugador_nombre, e.nombre AS equipo_nombre, COUNT(v.id) AS votos FROM public.votos_mvp v JOIN public.jugadores j ON v.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id WHERE v.torneo_id = $1 GROUP BY j.id, j.nombre, j.apellido, e.nombre ORDER BY votos DESC",
+        [torneoId]
+      );
+      resultados = conteo.rows;
+    }
+    const total = await db.query('SELECT COUNT(*) AS n FROM public.votos_mvp WHERE torneo_id = $1', [torneoId]);
+    res.json({ abierta, mi_voto: miVoto.rows[0] || null, candidatos: candidatos.rows, resultados, total_votos: parseInt(total.rows[0].n) });
+  } catch (error) {
+    console.error('Error al consultar la votacion MVP:', error);
+    res.status(500).json({ error: 'Error al consultar la votación.' });
+  }
+});
+
+router.post('/votacion-mvp', async (req, res) => {
+  const { torneo_id, jugador_id } = req.body;
+  try {
+    const torneoId = parseInt(torneo_id, 10);
+    const jugadorIdNum = parseInt(jugador_id, 10);
+    if (!torneoId || !jugadorIdNum) return res.status(400).json({ error: 'Indica el torneo y el jugador del voto.' });
+    const torneoRes = await db.query('SELECT organizacion_id, reglas FROM public.torneos WHERE id = $1', [torneoId]);
+    if (torneoRes.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado.' });
+    const torneo = torneoRes.rows[0];
+    if (!(await esMiembroDeOrg(req.usuario, torneo.organizacion_id))) {
+      return res.status(403).json({ error: 'Ese torneo no pertenece a tu liga.' });
+    }
+    if (((torneo.reglas || {}).votacion_mvp) !== 'Abierta') {
+      return res.status(400).json({ error: 'La votación MVP de este torneo no está abierta.' });
+    }
+    const candidatoRes = await db.query(
+      "SELECT j.id FROM public.torneo_equipos te JOIN public.equipos e ON te.equipo_id = e.id JOIN public.jugadores j ON j.equipo_id = e.id WHERE te.torneo_id = $1 AND j.id = $2 AND j.estado = 'Activo' LIMIT 1",
+      [torneoId, jugadorIdNum]
+    );
+    if (candidatoRes.rows.length === 0) return res.status(400).json({ error: 'Ese jugador no es candidato del torneo.' });
+    const yaVoto = await db.query('SELECT 1 FROM public.votos_mvp WHERE torneo_id = $1 AND votante_id = $2', [torneoId, req.usuario.id]);
+    if (yaVoto.rows.length > 0) return res.status(409).json({ error: 'Ya emitiste tu voto para el MVP de este torneo.' });
+    await db.query('INSERT INTO public.votos_mvp (organizacion_id, torneo_id, votante_id, jugador_id) VALUES ($1, $2, $3, $4)', [torneo.organizacion_id, torneoId, req.usuario.id, jugadorIdNum]);
+    await registrarAuditoria(req.usuario.id, 'VOTAR_MVP', 'votos_mvp', null, { torneo_id: torneoId, jugador_id: jugadorIdNum }, req.ip, torneo.organizacion_id);
+    res.status(201).json({ mensaje: 'Voto registrado. ¡Gracias por participar!' });
+  } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al registrar el voto MVP:', error);
+    res.status(500).json({ error: 'Error al registrar el voto.' });
   }
 });
 

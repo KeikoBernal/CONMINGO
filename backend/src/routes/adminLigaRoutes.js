@@ -1874,6 +1874,313 @@ router.post('/partidos/:id/forzar-ganador', async (req, res) => {
 
 
 
+// ============================================================
+// LOTE 4C (N6): SANCIONES CON ALCANCE Y MODO DE CUMPLIMIENTO
+// El AdminLiga decide caso por caso el alcance ('Equipo' o 'Liga':
+// todos los equipos de la persona en la organizacion, emparejando por
+// cedula) y el modo ('Partidos del equipo', 'Partidos de cualquiera'
+// o 'Dias'). partidos_suspension guarda la cantidad segun el modo y
+// el cumplimiento se auto-evalua al consultar la lista.
+// ============================================================
+const ALCANCES_SANCION = ['Equipo', 'Liga'];
+const MODOS_SANCION = ['Partidos del equipo', 'Partidos de cualquiera', 'Dias'];
+
+// Filas de jugadores de la misma persona (misma cedula) en la organizacion.
+const filasPersonaEnOrg = async (jugadorId, orgId) => {
+  const base = await db.query(
+    "SELECT j.id, j.equipo_id, j.cedula FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)",
+    [jugadorId, orgId]
+  );
+  if (base.rows.length === 0) return [];
+  const cedula = String(base.rows[0].cedula || '').trim();
+  if (!cedula) return base.rows;
+  const porCedula = await db.query(
+    "SELECT j.id, j.equipo_id FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE TRIM(j.cedula) = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2) AND j.estado <> 'Inactivo' AND e.categoria IS DISTINCT FROM 'Flash'",
+    [cedula, orgId]
+  );
+  return porCedula.rows.length > 0 ? porCedula.rows : base.rows;
+};
+
+// Reactiva las filas cubiertas por una sancion (alcance Equipo: solo la fila
+// del jugador; Liga: todas las de la persona) si ninguna OTRA sancion Activa
+// las mantiene suspendidas.
+const liberarJugadorSiSinSanciones = async (jugadorId, alcance, orgId, sancionId) => {
+  const filas = alcance === 'Liga' ? await filasPersonaEnOrg(jugadorId, orgId) : [{ id: jugadorId }];
+  for (const fila of filas) {
+    const activaRes = await db.query(
+      "SELECT 1 FROM public.sanciones s JOIN public.jugadores j2 ON s.jugador_id = j2.id WHERE s.estado = 'Activa' AND s.id != $1 AND (j2.id = $2 OR (s.alcance = 'Liga' AND TRIM(COALESCE(j2.cedula, '')) = TRIM(COALESCE((SELECT cedula FROM public.jugadores WHERE id = $2), '')))) LIMIT 1",
+      [sancionId, fila.id]
+    );
+    if (activaRes.rows.length === 0) {
+      await db.query("UPDATE public.jugadores SET estado = 'Activo' WHERE id = $1 AND estado = 'Suspendido'", [fila.id]);
+    }
+  }
+};
+
+router.get('/sanciones', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    // LOTE 4C (N6): cumplimiento automatico al consultar (sin cron). Una
+    // sancion Activa cuya exigencia ya esta cubierta pasa a Cumplida y libera
+    // al jugador si ninguna otra sancion activa lo cubre.
+    const activas = await db.query(
+      "SELECT s.id, s.jugador_id, s.alcance, s.modo_cumplimiento, s.partidos_suspension, s.fecha_inicio, j.equipo_id FROM public.sanciones s JOIN public.jugadores j ON s.jugador_id = j.id WHERE s.organizacion_id = $1 AND s.estado = 'Activa'",
+      [orgId]
+    );
+    for (const sanc of activas.rows) {
+      let cumplida = false;
+      let cumplidos = 0;
+      if (sanc.modo_cumplimiento === 'Dias') {
+        const finRes = await db.query('SELECT (fecha_inicio + partidos_suspension) <= CURRENT_DATE AS cumplida FROM public.sanciones WHERE id = $1', [sanc.id]);
+        cumplida = finRes.rows[0] && finRes.rows[0].cumplida === true;
+      } else {
+        const esCualquiera = sanc.modo_cumplimiento === 'Partidos de cualquiera';
+        const equiposIds = esCualquiera ? (await filasPersonaEnOrg(sanc.jugador_id, orgId)).map(f => f.equipo_id) : [sanc.equipo_id];
+        if (equiposIds.length > 0) {
+          const contRes = await db.query(
+            "SELECT COUNT(*) AS n FROM public.partidos WHERE estado = 'Finalizado' AND fecha_hora::date >= $1 AND (equipo_local_id = ANY($2::int[]) OR equipo_visita_id = ANY($2::int[]))",
+            [sanc.fecha_inicio, equiposIds]
+          );
+          cumplidos = parseInt(contRes.rows[0].n);
+        }
+        await db.query('UPDATE public.sanciones SET partidos_cumplidos = $1 WHERE id = $2', [cumplidos, sanc.id]);
+        cumplida = cumplidos >= sanc.partidos_suspension;
+      }
+      if (cumplida) {
+        await db.query("UPDATE public.sanciones SET estado = 'Cumplida' WHERE id = $1", [sanc.id]);
+        await liberarJugadorSiSinSanciones(sanc.jugador_id, sanc.alcance, orgId, sanc.id);
+      }
+    }
+    const listado = await db.query(
+      "SELECT s.*, j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal, j.cedula, e.nombre AS equipo_nombre, u.email AS creada_por_email FROM public.sanciones s JOIN public.jugadores j ON s.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id LEFT JOIN public.usuarios u ON s.creada_por = u.id WHERE s.organizacion_id = $1 ORDER BY s.creado_en DESC",
+      [orgId]
+    );
+    res.json(listado.rows);
+  } catch (error) {
+    console.error('Error al listar sanciones:', error);
+    res.status(500).json({ error: 'Error al obtener las sanciones.' });
+  }
+});
+
+router.post('/sanciones', async (req, res) => {
+  const { jugador_id, tipo, motivo, partidos_suspension, alcance, modo_cumplimiento, fecha_inicio, partido_id } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const jugadorIdNum = parseInt(jugador_id, 10);
+    if (!Number.isInteger(jugadorIdNum) || jugadorIdNum < 1) {
+      return res.status(400).json({ error: 'Debe indicar el jugador sancionado.' });
+    }
+    const jugadorRes = await db.query(
+      'SELECT j.id FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)',
+      [jugadorIdNum, orgId]
+    );
+    if (jugadorRes.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado en tu organización.' });
+    const tipoSancion = ['Tarjeta Roja', 'Acumulacion', 'Manual'].includes(tipo) ? tipo : null;
+    if (!tipoSancion) return res.status(400).json({ error: 'El tipo de sanción debe ser Tarjeta Roja, Acumulacion o Manual.' });
+    const alcanceSancion = ALCANCES_SANCION.includes(alcance) ? alcance : 'Equipo';
+    const modoSancion = MODOS_SANCION.includes(modo_cumplimiento) ? modo_cumplimiento : 'Partidos del equipo';
+    const cantidad = parseInt(partidos_suspension, 10);
+    if (!Number.isInteger(cantidad) || cantidad < 0 || cantidad > 365) {
+      return res.status(400).json({ error: 'La cantidad debe ser un entero entre 0 y 365 (partidos o días según el modo).' });
+    }
+    const resDb = await db.query(
+      "INSERT INTO public.sanciones (organizacion_id, jugador_id, partido_id, tipo, motivo, partidos_suspension, alcance, modo_cumplimiento, fecha_inicio, creada_por) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::date, CURRENT_DATE), $10) RETURNING *",
+      [orgId, jugadorIdNum, partido_id ? parseInt(partido_id, 10) : null, tipoSancion, motivo ? String(motivo).trim() : null, cantidad, alcanceSancion, modoSancion, fecha_inicio || null, req.usuario.id]
+    );
+    // Suspender al jugador; con alcance Liga la suspension cubre todas las
+    // inscripciones activas de la persona en la organizacion (por cedula).
+    const filas = alcanceSancion === 'Liga' ? await filasPersonaEnOrg(jugadorIdNum, orgId) : [{ id: jugadorIdNum }];
+    for (const fila of filas) {
+      await db.query("UPDATE public.jugadores SET estado = 'Suspendido' WHERE id = $1 AND estado <> 'Inactivo'", [fila.id]);
+      await db.query('UPDATE public.equipos SET capitan_id = NULL WHERE capitan_id = $1', [fila.id]);
+    }
+    await registrarAuditoria(req.usuario.id, 'REGISTRAR_SANCION', 'sanciones', null, resDb.rows[0], req.ip, orgId);
+    res.status(201).json({ mensaje: 'Sanción registrada.', sancion: resDb.rows[0] });
+  } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al registrar sancion:', error);
+    res.status(500).json({ error: 'Error al registrar la sanción.' });
+  }
+});
+
+router.put('/sanciones/:id/levantar', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const chk = await db.query('SELECT * FROM public.sanciones WHERE id = $1 AND organizacion_id = $2', [req.params.id, orgId]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Sanción no encontrada en tu organización.' });
+    if (chk.rows[0].estado === 'Levantada') return res.status(400).json({ error: 'Esa sanción ya fue levantada.' });
+    await db.query("UPDATE public.sanciones SET estado = 'Levantada', levantada_por = $1, levantada_en = now() WHERE id = $2", [req.usuario.id, req.params.id]);
+    await liberarJugadorSiSinSanciones(chk.rows[0].jugador_id, chk.rows[0].alcance, orgId, parseInt(req.params.id, 10));
+    await registrarAuditoria(req.usuario.id, 'LEVANTAR_SANCION', 'sanciones', { id: parseInt(req.params.id, 10) }, { estado: 'Levantada' }, req.ip, orgId);
+    res.json({ mensaje: 'Sanción levantada y jugador reactivado si no tiene otra sanción activa.' });
+  } catch (error) {
+    console.error('Error al levantar sancion:', error);
+    res.status(500).json({ error: 'Error al levantar la sanción.' });
+  }
+});
+
+// ============================================================
+// LOTE 4C (N3): ESTADISTICAS INDIVIDUALES (AVERAGE ESTILO FEDERACION)
+// Average = (buenos x 1000) / lances por especialidad. Ranking por
+// torneo (o de toda la liga si no se indica torneo) y campeon
+// arrimador, campeon bochador, campeon rastrero y Jugador Mas Util.
+// ============================================================
+const LANCES_MINIMOS_PROMEDIO = 10;
+
+router.get('/estadisticas/individuales', async (req, res) => {
+  const { torneo_id } = req.query;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const params = [orgId];
+    let filtroTorneo = ' AND t.organizacion_id = $1';
+    if (torneo_id) {
+      const chk = await db.query('SELECT id FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [torneo_id, orgId]);
+      if (chk.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
+      params.push(parseInt(torneo_id, 10));
+      filtroTorneo = ' AND p.torneo_id = $2 AND t.organizacion_id = $1';
+    }
+    const resDb = await db.query(
+      "SELECT j.id AS jugador_id, j.nombre, j.apellido, j.numero_dorsal, e.nombre AS equipo_nombre, COUNT(dj.id) AS lances, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) IN ('a','b','r') THEN 1 ELSE 0 END) AS lances_validos, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) IN ('a','b','r') AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'a' THEN 1 ELSE 0 END) AS lances_arrime, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'a' AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos_arrime, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'b' THEN 1 ELSE 0 END) AS lances_boche, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'b' AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos_boche, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'r' THEN 1 ELSE 0 END) AS lances_rastrero, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'r' AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos_rastrero FROM public.detalle_jugadas dj JOIN public.manos m ON dj.mano_id = m.id JOIN public.partidos p ON m.partido_id = p.id JOIN public.torneos t ON p.torneo_id = t.id JOIN public.jugadores j ON dj.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id WHERE p.estado = 'Finalizado'" + filtroTorneo + " GROUP BY j.id, j.nombre, j.apellido, j.numero_dorsal, e.nombre",
+      params
+    );
+    const average = (lances, buenos) => lances > 0 ? Math.round((buenos * 1000) / lances) : null;
+    const filas = resDb.rows.map(r => {
+      const lances = parseInt(r.lances_validos);
+      const buenos = parseInt(r.buenos);
+      const lancesArrime = parseInt(r.lances_arrime);
+      const lancesBoche = parseInt(r.lances_boche);
+      const lancesRastrero = parseInt(r.lances_rastrero);
+      return {
+        jugador_id: r.jugador_id, nombre: r.nombre, apellido: r.apellido, numero_dorsal: r.numero_dorsal, equipo_nombre: r.equipo_nombre,
+        lances, buenos,
+        lances_arrime: lancesArrime, buenos_arrime: parseInt(r.buenos_arrime),
+        lances_boche: lancesBoche, buenos_boche: parseInt(r.buenos_boche),
+        lances_rastrero: lancesRastrero, buenos_rastrero: parseInt(r.buenos_rastrero),
+        average_global: average(lances, buenos),
+        average_arrime: average(lancesArrime, parseInt(r.buenos_arrime)),
+        average_boche: average(lancesBoche, parseInt(r.buenos_boche)),
+        average_rastrero: average(lancesRastrero, parseInt(r.buenos_rastrero))
+      };
+    });
+    const campeon = (campoLances, campoAvg) => filas.filter(f => f[campoLances] >= LANCES_MINIMOS_PROMEDIO).sort((a, b) => (b[campoAvg] || 0) - (a[campoAvg] || 0))[0] || null;
+    res.json({
+      torneo_id: torneo_id ? parseInt(torneo_id, 10) : null,
+      lances_minimos: LANCES_MINIMOS_PROMEDIO,
+      ranking: filas.slice().sort((a, b) => (b.average_global || 0) - (a.average_global || 0)),
+      campeones: {
+        arrimador: campeon('lances_arrime', 'average_arrime'),
+        bochador: campeon('lances_boche', 'average_boche'),
+        rastrero: campeon('lances_rastrero', 'average_rastrero'),
+        mas_util: campeon('lances', 'average_global')
+      }
+    });
+  } catch (error) {
+    console.error('Error al calcular estadisticas individuales:', error);
+    res.status(500).json({ error: 'Error al calcular las estadísticas individuales.' });
+  }
+});
+
+// ============================================================
+// LOTE 4C (N3): VOTACION MVP — EL ADMINLIGA ABRE Y CIERRA POR TORNEO
+// ============================================================
+router.put('/torneos/:id/votacion-mvp', async (req, res) => {
+  const { id } = req.params;
+  const { abierta } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const chk = await db.query('SELECT reglas FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [id, orgId]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
+    const reglas = chk.rows[0].reglas || {};
+    reglas.votacion_mvp = abierta ? 'Abierta' : 'Cerrada';
+    await db.query('UPDATE public.torneos SET reglas = $1 WHERE id = $2', [JSON.stringify(reglas), id]);
+    await registrarAuditoria(req.usuario.id, abierta ? 'ABRIR_VOTACION_MVP' : 'CERRAR_VOTACION_MVP', 'torneos', { id: parseInt(id, 10) }, { votacion_mvp: reglas.votacion_mvp }, req.ip, orgId);
+    res.json({ mensaje: abierta ? 'Votación MVP abierta: todos los usuarios de la liga pueden votar.' : 'Votación MVP cerrada: ya se muestran los resultados.', votacion_mvp: reglas.votacion_mvp });
+  } catch (error) {
+    console.error('Error al cambiar la votacion MVP:', error);
+    res.status(500).json({ error: 'Error al cambiar el estado de la votación.' });
+  }
+});
+
+router.get('/torneos/:id/votacion-mvp', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const chk = await db.query('SELECT reglas FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [id, orgId]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
+    const abierta = ((chk.rows[0].reglas || {}).votacion_mvp) === 'Abierta';
+    const conteo = await db.query(
+      "SELECT j.id AS jugador_id, TRIM(j.nombre || ' ' || j.apellido) AS jugador_nombre, e.nombre AS equipo_nombre, COUNT(v.id) AS votos FROM public.votos_mvp v JOIN public.jugadores j ON v.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id WHERE v.torneo_id = $1 GROUP BY j.id, j.nombre, j.apellido, e.nombre ORDER BY votos DESC",
+      [id]
+    );
+    const total = await db.query('SELECT COUNT(*) AS n FROM public.votos_mvp WHERE torneo_id = $1', [id]);
+    res.json({ abierta, total_votos: parseInt(total.rows[0].n), resultados: conteo.rows });
+  } catch (error) {
+    console.error('Error al consultar la votacion MVP:', error);
+    res.status(500).json({ error: 'Error al consultar la votación.' });
+  }
+});
+
+// ============================================================
+// LOTE 4C (N3): REGISTRO DE JUGADAS DESPUES DEL PARTIDO (ADMINLIGA)
+// El anotador persiste las jugadas en vivo al finalizar el acta; el
+// AdminLiga tambien puede registrarlas o corregirlas despues.
+// ============================================================
+router.post('/partidos/:id/jugadas', async (req, res) => {
+  const { id: partidoId } = req.params;
+  const { numero_mano, jugadas, equipo_ganador_id, tantos_anotados } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const permChk = await db.query('SELECT p.estado, p.equipo_local_id, p.equipo_visita_id, t.reglas FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1 AND ($2::uuid IS NULL OR t.organizacion_id = $2)', [partidoId, orgId]);
+    if (permChk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado en tu organización.' });
+    const fila = permChk.rows[0];
+    const numeroMano = parseInt(numero_mano, 10);
+    if (!Number.isInteger(numeroMano) || numeroMano < 1) return res.status(400).json({ error: 'El número de mano debe ser un entero mayor o igual a 1.' });
+    const reglas = fila.reglas || {};
+    const permitirRastrero = reglas.registrar_boche_rastrero === true;
+    const lista = Array.isArray(jugadas) ? jugadas : [];
+    if (lista.length === 0) return res.status(400).json({ error: 'Indica al menos una jugada.' });
+    const equiposDelPartido = [String(fila.equipo_local_id), String(fila.equipo_visita_id)];
+    for (const jug of lista) {
+      const tipo = String(jug.tipo_destreza || '').toLowerCase().trim();
+      if (!['a', 'b'].includes(tipo) && !(tipo === 'r' && permitirRastrero) && tipo !== 'n') {
+        return res.status(400).json({ error: permitirRastrero ? "El tipo de jugada debe ser 'a' (arrime), 'b' (boche de aire), 'r' (rastrero) o 'n' (nulo)." : "El tipo de jugada debe ser 'a' (arrime), 'b' (boche de aire) o 'n' (nulo). Este torneo no registra boche rastrero." });
+      }
+      const jugadorIdNum = parseInt(jug.jugador_id, 10);
+      if (!Number.isInteger(jugadorIdNum) || jugadorIdNum < 1) return res.status(400).json({ error: 'Hay una jugada con jugador inválido.' });
+    }
+    const jugadorIds = lista.map(jug => parseInt(jug.jugador_id, 10));
+    const eqJugRes = await db.query('SELECT id, equipo_id FROM public.jugadores WHERE id = ANY($1::int[])', [jugadorIds]);
+    const mapJugadorEquipo = {};
+    eqJugRes.rows.forEach(r => { mapJugadorEquipo[r.id] = r.equipo_id; });
+    for (const jug of lista) {
+      const eq = mapJugadorEquipo[parseInt(jug.jugador_id, 10)];
+      if (!eq || !equiposDelPartido.includes(String(eq))) {
+        return res.status(400).json({ error: 'El detalle incluye jugadores que no pertenecen a los equipos del partido.' });
+      }
+    }
+    const tantosValor = Number.isInteger(parseInt(tantos_anotados, 10)) ? parseInt(tantos_anotados, 10) : 0;
+    const previaRes = await db.query('SELECT id FROM public.manos WHERE partido_id = $1 AND numero_mano = $2', [partidoId, numeroMano]);
+    let manoId;
+    if (previaRes.rows.length > 0) {
+      manoId = previaRes.rows[0].id;
+      await db.query('UPDATE public.manos SET equipo_ganador_id = $1, tantos_anotados = $2 WHERE id = $3', [equipo_ganador_id || null, tantosValor, manoId]);
+      await db.query('DELETE FROM public.detalle_jugadas WHERE mano_id = $1', [manoId]);
+    } else {
+      const insertado = await db.query('INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados) VALUES ($1, $2, $3, $4) RETURNING id', [partidoId, numeroMano, equipo_ganador_id || null, tantosValor]);
+      manoId = insertado.rows[0].id;
+    }
+    for (const jug of lista) {
+      await db.query('INSERT INTO public.detalle_jugadas (mano_id, jugador_id, tipo_destreza, efectividad) VALUES ($1, $2, $3, $4)', [manoId, parseInt(jug.jugador_id, 10), String(jug.tipo_destreza || '').toLowerCase().trim(), jug.efectividad === true]);
+    }
+    await registrarAuditoria(req.usuario.id, 'REGISTRAR_JUGADAS', 'detalle_jugadas', null, { partido_id: parseInt(partidoId, 10), numero_mano: numeroMano, jugadas: lista.length }, req.ip, orgId);
+    res.json({ mensaje: 'Jugadas registradas.', mano_id: manoId });
+  } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al registrar jugadas:', error);
+    res.status(500).json({ error: 'Error al registrar las jugadas.' });
+  }
+});
+
 /**
  * ========================================================
  * LOTE 3B: REPOSITORIO DE DOCUMENTOS (SUPABASE STORAGE + RLS)

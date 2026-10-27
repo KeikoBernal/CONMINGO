@@ -7,6 +7,8 @@ import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla'
 import CalendarioPartidos from '../CalendarioPartidos';
 import VisualizadorCancha from '../VisualizadorCancha';
 import BotonModoSolar from '../BotonModoSolar';
+import VotacionMvp from '../VotacionMvp';
+
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
@@ -254,11 +256,44 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+  // LOTE 4C (N3): persistencia del acta. Cada mano con jugadas o tantos se
+  // envia al backend (upsert por numero de mano) con su detalle de
+  // lanzamientos: A/a arrime, B/b boche de aire, R/r rastrero, N nulo.
+  const guardarManosPersistidas = async () => {
+    let guardadas = 0;
+    let fallidas = 0;
+    const mapaLanzamientos = { A: ['a', true], a: ['a', false], B: ['b', true], b: ['b', false], R: ['r', true], r: ['r', false], N: ['n', false] };
+    for (let mIdx = 0; mIdx < 20; mIdx++) {
+      const jugadas = [];
+      for (const [jId, manos] of Object.entries(efectividadJugadores)) {
+        const celda = manos && manos[mIdx];
+        if (!celda) continue;
+        const jugada = mapaLanzamientos[String(celda.valor || '')];
+        if (jugada) jugadas.push({ jugador_id: parseInt(jId, 10), tipo_destreza: jugada[0], efectividad: jugada[1] });
+      }
+      const tantosLocal = parseInt(puntosPorManoLocal[mIdx], 10) || 0;
+      const tantosVisita = parseInt(puntosPorManoVisita[mIdx], 10) || 0;
+      if (jugadas.length === 0 && tantosLocal === 0 && tantosVisita === 0) continue;
+      let ganadorId = null;
+      let tantos = 0;
+      if (tantosLocal > tantosVisita) { ganadorId = partidoActivo.equipo_local_id; tantos = tantosLocal; }
+      else if (tantosVisita > tantosLocal) { ganadorId = partidoActivo.equipo_visita_id; tantos = tantosVisita; }
+      try {
+        const res = await fetchConToken(`/partidos/${partidoActivo.id}/manos`, { method: 'POST', body: JSON.stringify({ numero_mano: mIdx + 1, equipo_ganador_id: ganadorId, tantos_anotados: tantos, detalle_jugadas: jugadas }) });
+        if (res.ok) guardadas++; else fallidas++;
+      } catch (err) { fallidas++; }
+    }
+    return { guardadas, fallidas };
+  };
+
   const finalizarPartido = async () => {
     if (isSubmitting) return;
     if (!window.confirm('¿Cerrar acta y registrar hora final?')) return;
     
     setIsSubmitting(true);
+    // LOTE 4C (N3): se persisten las manos del acta (jugadas y tantos) antes
+    // de cerrar el partido; es lo que alimenta las estadisticas individuales.
+    const manosPersistidas = await guardarManosPersistidas();
     const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/finalizar`, { method: 'PUT', body: JSON.stringify({ hora_final: hora }) });
     
@@ -270,6 +305,9 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       socketRef.current?.emit('sync_cronometro', { partido_id: partidoActivo.id, tiempoTurno, cronometroTurnoActivo: false, tiempoGlobal, cronometroGlobalActivo: false });
       localStorage.removeItem(`backup_partido_${partidoActivo.id}`); 
       localStorage.removeItem('partidoActivoId');
+      if (manosPersistidas.fallidas > 0) {
+        alert(`${manosPersistidas.fallidas} mano(s) no pudieron guardarse en el acta (${manosPersistidas.guardadas} guardadas). Comunícalo al AdminLiga para completar el registro.`);
+      }
     }
   };
 
@@ -388,6 +426,12 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               <button onClick={() => registrarLanzamiento('a')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">a <span className="text-sm block font-medium">Nulo</span></button>
               <button onClick={() => registrarLanzamiento('B')} className="py-4 bg-green-600 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-green-700 transition-colors">B</button>
               <button onClick={() => registrarLanzamiento('b')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">b <span className="text-sm block font-medium">Nulo</span></button>
+                            {partidoActivo?.torneo_reglas?.registrar_boche_rastrero === true && (
+                <>
+                  <button onClick={() => registrarLanzamiento('R')} className="py-4 bg-brand-brown text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-brand-rust transition-colors">R</button>
+                  <button onClick={() => registrarLanzamiento('r')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">r <span className="text-sm block font-medium">Nulo</span></button>
+                </>
+              )}
               <button onClick={() => registrarLanzamiento('N')} className="col-span-2 py-3 bg-gray-500 text-white rounded-lg text-xl font-bold shadow-sm hover:bg-gray-600 transition-colors">N <span className="text-sm font-medium ml-2">(Nulo General)</span></button>
               <button onClick={() => registrarLanzamiento('')} className="col-span-2 py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors mt-2">Borrar Celda</button>
             </div>
@@ -454,7 +498,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                 { id: 'hoy', label: 'Partidos de Hoy', badge: partidosHoy.length },
                 { id: 'proximos', label: 'Próximos Partidos', badge: partidosAgendados.length },
                 { id: 'historial', label: 'Historial Reciente', badge: partidosFinalizados.length },
-                { id: 'calendario', label: 'Calendario de Partidos', badge: partidosFiltrados.length }
+                { id: 'calendario', label: 'Calendario de Partidos', badge: partidosFiltrados.length },
+                { id: 'votacion', label: 'Votación MVP', badge: 0 }
               ].map(item => {
                 const isActive = pestana === item.id;
                 return (
@@ -501,7 +546,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <h2 className="text-xl sm:text-2xl font-bold text-brand-brown capitalize truncate">
-              {partidoActivo ? `Planilla Oficial: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : 'Historial Reciente')}
+              {partidoActivo ? `Planilla Oficial: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : 'Historial Reciente')}
             </h2>
           </div>
           
@@ -607,6 +652,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                   ) : (
                     <CalendarioPartidos partidos={partidosFiltrados} sedesPorPartido={sedesCalendario} />
                   )}
+                </div>
+              )}
+
+              {/* PESTAÑA: VOTACION MVP (LOTE 4C N3) */}
+              {pestana === 'votacion' && (
+                <div className="space-y-4 animate-fade-in">
+                  <h3 className="text-lg font-bold text-brand-rust border-b-2 border-brand-rust/30 pb-2">Votación MVP del Torneo</h3>
+                  <VotacionMvp />
                 </div>
               )}
 

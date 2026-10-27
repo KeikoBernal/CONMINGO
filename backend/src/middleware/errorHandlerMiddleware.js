@@ -16,7 +16,8 @@
 
 const MENSAJES_RESTRICCIONES = {
   jugadores_dorsal_unico_por_equipo: 'Ese dorsal ya está ocupado en el equipo por otro jugador activo o suspendido.',
-  protestas_partido_equipo_unicas: 'Ese equipo ya tiene una protesta vigente para ese partido.'
+  protestas_partido_equipo_unicas: 'Ese equipo ya tiene una protesta vigente para ese partido.',
+  votos_mvp_un_voto_por_votante: 'Ya emitiste tu voto para el MVP de este torneo.'
 };
 
 const detalleError = (error, req) => ({
