@@ -2183,6 +2183,103 @@ router.post('/partidos/:id/jugadas', async (req, res) => {
 
 /**
  * ========================================================
+ * LOTE 4D (P1): PROTESTAS — LISTADO Y RESOLUCION DEL ADMINLIGA
+ * Flujo: Delegado presenta ('Pendiente') -> AdminLiga resuelve:
+ *   - 'Improcedente' -> 'Resuelta' (el resultado no cambia).
+ *   - 'Procedente' con medida -> 'Pendiente Confirmacion' -> arbitro y
+ *     anotador confirman -> 'Resuelta' y el resultado oficial se corrige
+ *     en public.resultados (el CHECK de la tabla lo garantiza).
+ * ========================================================
+ */
+router.get('/protestas', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const resultado = await db.query(`
+      SELECT pr.id, pr.partido_id, pr.equipo_protestante_id, pr.motivo, pr.descripcion,
+             pr.estado, pr.resolucion, pr.medida, pr.nota_resolucion,
+             pr.medida_marcador_local, pr.medida_marcador_visita,
+             pr.confirmacion_arbitro, pr.confirmacion_anotador,
+             TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             p.equipo_local_id, p.equipo_visita_id,
+             el.nombre AS local_nombre, ev.nombre AS visita_nombre,
+             ep.nombre AS equipo_protestante_nombre,
+             TRIM(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellido, '')) AS presentada_por_nombre,
+             r.marcador_local AS resultado_local, r.marcador_visita AS resultado_visita
+      FROM public.protestas pr
+      JOIN public.partidos p ON pr.partido_id = p.id
+      LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
+      LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
+      LEFT JOIN public.equipos ep ON pr.equipo_protestante_id = ep.id
+      LEFT JOIN public.usuarios u ON pr.presentada_por = u.id
+      LEFT JOIN public.resultados r ON r.partido_id = p.id
+      WHERE pr.organizacion_id = $1
+      ORDER BY pr.creado_en DESC
+    `, [orgId]);
+    res.json(resultado.rows);
+  } catch (error) {
+    console.error('Error al listar protestas:', error);
+    res.status(500).json({ error: 'Error al obtener las protestas de la liga.' });
+  }
+});
+
+router.put('/protestas/:id/resolver', async (req, res) => {
+  const { resolucion, nota_resolucion, medida, medida_marcador_local, medida_marcador_visita } = req.body;
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const chk = await db.query('SELECT * FROM public.protestas WHERE id = $1 AND organizacion_id = $2', [req.params.id, orgId]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Protesta no encontrada en tu organizacion.' });
+    const protesta = chk.rows[0];
+    if (protesta.estado !== 'Pendiente') {
+      return res.status(400).json({ error: `Solo se pueden resolver protestas en estado 'Pendiente'. Estado actual: ${protesta.estado}` });
+    }
+    const resolNorm = String(resolucion || '').trim();
+    if (resolNorm !== 'Procedente' && resolNorm !== 'Improcedente') {
+      return res.status(400).json({ error: "La resolucion debe ser 'Procedente' o 'Improcedente'." });
+    }
+    const nota = String(nota_resolucion || '').trim().slice(0, 500) || null;
+    if (resolNorm === 'Improcedente') {
+      const resDb = await db.query(
+        "UPDATE public.protestas SET estado = 'Resuelta', resolucion = 'Improcedente', nota_resolucion = $1, resuelta_por = $2, resuelta_en = now() WHERE id = $3 RETURNING *",
+        [nota, req.usuario.id, req.params.id]
+      );
+      await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: parseInt(req.params.id, 10), estado: 'Pendiente' }, { estado: 'Resuelta', resolucion: 'Improcedente' }, req.ip, orgId);
+      return res.json({ mensaje: 'Protesta resuelta como Improcedente. El resultado del partido no cambia.', protesta: resDb.rows[0] });
+    }
+    const medidaLimpia = String(medida || '').trim();
+    if (medidaLimpia.length < 5) {
+      return res.status(400).json({ error: 'Describe la medida a aplicar (al menos 5 caracteres).' });
+    }
+    const rawLocal = medida_marcador_local;
+    const rawVisita = medida_marcador_visita;
+    const hayLocal = rawLocal !== undefined && rawLocal !== null && String(rawLocal).trim() !== '';
+    const hayVisita = rawVisita !== undefined && rawVisita !== null && String(rawVisita).trim() !== '';
+    if (hayLocal !== hayVisita) {
+      return res.status(400).json({ error: 'Indica el marcador corregido completo (tantos del local y del visita) o deja ambos vacios si la medida no cambia el resultado.' });
+    }
+    let marcadorLocal = null;
+    let marcadorVisita = null;
+    if (hayLocal) {
+      marcadorLocal = parseInt(rawLocal, 10);
+      marcadorVisita = parseInt(rawVisita, 10);
+      if (!Number.isInteger(marcadorLocal) || !Number.isInteger(marcadorVisita) || marcadorLocal < 0 || marcadorVisita < 0) {
+        return res.status(400).json({ error: 'El marcador corregido debe ser un numero entero no negativo.' });
+      }
+    }
+    const resDb = await db.query(
+      "UPDATE public.protestas SET estado = 'Pendiente Confirmacion', resolucion = 'Procedente', medida = $1, nota_resolucion = $2, medida_marcador_local = $3, medida_marcador_visita = $4 WHERE id = $5 RETURNING *",
+      [medidaLimpia, nota, marcadorLocal, marcadorVisita, req.params.id]
+    );
+    await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: parseInt(req.params.id, 10), estado: 'Pendiente' }, { estado: 'Pendiente Confirmacion', resolucion: 'Procedente', medida_marcador_local: marcadorLocal, medida_marcador_visita: marcadorVisita }, req.ip, orgId);
+    res.json({ mensaje: 'Protesta declarada Procedente. Pendiente la confirmacion del arbitro y del anotador del partido.', protesta: resDb.rows[0] });
+  } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al resolver protesta:', error);
+    res.status(500).json({ error: 'Error al resolver la protesta.' });
+  }
+});
+
+/**
+ * ========================================================
  * LOTE 3B: REPOSITORIO DE DOCUMENTOS (SUPABASE STORAGE + RLS)
  * Bucket privado "documentos", carpeta por organizacion:
  * {organizacion_id}/{uuid}.{ext}
