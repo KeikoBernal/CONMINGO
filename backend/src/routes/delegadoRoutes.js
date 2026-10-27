@@ -365,4 +365,35 @@ router.get('/documentos', async (req, res) => {
   }
 });
 
+
+/**
+ * ========================================================
+ * 5. PAGOS DE INSCRIPCION DEL EQUIPO (SOLO LECTURA, LOTE 3C)
+ * ========================================================
+ */
+router.get('/pagos', async (req, res) => {
+  try {
+    const resEquipos = await db.query("SELECT id FROM public.equipos WHERE delegado_id = $1 AND estado = 'Activo'", [req.usuario.id]);
+    const equipoIds = resEquipos.rows.map(r => r.id);
+    if (equipoIds.length === 0) return res.json({ pagos: [] });
+    const resultado = await db.query(`
+      SELECT p.id, p.torneo_id, p.equipo_id, p.jugador_id, p.monto, p.moneda, p.metodo, p.referencia,
+             TO_CHAR(p.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             t.nombre AS torneo_nombre,
+             e.nombre AS equipo_nombre,
+             TRIM(j.nombre || ' ' || j.apellido) AS jugador_nombre
+      FROM public.pagos p
+      LEFT JOIN public.torneos t ON p.torneo_id = t.id
+      LEFT JOIN public.equipos e ON p.equipo_id = e.id
+      LEFT JOIN public.jugadores j ON p.jugador_id = j.id
+      WHERE (p.equipo_id = ANY($1::int[]) OR j.equipo_id = ANY($1::int[]))
+      ORDER BY p.creado_en DESC
+    `, [equipoIds]);
+    res.json({ pagos: resultado.rows });
+  } catch (error) {
+    console.error('Error al listar pagos del delegado:', error);
+    res.status(500).json({ error: 'Error al obtener los pagos del equipo.' });
+  }
+});
+
 module.exports = router;

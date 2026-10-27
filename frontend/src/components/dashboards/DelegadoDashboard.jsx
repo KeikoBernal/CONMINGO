@@ -46,6 +46,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const [jugadores, setJugadores] = useState([]);
   const [partidos, setPartidos] = useState([]);
   const [documentosLiga, setDocumentosLiga] = useState([]);
+  const [pagosEquipo, setPagosEquipo] = useState([]);
   const [estadisticas, setEstadisticas] = useState({
     individual: [],
     grupal: null
@@ -121,6 +122,12 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
         if (resDoc.ok) {
           const dataDoc = await resDoc.json();
           setDocumentosLiga(dataDoc.documentos || []);
+        }
+      } else if (pestana === 'pagos') {
+        const resPagos = await fetchConToken('/pagos');
+        if (resPagos.ok) {
+          const dataPagos = await resPagos.json();
+          setPagosEquipo(dataPagos.pagos || []);
         }
       }
     } catch (e) {
@@ -288,6 +295,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const filasNomina = filtrarTabla('nomina', jugadores, ['estado', 'posicion']);
   const filasPartidos = filtrarTabla('calendario', partidos, ['estado', 'fase'], ['fecha_hora']);
   const filasScouting = filtrarTabla('scouting', estadisticas.individual || [], ['perfil_tactico']);
+  const filasPagosEquipo = filtrarTabla('pagos', pagosEquipo, ['metodo', 'moneda'], []);
   const sedesDelegado = Object.fromEntries(filasPartidos.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   // LOTE 3B: formato legible del tamaño de los documentos de la liga
@@ -306,6 +314,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
       case 'calendario': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
       case 'estadisticas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
       case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
+      case 'pagos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
       default: return null;
     }
   };
@@ -370,7 +379,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                 { id: 'equipo', label: 'Mi Equipo' },
                 { id: 'calendario', label: 'Calendario y Puntajes' },
                 { id: 'estadisticas', label: 'Analítica y Scouting' },
-                { id: 'documentos', label: 'Documentos de la Liga' }
+                { id: 'documentos', label: 'Documentos de la Liga' },
+                { id: 'pagos', label: 'Pagos del Equipo' }
               ].map(item => {
                 const isAnimating = animandoBoton === item.id;
                 const isActive = pestana === item.id && !isAnimating;
@@ -419,7 +429,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <h2 className="text-2xl font-bold text-brand-brown hidden sm:block">
-              {pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : 'Analítica y Scouting'}
+              {pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : 'Analítica y Scouting'}
             </h2>
           </div>
           <div className="hidden sm:block">
@@ -701,6 +711,50 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                             <td className="text-center">
                               <button onClick={() => d.url_firmada && window.open(d.url_firmada, '_blank', 'noopener')} disabled={!d.url_firmada} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="Descargar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
                             </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VISTA 5: PAGOS DEL EQUIPO (SOLO LECTURA, LOTE 3C) */}
+          {pestana === 'pagos' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
+                <h3 className="text-lg font-bold text-brand-brown mb-2 flex items-center gap-2">
+                  <NavIcon pestanaId="pagos" />
+                  Pagos de Inscripción del Equipo
+                </h3>
+                <p className="text-sm text-brand-brown/70 mb-4">Pagos de inscripción a torneos registrados por la administración de la liga para tu equipo y sus jugadores.</p>
+                <TableTools rows={pagosEquipo} filteredRows={filasPagosEquipo} filter={getFilter('pagos')} setFilter={setTableFilter('pagos')} columns={[{ key: 'torneo_nombre', label: 'Torneo' }, { key: 'equipo_nombre', label: 'Equipo' }, { key: 'jugador_nombre', label: 'Jugador' }, { key: 'monto', label: 'Monto' }, { key: 'metodo', label: 'Metodo' }]} categoryFields={['metodo']} filename="pagos_filtrados_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                <div className="overflow-x-auto">
+                  <table className="tabla-admin">
+                    <thead>
+                      <tr>
+                        <th>Torneo</th>
+                        <th>Inscrito</th>
+                        <th className="text-center">Monto</th>
+                        <th>Método</th>
+                        <th>Referencia</th>
+                        <th>Fecha</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filasPagosEquipo.length === 0 ? (
+                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay pagos registrados para tu equipo.</td></tr>
+                      ) : (
+                        filasPagosEquipo.map(p => (
+                          <tr key={p.id}>
+                            <td className="font-bold">{p.torneo_nombre || 'N/D'}</td>
+                            <td className="text-brand-brown/80">{p.jugador_nombre ? p.jugador_nombre + ' (jugador)' : (p.equipo_nombre || '') + ' (equipo)'}</td>
+                            <td className="text-center font-bold text-brand-blue">{Number(p.monto).toFixed(2)} {p.moneda}</td>
+                            <td><span className="bg-brand-cream text-brand-brown px-2 py-1 rounded-full text-xs font-bold border border-brand-gold/30">{p.metodo}</span></td>
+                            <td className="text-brand-brown/80">{p.referencia || '—'}</td>
+                            <td className="text-brand-brown/80">{p.creado_en ? p.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
                           </tr>
                         ))
                       )}
