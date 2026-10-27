@@ -6,6 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware');
 
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
+const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4B (M1)
 
 const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
   try {
@@ -422,9 +423,13 @@ router.post('/jugadores', async (req, res) => {
         return res.status(400).json({ error: 'Categoría Adulto 22+: El jugador debe tener al menos 22 años.' });
     }
 
-    const dorsalCheck = await db.query(`SELECT id FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND estado = 'Activo'`, [equipo_id, dorsalNum]);
+    // LOTE 4B (M1): el indice unico de la migracion 010 tambien reserva el dorsal
+    // de los suspendidos; el chequeo mira a todos los no inactivos y nombra al ocupante.
+    const dorsalCheck = await db.query(`SELECT id, nombre, apellido, estado FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND estado <> 'Inactivo'`, [equipo_id, dorsalNum]);
     if (dorsalCheck.rows.length > 0) {
-      return res.status(400).json({ error: `El número dorsal #${dorsalNum} ya está asignado a otro jugador activo.` });
+      const ocupante = dorsalCheck.rows[0];
+      const sufijo = ocupante.estado === 'Suspendido' ? ' (suspendido: su dorsal queda reservado)' : '';
+      return res.status(409).json({ error: `El número dorsal #${dorsalNum} ya está asignado a ${ocupante.nombre} ${ocupante.apellido}${sufijo}.` });
     }
     const resDb = await db.query(
       `INSERT INTO public.jugadores (equipo_id, cedula, nombre, apellido, fecha_nacimiento, correo, telefono, numero_dorsal, foto_url, estado) 
@@ -439,7 +444,7 @@ router.post('/jugadores', async (req, res) => {
     }
     await registrarAuditoria(req.usuario.id, 'CREAR_JUGADOR', 'jugadores', null, resDb.rows[0], req.ip, orgId);
     res.status(201).json({ mensaje: `Jugador registrado.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
-  } catch (error) { res.status(500).json({ error: 'Error al registrar el jugador.' }); }
+  } catch (error) { if (responderSiErrorIntegridad(error, req, res)) return; res.status(500).json({ error: 'Error al registrar el jugador.' }); }
 });
 
 router.post('/jugadores/batch-fotos', async (req, res) => {
@@ -494,12 +499,15 @@ router.put('/jugadores/:id', async (req, res) => {
         return res.status(400).json({ error: 'El número dorsal debe ser un entero entre 1 y 99.' });
       }
 
+      // LOTE 4B (M1): incluye suspendidos (dorsal reservado) y nombra al ocupante.
       const dorsalCheck = await db.query(
-        `SELECT id FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND id != $3 AND estado = 'Activo'`, 
+        `SELECT id, nombre, apellido, estado FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND id != $3 AND estado <> 'Inactivo'`,
         [equipoId, dorsalNum, id]
       );
       if (dorsalCheck.rows.length > 0) {
-        return res.status(400).json({ error: `El dorsal #${dorsalNum} ya está en uso por otro jugador activo.` });
+        const ocupante = dorsalCheck.rows[0];
+        const sufijo = ocupante.estado === 'Suspendido' ? ' (suspendido: su dorsal queda reservado)' : '';
+        return res.status(409).json({ error: `El dorsal #${dorsalNum} ya está en uso por ${ocupante.nombre} ${ocupante.apellido}${sufijo}.` });
       }
     }
 
@@ -531,13 +539,26 @@ router.put('/jugadores/:id', async (req, res) => {
     }
     await registrarAuditoria(req.usuario.id, 'EDITAR_JUGADOR', 'jugadores', { id: parseInt(id) }, resDb.rows[0], req.ip, orgId);
     res.json({ mensaje: `Jugador y capitanía actualizados con éxito.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
-  } catch (error) { res.status(500).json({ error: 'Error actualizando jugador.' }); }
+  } catch (error) { if (responderSiErrorIntegridad(error, req, res)) return; res.status(500).json({ error: 'Error actualizando jugador.' }); }
 });
 
 router.put('/jugadores/:id/estado', async (req, res) => {
   const { estado, nuevo_capitan_id, equipo_id } = req.body;
   try {
     const orgId = await obtenerOrgId(req.usuario);
+    // LOTE 4B (M1): reactivar un jugador puede chocar con el indice unico de
+    // dorsales si otro jugador tomo su dorsal mientras estuvo inactivo.
+    if (estado === 'Activo') {
+      const propioRes = await db.query(`SELECT j.equipo_id, j.numero_dorsal FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1 AND ($2::uuid IS NULL OR e.organizacion_id = $2)`, [req.params.id, orgId]);
+      if (propioRes.rows.length > 0) {
+        const propio = propioRes.rows[0];
+        const ocupadoRes = await db.query(`SELECT id, nombre, apellido, estado FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND id != $3 AND estado <> 'Inactivo'`, [propio.equipo_id, propio.numero_dorsal, req.params.id]);
+        if (ocupadoRes.rows.length > 0) {
+          const ocupante = ocupadoRes.rows[0];
+          return res.status(409).json({ error: 'No se puede activar: el dorsal #' + propio.numero_dorsal + ' ya lo usa ' + ocupante.nombre + ' ' + ocupante.apellido + '. Reasigna el dorsal primero.' });
+        }
+      }
+    }
     const resDb = await db.query(`UPDATE public.jugadores j SET estado = $1 FROM public.equipos e WHERE j.equipo_id = e.id AND ($2::uuid IS NULL OR e.organizacion_id = $2) AND j.id = $3 RETURNING j.*`, [estado, orgId, req.params.id]);
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Jugador no encontrado en tu organización.' });
     if (estado !== 'Activo') {
@@ -551,7 +572,7 @@ router.put('/jugadores/:id/estado', async (req, res) => {
     
     await registrarAuditoria(req.usuario.id, 'CAMBIAR_ESTADO_JUGADOR', 'jugadores', { id: req.params.id }, { estado }, req.ip, orgId);
     res.json({ mensaje: `Jugador ${estado.toLowerCase()} con éxito.${mensajeDelegado || ''}`, jugador: resDb.rows[0] });
-  } catch (error) { res.status(500).json({ error: 'Error al cambiar estado del jugador.' }); }
+  } catch (error) { if (responderSiErrorIntegridad(error, req, res)) return; res.status(500).json({ error: 'Error al cambiar estado del jugador.' }); }
 });
 
 // ==========================================
@@ -591,12 +612,15 @@ router.post('/jugadores/:id/transferencia', async (req, res) => {
     if (isNaN(dorsalNum) || dorsalNum <= 0 || dorsalNum > 99) {
       return res.status(400).json({ error: 'El número dorsal debe ser un entero entre 1 y 99.' });
     }
+    // LOTE 4B (M1): incluye suspendidos (dorsal reservado) y nombra al ocupante.
     const dorsalCheck = await db.query(
-      `SELECT id FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND id != $3 AND estado = 'Activo'`,
+      `SELECT id, nombre, apellido, estado FROM public.jugadores WHERE equipo_id = $1 AND numero_dorsal = $2 AND id != $3 AND estado <> 'Inactivo'`,
       [destino.id, dorsalNum, id]
     );
     if (dorsalCheck.rows.length > 0) {
-      return res.status(400).json({ error: 'El dorsal #' + dorsalNum + ' ya está en uso en el equipo destino.' });
+      const ocupante = dorsalCheck.rows[0];
+      const sufijo = ocupante.estado === 'Suspendido' ? ' (suspendido: su dorsal queda reservado)' : '';
+      return res.status(409).json({ error: 'El dorsal #' + dorsalNum + ' ya lo usa ' + ocupante.nombre + ' ' + ocupante.apellido + sufijo + ' en el equipo destino.' });
     }
 
     // 4. Validar edad vs categoría del destino (mismas reglas de alta/edición)
@@ -629,6 +653,7 @@ router.post('/jugadores/:id/transferencia', async (req, res) => {
 
     res.json({ mensaje: 'Jugador transferido a ' + destino.nombre + ' con éxito.', jugador: resDb.rows[0] });
   } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
     console.error('Error al transferir jugador:', error);
     res.status(500).json({ error: 'Error interno al transferir el jugador.' });
   }
