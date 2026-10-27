@@ -12,6 +12,7 @@ import CampoTexto from '../CampoTexto';
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
 import FotoJugador from '../FotoJugador';
+import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -49,6 +50,9 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [debeCambiarPass, setDebeCambiarPass] = useState(false);
   const [nuevaClave, setNuevaClave] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // LOTE 3D (N5): generacion de carnets de jugador en PDF
+  const [generandoCarnets, setGenerandoCarnets] = useState(false);
 
   // Estados Globales
   const [equipos, setEquipos] = useState([]);
@@ -407,6 +411,39 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   const iniciarTransferencia = (j) => {
     setModalTransferencia({ jugador: j, equipo_destino_id: '', numero_dorsal: j.numero_dorsal || '', motivo: '' });
+  };
+  // LOTE 3D (N5): generacion de carnets de jugador en PDF (individual y por equipo)
+  const generarCarnetJugador = async (j) => {
+    if (!equipoSeleccionado) return;
+    try {
+      setGenerandoCarnets(true);
+      await generarCarnetsPdf({ organizacion: orgData, equipo: equipoSeleccionado, jugadores: [j] });
+      mostrarToast('Carnet generado con éxito.', 'exito');
+    } catch (error) {
+      console.error('Error al generar el carnet del jugador:', error?.message || error);
+      mostrarToast('No se pudo generar el carnet del jugador.', 'error');
+    } finally {
+      setGenerandoCarnets(false);
+    }
+  };
+
+  const generarCarnetsEquipo = async () => {
+    if (!equipoSeleccionado) return;
+    const activos = jugadores.filter(j => j.estado === 'Activo');
+    if (activos.length === 0) {
+      mostrarToast('No hay jugadores activos en esta nómina.', 'info');
+      return;
+    }
+    try {
+      setGenerandoCarnets(true);
+      await generarCarnetsPdf({ organizacion: orgData, equipo: equipoSeleccionado, jugadores: activos });
+      mostrarToast('Carnets del equipo generados con éxito.', 'exito');
+    } catch (error) {
+      console.error('Error al generar los carnets del equipo:', error?.message || error);
+      mostrarToast('No se pudieron generar los carnets del equipo.', 'error');
+    } finally {
+      setGenerandoCarnets(false);
+    }
   };
 
   const confirmarTransferencia = async (e) => {
@@ -1289,11 +1326,17 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           {jugadorEditandoId ? <svg className="w-5 h-5 text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> : <svg className="w-5 h-5 text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>}
                           {jugadorEditandoId ? 'Modificar Jugador' : `Nómina: ${equipoSeleccionado.nombre}`}
                         </h4>
+                        <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex items-center gap-2 bg-brand-gold text-brand-brown hover:bg-brand-rust hover:text-white px-4 py-2 rounded-lg font-semibold text-sm cursor-pointer transition-colors shadow-sm">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                           Subir Fotos (Lote)
                           <input type="file" multiple accept="image/*" onChange={manejarBatchUploadJugadores} className="hidden" />
                         </label>
+                        <button type="button" onClick={generarCarnetsEquipo} disabled={generandoCarnets} className="flex items-center gap-2 justify-center bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 10V6a2 2 0 012-2h14a2 2 0 012 2v4M3 10v8a2 2 0 002 2h14a2 2 0 002-2v-8M7 15h4" /></svg>
+                          {generandoCarnets ? 'Generando...' : 'Carnets del Equipo'}
+                        </button>
+                        </div>
                       </div>
 
                       <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename="nomina_filtrada" />
@@ -1384,6 +1427,9 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 </button>
                                 <button type="button" onClick={() => iniciarTransferencia(j)} className="px-3 py-1.5 bg-brand-rust/10 text-brand-rust hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm">
                                   Transferir
+                                </button>
+                                <button type="button" onClick={() => generarCarnetJugador(j)} disabled={generandoCarnets} className="px-3 py-1.5 bg-brand-cream border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white rounded-lg text-xs font-bold transition-colors shadow-sm disabled:opacity-60">
+                                  Carnet
                                 </button>
                                 </div>
                               </td>
