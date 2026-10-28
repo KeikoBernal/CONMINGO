@@ -7,6 +7,7 @@ import autoTable from 'jspdf-autotable';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
+import ProtestasDelegado from '../ProtestasDelegado';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -383,7 +384,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                 { id: 'estadisticas', label: 'Analítica y Scouting' },
                 { id: 'documentos', label: 'Documentos de la Liga' },
                 { id: 'pagos', label: 'Pagos del Equipo' },
-                { id: 'votacion', label: 'Votación MVP' }
+                { id: 'votacion', label: 'Votación MVP' },
+                { id: 'protestas', label: 'Protestas' }
               ].map(item => {
                 const isAnimating = animandoBoton === item.id;
                 const isActive = pestana === item.id && !isAnimating;
@@ -432,7 +434,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <h2 className="text-2xl font-bold text-brand-brown hidden sm:block">
-              {pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : pestana === 'votacion' ? 'Votación MVP' : 'Analítica y Scouting'}
+              {pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Analítica y Scouting'}
             </h2>
           </div>
           <div className="hidden sm:block">
@@ -773,6 +775,13 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
           {pestana === 'votacion' && (
             <div className="space-y-6 animate-fade-in">
               <VotacionMvp />
+            </div>
+          )}
+
+          {/* VISTA 7: PROTESTAS (LOTE 4D P1) */}
+          {pestana === 'protestas' && (
+            <div className="space-y-6 animate-fade-in">
+              <ProtestasDelegado fetchConToken={fetchConToken} />
             </div>
           )}
 

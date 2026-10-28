@@ -7,6 +7,58 @@ const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddle
 router.use(verificarToken);
 
 // ============================================================
+// LOTE 4D (P1): RESULTADO OFICIAL DE PARTIDO
+// El marcador final de un partido se calcula desde las manos
+// registradas y se persiste en public.resultados (la tabla de
+// posiciones se calcula desde esa tabla).
+// ============================================================
+const marcadorDesdeManos = async (partidoId) => {
+  try {
+    const eqRes = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [partidoId]);
+    if (eqRes.rows.length === 0) return { local: 0, visita: 0 };
+    const localId = String(eqRes.rows[0].equipo_local_id);
+    const visitaId = String(eqRes.rows[0].equipo_visita_id);
+    const manosRes = await db.query(
+      'SELECT equipo_ganador_id, SUM(tantos_anotados) AS total FROM public.manos WHERE partido_id = $1 GROUP BY equipo_ganador_id',
+      [partidoId]
+    );
+    let local = 0;
+    let visita = 0;
+    for (const fila of manosRes.rows) {
+      if (String(fila.equipo_ganador_id) === localId) local += parseInt(fila.total, 10) || 0;
+      if (String(fila.equipo_ganador_id) === visitaId) visita += parseInt(fila.total, 10) || 0;
+    }
+    return { local, visita };
+  } catch (error) {
+    console.error('[resultados] No se pudo calcular el marcador desde las manos:', { partidoId, error: error?.message || error });
+    return { local: 0, visita: 0 };
+  }
+};
+
+const registrarResultadoOficial = async (partidoId, marcadorLocal, marcadorVisita, tipoResolucion, aprobadoPor, observaciones) => {
+  try {
+    const eqRes = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [partidoId]);
+    if (eqRes.rows.length === 0) return false;
+    const localId = eqRes.rows[0].equipo_local_id;
+    const visitaId = eqRes.rows[0].equipo_visita_id;
+    const localNum = parseInt(marcadorLocal, 10) || 0;
+    const visitaNum = parseInt(marcadorVisita, 10) || 0;
+    const ganadorId = localNum > visitaNum ? localId : (visitaNum > localNum ? visitaId : null);
+    await db.query(
+      `INSERT INTO public.resultados (partido_id, marcador_local, marcador_visita, equipo_ganador_id, tipo_resolucion, aprobado_por, observaciones)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (partido_id) DO UPDATE
+       SET marcador_local = $2, marcador_visita = $3, equipo_ganador_id = $4, tipo_resolucion = $5, aprobado_por = $6, observaciones = $7`,
+      [partidoId, localNum, visitaNum, ganadorId, tipoResolucion, aprobadoPor, observaciones]
+    );
+    return true;
+  } catch (error) {
+    console.error('[resultados] No se pudo registrar el resultado oficial:', { partidoId, error: error?.message || error });
+    return false;
+  }
+};
+
+// ============================================================
 // LOTE O: TRAZABILIDAD — bitácora de acciones del operativo
 // ============================================================
 // Helper: organización a la que pertenece un partido (vía su torneo).
@@ -212,6 +264,9 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
       [hora_final, req.params.id]
     );
     await registrarAuditoria(req.usuario.id, 'FINALIZAR_PARTIDO', 'partidos', { id: req.params.id }, { estado: 'Finalizado', hora_final }, req.ip, await obtenerOrgDePartido(req.params.id));
+    // LOTE 4D (P1): el marcador de las manos queda como resultado oficial.
+    const marcadorOficial = await marcadorDesdeManos(parseInt(req.params.id, 10));
+    await registrarResultadoOficial(parseInt(req.params.id, 10), marcadorOficial.local, marcadorOficial.visita, 'Acta', req.usuario.id, null);
     res.json({ mensaje: 'Partido finalizado con éxito.', partido: resDb.rows[0], hora_final: hora_final });
   } catch (error) { res.status(500).json({ error: 'Error al finalizar el partido.' }); }
 });
@@ -402,6 +457,9 @@ router.post('/partidos/:id/manos', async (req, res) => {
          const horaFinal = new Date().toISOString();
          await db.query(`UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2`, [horaFinal, partidoId]);
          partidoFinalizado = true;
+         // LOTE 4D (P1): el cierre por meta tambien deja resultado oficial.
+         const marcadorOficialMeta = await marcadorDesdeManos(partidoId);
+         await registrarResultadoOficial(partidoId, marcadorOficialMeta.local, marcadorOficialMeta.visita, 'Acta', req.usuario.id, null);
          
          const io = req.app.get('io');
          if (io) {
@@ -634,6 +692,84 @@ router.post('/votacion-mvp', async (req, res) => {
     if (responderSiErrorIntegridad(error, req, res)) return;
     console.error('Error al registrar el voto MVP:', error);
     res.status(500).json({ error: 'Error al registrar el voto.' });
+  }
+});
+
+
+// ============================================================
+// LOTE 4D (P1): CONFIRMACION DE PROTESTAS POR LOS OFICIALES
+// ============================================================
+router.get('/protestas-confirmacion', async (req, res) => {
+  try {
+    const resultado = await db.query(`
+      SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.medida, pr.nota_resolucion,
+             TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             pr.confirmacion_arbitro, pr.confirmacion_anotador,
+             pr.medida_marcador_local, pr.medida_marcador_visita,
+             p.arbitro_id, p.anotador_id,
+             el.nombre AS equipo_local,
+             ev.nombre AS equipo_visita,
+             r.marcador_local, r.marcador_visita
+      FROM public.protestas pr
+      JOIN public.partidos p ON pr.partido_id = p.id
+      LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
+      LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
+      LEFT JOIN public.resultados r ON r.partido_id = p.id
+      WHERE pr.estado = 'Pendiente Confirmacion'
+        AND (p.arbitro_id = $1 OR p.anotador_id = $1)
+      ORDER BY pr.creado_en ASC
+    `, [req.usuario.id]);
+    res.json({ protestas: resultado.rows });
+  } catch (error) {
+    console.error('Error al listar protestas por confirmar:', error);
+    res.status(500).json({ error: 'Error al obtener las protestas por confirmar.' });
+  }
+});
+
+router.put('/protestas/:id/confirmar', async (req, res) => {
+  try {
+    const protestaId = parseInt(req.params.id, 10);
+    const chk = await db.query(
+      `SELECT pr.id, pr.partido_id, pr.estado, pr.medida, pr.medida_marcador_local, pr.medida_marcador_visita,
+              pr.confirmacion_arbitro, pr.confirmacion_anotador, p.arbitro_id, p.anotador_id
+       FROM public.protestas pr JOIN public.partidos p ON pr.partido_id = p.id
+       WHERE pr.id = $1`,
+      [protestaId]
+    );
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Protesta no encontrada.' });
+    const fila = chk.rows[0];
+    if (fila.estado !== 'Pendiente Confirmacion') return res.status(400).json({ error: 'Esta protesta no está esperando confirmaciones.' });
+    const esArbitro = String(fila.arbitro_id || '') === String(req.usuario.id);
+    const esAnotador = String(fila.anotador_id || '') === String(req.usuario.id);
+    if (!esArbitro && !esAnotador) return res.status(403).json({ error: 'Solo el árbitro o el anotador asignados al partido pueden confirmar esta protesta.' });
+    const nuevoArbitro = esArbitro ? req.usuario.id : fila.confirmacion_arbitro;
+    const nuevoAnotador = esAnotador ? req.usuario.id : fila.confirmacion_anotador;
+    await db.query(
+      'UPDATE public.protestas SET confirmacion_arbitro = $1, confirmacion_anotador = $2 WHERE id = $3',
+      [nuevoArbitro, nuevoAnotador, protestaId]
+    );
+    const completa = Boolean(nuevoArbitro) && Boolean(nuevoAnotador);
+    if (completa) {
+      await db.query(
+        "UPDATE public.protestas SET estado = 'Resuelta', resuelta_por = $1, resuelta_en = now() WHERE id = $2",
+        [req.usuario.id, protestaId]
+      );
+      if (fila.medida_marcador_local !== null && fila.medida_marcador_local !== undefined
+          && fila.medida_marcador_visita !== null && fila.medida_marcador_visita !== undefined) {
+        await registrarResultadoOficial(fila.partido_id, fila.medida_marcador_local, fila.medida_marcador_visita, 'Protesta', req.usuario.id, 'Marcador corregido por protesta procedente.');
+      }
+    }
+    await registrarAuditoria(req.usuario.id, 'CONFIRMAR_PROTESTA', 'protestas', { id: protestaId, estado: 'Pendiente Confirmacion' }, { confirmada: true, resuelta: completa }, req.ip, await obtenerOrgDePartido(fila.partido_id));
+    res.json({
+      mensaje: completa
+        ? 'Confirmación registrada. La protesta quedó resuelta y el resultado oficial actualizado.'
+        : 'Confirmación registrada. Falta la confirmación del otro oficial del partido.',
+      resuelta: completa
+    });
+  } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al confirmar la protesta:', error);
+    res.status(500).json({ error: 'Error al confirmar la protesta.' });
   }
 });
 

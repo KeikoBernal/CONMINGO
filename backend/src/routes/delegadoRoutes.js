@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware');
+const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4D (P1)
 const bcrypt = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -393,6 +394,112 @@ router.get('/pagos', async (req, res) => {
   } catch (error) {
     console.error('Error al listar pagos del delegado:', error);
     res.status(500).json({ error: 'Error al obtener los pagos del equipo.' });
+  }
+});
+
+
+/**
+ * ========================================================
+ * LOTE 4D (P1): PROTESTAS FORMALES DE PARTIDO
+ * El delegado protesta un partido Finalizado de uno de sus
+ * equipos; el AdminLiga la resuelve despues.
+ * ========================================================
+ */
+router.get('/partidos-protestables', async (req, res) => {
+  try {
+    const resEquipos = await db.query("SELECT id FROM public.equipos WHERE delegado_id = $1 AND estado = 'Activo'", [req.usuario.id]);
+    const equipoIds = resEquipos.rows.map(r => r.id);
+    if (equipoIds.length === 0) return res.json({ partidos: [] });
+    const resultado = await db.query(`
+      SELECT p.id,
+             TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
+             t.nombre AS torneo_nombre,
+             el.nombre AS equipo_local,
+             ev.nombre AS equipo_visita,
+             r.marcador_local, r.marcador_visita,
+             EXISTS (
+               SELECT 1 FROM public.protestas pr
+               WHERE pr.partido_id = p.id
+                 AND pr.estado IN ('Pendiente','Pendiente Confirmacion','Resuelta')
+             ) AS tiene_protesta
+      FROM public.partidos p
+      JOIN public.torneos t ON p.torneo_id = t.id
+      LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
+      LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
+      LEFT JOIN public.resultados r ON r.partido_id = p.id
+      WHERE p.estado = 'Finalizado'
+        AND (p.equipo_local_id = ANY($1::int[]) OR p.equipo_visita_id = ANY($1::int[]))
+      ORDER BY p.fecha_hora DESC
+    `, [equipoIds]);
+    res.json({ partidos: resultado.rows });
+  } catch (error) {
+    console.error('Error al listar partidos protestables:', error);
+    res.status(500).json({ error: 'Error al obtener los partidos de tus equipos.' });
+  }
+});
+
+router.get('/protestas', async (req, res) => {
+  try {
+    const resultado = await db.query(`
+      SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.estado, pr.resolucion,
+             pr.medida, pr.nota_resolucion,
+             TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             pr.confirmacion_arbitro, pr.confirmacion_anotador,
+             pr.medida_marcador_local, pr.medida_marcador_visita,
+             el.nombre AS equipo_local,
+             ev.nombre AS equipo_visita,
+             eq.nombre AS equipo_protestante,
+             r.marcador_local, r.marcador_visita
+      FROM public.protestas pr
+      JOIN public.partidos p ON pr.partido_id = p.id
+      LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
+      LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
+      LEFT JOIN public.equipos eq ON pr.equipo_protestante_id = eq.id
+      LEFT JOIN public.resultados r ON r.partido_id = p.id
+      WHERE pr.presentada_por = $1
+      ORDER BY pr.creado_en DESC
+    `, [req.usuario.id]);
+    res.json({ protestas: resultado.rows });
+  } catch (error) {
+    console.error('Error al listar mis protestas:', error);
+    res.status(500).json({ error: 'Error al obtener tus protestas.' });
+  }
+});
+
+router.post('/protestas', async (req, res) => {
+  const { partido_id, motivo, descripcion } = req.body;
+  try {
+    const partidoId = parseInt(partido_id, 10);
+    const motivoLimpio = String(motivo || '').trim().slice(0, 200);
+    const descripcionLimpia = String(descripcion || '').trim().slice(0, 2000);
+    if (!partidoId) return res.status(400).json({ error: 'Indica el partido de la protesta.' });
+    if (motivoLimpio.length < 5) return res.status(400).json({ error: 'El motivo debe tener al menos 5 caracteres.' });
+    if (descripcionLimpia.length < 10) return res.status(400).json({ error: 'La descripción debe tener al menos 10 caracteres.' });
+    const resEquipos = await db.query("SELECT id FROM public.equipos WHERE delegado_id = $1 AND estado = 'Activo'", [req.usuario.id]);
+    const equipoIds = resEquipos.rows.map(r => r.id);
+    if (equipoIds.length === 0) return res.status(400).json({ error: 'No eres delegado de ningún equipo activo.' });
+    const partidoRes = await db.query(
+      'SELECT p.estado, p.equipo_local_id, p.equipo_visita_id, t.organizacion_id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1',
+      [partidoId]
+    );
+    if (partidoRes.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    const fila = partidoRes.rows[0];
+    if (fila.estado !== 'Finalizado') return res.status(400).json({ error: 'Solo se puede protestar un partido Finalizado.' });
+    const esLocal = equipoIds.some(x => String(x) === String(fila.equipo_local_id));
+    const esVisita = equipoIds.some(x => String(x) === String(fila.equipo_visita_id));
+    if (!esLocal && !esVisita) return res.status(403).json({ error: 'El partido no involucra a ninguno de tus equipos.' });
+    // Si el delegado dirige a ambos equipos del partido, protesta como local.
+    const equipoProtestanteId = esLocal ? fila.equipo_local_id : fila.equipo_visita_id;
+    await db.query(
+      'INSERT INTO public.protestas (organizacion_id, partido_id, equipo_protestante_id, presentada_por, motivo, descripcion) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [fila.organizacion_id, partidoId, equipoProtestanteId, req.usuario.id, motivoLimpio, descripcionLimpia]
+    );
+    await registrarAuditoria(req.usuario.id, 'PRESENTAR_PROTESTA', 'protestas', null, { partido_id: partidoId, equipo_protestante_id: equipoProtestanteId }, req.ip, fila.organizacion_id);
+    res.status(201).json({ mensaje: 'Protesta presentada. El Administrador de la Liga la revisará.' });
+  } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al presentar la protesta:', error);
+    res.status(500).json({ error: 'Error al presentar la protesta.' });
   }
 });
 
