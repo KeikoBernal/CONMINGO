@@ -6,6 +6,12 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // LOTE 5 (N4): pasamos de generateSW a injectManifest para usar un
+      // service worker propio (frontend/src/sw.js) que conserva el precaching
+      // offline del Lote M y agrega los listeners de Web Push.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
@@ -29,11 +35,10 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         // LOTE M (PWA offline): una navegación sin conexión responde con el
         // index.html precacheado (el shell de la app) en vez del error del navegador.
-        navigateFallback: 'index.html',
         // LOTE M: Workbox no cachea archivos mayores a 2 MiB por defecto; el bundle
         // principal (jsPDF + FullCalendar) puede superar ese límite y romper el modo
         // offline, así que lo subimos a 5 MiB.
