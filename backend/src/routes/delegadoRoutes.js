@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware');
 const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4D (P1)
+const { notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4): notificaciones web push
 const bcrypt = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -495,6 +496,13 @@ router.post('/protestas', async (req, res) => {
       [fila.organizacion_id, partidoId, equipoProtestanteId, req.usuario.id, motivoLimpio, descripcionLimpia]
     );
     await registrarAuditoria(req.usuario.id, 'PRESENTAR_PROTESTA', 'protestas', null, { partido_id: partidoId, equipo_protestante_id: equipoProtestanteId }, req.ip, fila.organizacion_id);
+    // LOTE 5 (N4): aviso a los administradores de la liga
+    try {
+      const adminsRes = await db.query("SELECT id FROM public.usuarios WHERE rol = 'Administrador de Liga' AND estado <> 'Inactivo' AND organizacion_id = $1", [fila.organizacion_id]);
+      await notificarUsuarios({ organizacionId: fila.organizacion_id, remitenteId: req.usuario.id, destinatarios: adminsRes.rows.map(r => r.id), titulo: 'Protesta Presentada', mensaje: 'Un delegado presentó una protesta formal que requiere tu revisión.' });
+    } catch (errorPush) {
+      console.error('[push] No se pudo notificar la protesta:', errorPush?.message || errorPush);
+    }
     res.status(201).json({ mensaje: 'Protesta presentada. El Administrador de la Liga la revisará.' });
   } catch (error) {
     if (responderSiErrorIntegridad(error, req, res)) return;

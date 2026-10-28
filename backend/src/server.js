@@ -185,6 +185,10 @@ app.use('/api/mensajeria', mensajeriaRoutes);
 const delegadoRoutes = require('./routes/delegadoRoutes');
 app.use('/api/delegado', delegadoRoutes);
 
+// LOTE 5 (N4): notificaciones push (suscripciones del navegador y bandeja interna)
+const notificacionesRoutes = require('./routes/notificacionesRoutes');
+app.use('/api/notificaciones', notificacionesRoutes);
+
 // ==========================================
 // LOTE 4B (M1): MIDDLEWARE DE ERRORES DE INTEGRIDAD
 // Red de seguridad global: convierte violaciones crudas de PostgreSQL

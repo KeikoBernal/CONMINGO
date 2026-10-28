@@ -8,6 +8,7 @@ import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla'
 import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
 import ProtestasDelegado from '../ProtestasDelegado';
+import ActivarNotificaciones from '../ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -412,6 +413,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
         </div>
 
         <div className="p-4 border-t border-brand-gold/20 shrink-0">
+          {/* LOTE 5 (N4): activacion de notificaciones push del navegador */}
+          <div className="mb-3"><ActivarNotificaciones /></div>
           <button onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-brand-rust text-brand-cream rounded transition-colors text-sm font-semibold">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
             Cerrar Sesión

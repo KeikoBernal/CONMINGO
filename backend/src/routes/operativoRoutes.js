@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 const { verificarToken } = require('../middleware/authMiddleware');
 const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4C
+const { notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4): notificaciones web push
 
 router.use(verificarToken);
 
@@ -67,6 +68,26 @@ const obtenerOrgDePartido = async (partidoId) => {
     const { rows } = await db.query('SELECT t.organizacion_id FROM public.partidos p JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1', [partidoId]);
     return rows[0]?.organizacion_id || null;
   } catch (e) { return null; }
+};
+
+// ============================================================
+// LOTE 5 (N4): aviso del marcador final a los delegados de ambos
+// equipos cuando un partido queda Finalizado.
+// ============================================================
+const notificarMarcadorFinal = async (partidoId, remitenteId) => {
+  try {
+    const eqRes = await db.query(
+      'SELECT el.delegado_id AS delegado_local, ev.delegado_id AS delegado_visita FROM public.partidos p JOIN public.equipos el ON p.equipo_local_id = el.id JOIN public.equipos ev ON p.equipo_visita_id = ev.id WHERE p.id = $1',
+      [partidoId]
+    );
+    if (eqRes.rows.length === 0) return;
+    const delegadosFinal = [eqRes.rows[0].delegado_local, eqRes.rows[0].delegado_visita].filter(Boolean);
+    if (delegadosFinal.length === 0) return;
+    const marcadorFinal = await marcadorDesdeManos(partidoId);
+    await notificarUsuarios({ organizacionId: await obtenerOrgDePartido(partidoId), remitenteId, destinatarios: delegadosFinal, titulo: 'Partido Finalizado', mensaje: 'Partido finalizado. Marcador oficial: ' + marcadorFinal.local + ' - ' + marcadorFinal.visita + '.' });
+  } catch (errorPush) {
+    console.error('[push] No se pudo notificar el marcador final:', errorPush?.message || errorPush);
+  }
 };
 
 // Helper: insert en audit_logs con organización (no rompe el flujo si falla).
@@ -267,6 +288,8 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
     // LOTE 4D (P1): el marcador de las manos queda como resultado oficial.
     const marcadorOficial = await marcadorDesdeManos(parseInt(req.params.id, 10));
     await registrarResultadoOficial(parseInt(req.params.id, 10), marcadorOficial.local, marcadorOficial.visita, 'Acta', req.usuario.id, null);
+    // LOTE 5 (N4): aviso del marcador final a los delegados
+    await notificarMarcadorFinal(parseInt(req.params.id, 10), req.usuario.id);
     res.json({ mensaje: 'Partido finalizado con éxito.', partido: resDb.rows[0], hora_final: hora_final });
   } catch (error) { res.status(500).json({ error: 'Error al finalizar el partido.' }); }
 });
@@ -460,6 +483,8 @@ router.post('/partidos/:id/manos', async (req, res) => {
          // LOTE 4D (P1): el cierre por meta tambien deja resultado oficial.
          const marcadorOficialMeta = await marcadorDesdeManos(partidoId);
          await registrarResultadoOficial(partidoId, marcadorOficialMeta.local, marcadorOficialMeta.visita, 'Acta', req.usuario.id, null);
+         // LOTE 5 (N4): aviso del marcador final a los delegados
+         await notificarMarcadorFinal(partidoId, req.usuario.id);
          
          const io = req.app.get('io');
          if (io) {
@@ -760,6 +785,17 @@ router.put('/protestas/:id/confirmar', async (req, res) => {
       }
     }
     await registrarAuditoria(req.usuario.id, 'CONFIRMAR_PROTESTA', 'protestas', { id: protestaId, estado: 'Pendiente Confirmacion' }, { confirmada: true, resuelta: completa }, req.ip, await obtenerOrgDePartido(fila.partido_id));
+    // LOTE 5 (N4): aviso al presentador cuando la protesta queda resuelta
+    if (completa) {
+      try {
+        const presentadorRes = await db.query('SELECT presentada_por, organizacion_id FROM public.protestas WHERE id = $1', [protestaId]);
+        if (presentadorRes.rows.length > 0 && presentadorRes.rows[0].presentada_por) {
+          await notificarUsuarios({ organizacionId: presentadorRes.rows[0].organizacion_id, remitenteId: req.usuario.id, destinatarios: [presentadorRes.rows[0].presentada_por], titulo: 'Protesta Resuelta', mensaje: 'Ambos oficiales confirmaron la protesta: quedó resuelta y el resultado oficial del partido fue actualizado.' });
+        }
+      } catch (errorPush) {
+        console.error('[push] No se pudo notificar la resolución de la protesta:', errorPush?.message || errorPush);
+      }
+    }
     res.json({
       mensaje: completa
         ? 'Confirmación registrada. La protesta quedó resuelta y el resultado oficial actualizado.'
