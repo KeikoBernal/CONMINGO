@@ -7,6 +7,7 @@ const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware
 
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4B (M1)
+const { enviarPush, notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4): notificaciones web push
 
 const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
   try {
@@ -282,6 +283,8 @@ const notificarInvolucrados = async (partidos, orgId, adminId) => {
           )
         );
       }
+      // LOTE 5 (N4): ademas del aviso interno, push a quien tenga suscripcion activa
+      notificaciones.push(enviarPush([...usuariosAnotificar], 'Aviso de Programación', msj));
     }
     await Promise.all(notificaciones);
   } catch (error) { console.error("Error al enviar notificaciones:", error); }
@@ -1740,6 +1743,17 @@ router.put('/partidos/:id/reagendar', async (req, res) => {
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = $1, estado = 'Agendado' WHERE id = $2`, [nueva_fecha_hora, id]);
+    // LOTE 5 (N4): aviso del nuevo horario a delegados y oficiales
+    try {
+      const involucradosReagenda = new Set();
+      if (pInfo.arbitro_id) involucradosReagenda.add(pInfo.arbitro_id);
+      if (pInfo.anotador_id) involucradosReagenda.add(pInfo.anotador_id);
+      const delReagenda = await db.query('SELECT delegado_id FROM public.equipos WHERE id IN ($1, $2)', [pInfo.equipo_local_id, pInfo.equipo_visita_id]);
+      delReagenda.rows.forEach(r => { if (r.delegado_id) involucradosReagenda.add(r.delegado_id); });
+      await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: [...involucradosReagenda], titulo: 'Partido Reagendado', mensaje: 'Un partido en el que participas fue reagendado para el ' + formatearFechaLocal(nueva_fecha_hora) + '.' });
+    } catch (errorPush) {
+      console.error('[push] No se pudo notificar el cambio de horario:', errorPush?.message || errorPush);
+    }
     await registrarAuditoria(req.usuario.id, 'REAGENDAR_PARTIDO', 'partidos', { id: parseInt(id) }, { fecha_hora: nueva_fecha_hora }, req.ip, orgId);
     res.json({ mensaje: 'Partido reagendado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al reagendar.' }); }
@@ -1778,6 +1792,15 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = COALESCE($1, fecha_hora), arbitro_id = $2, anotador_id = $3, sede_id = COALESCE($4, sede_id) WHERE id = $5`, [fecha_hora, arbitro_id || null, anotador_id || null, sede_id, id]);
+    // LOTE 5 (N4): aviso a los oficiales asignados
+    try {
+      const oficialesNuevos = [arbitro_id, anotador_id].filter(Boolean);
+      if (oficialesNuevos.length > 0) {
+        await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: oficialesNuevos, titulo: 'Asignación de Partido', mensaje: 'Fuiste asignado como oficial de un partido' + (fecha_hora ? ' para el ' + formatearFechaLocal(fecha_hora) : '') + '.' });
+      }
+    } catch (errorPush) {
+      console.error('[push] No se pudo notificar la asignación de oficiales:', errorPush?.message || errorPush);
+    }
     await registrarAuditoria(req.usuario.id, 'EDITAR_OFICIALES_PARTIDO', 'partidos', { id: parseInt(id) }, { arbitro_id: arbitro_id || null, anotador_id: anotador_id || null, sede_id: sede_id || null }, req.ip, await obtenerOrgId(req.usuario));
     res.json({ mensaje: 'Partido modificado exitosamente.' });
   } catch (error) { res.status(500).json({ error: 'Error al modificar partido.' }); }
@@ -1994,6 +2017,16 @@ router.post('/sanciones', async (req, res) => {
       await db.query("UPDATE public.jugadores SET estado = 'Suspendido' WHERE id = $1 AND estado <> 'Inactivo'", [fila.id]);
       await db.query('UPDATE public.equipos SET capitan_id = NULL WHERE capitan_id = $1', [fila.id]);
     }
+    // LOTE 5 (N4): aviso al delegado del equipo del jugador sancionado
+    try {
+      const delSanc = await db.query('SELECT e.delegado_id, e.nombre AS equipo_nombre, j.nombre AS jugador_nombre, j.apellido AS jugador_apellido FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id WHERE j.id = $1', [jugadorIdNum]);
+      if (delSanc.rows.length > 0 && delSanc.rows[0].delegado_id) {
+        const nombreJugador = ((delSanc.rows[0].jugador_nombre || '') + ' ' + (delSanc.rows[0].jugador_apellido || '')).trim();
+        await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: [delSanc.rows[0].delegado_id], titulo: 'Sanción Registrada', mensaje: 'Se registró una sanción (' + tipoSancion + ') a ' + nombreJugador + ' del equipo ' + (delSanc.rows[0].equipo_nombre || '') + '.' });
+      }
+    } catch (errorPush) {
+      console.error('[push] No se pudo notificar la sanción:', errorPush?.message || errorPush);
+    }
     await registrarAuditoria(req.usuario.id, 'REGISTRAR_SANCION', 'sanciones', null, resDb.rows[0], req.ip, orgId);
     res.status(201).json({ mensaje: 'Sanción registrada.', sancion: resDb.rows[0] });
   } catch (error) {
@@ -2088,11 +2121,20 @@ router.put('/torneos/:id/votacion-mvp', async (req, res) => {
   const { abierta } = req.body;
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const chk = await db.query('SELECT reglas FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [id, orgId]);
+    const chk = await db.query('SELECT nombre, reglas FROM public.torneos WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2)', [id, orgId]);
     if (chk.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado en tu organización.' });
     const reglas = chk.rows[0].reglas || {};
     reglas.votacion_mvp = abierta ? 'Abierta' : 'Cerrada';
     await db.query('UPDATE public.torneos SET reglas = $1 WHERE id = $2', [JSON.stringify(reglas), id]);
+    // LOTE 5 (N4): aviso a toda la liga cuando se abre la votación MVP
+    if (abierta) {
+      try {
+        const usuariosRes = await db.query("SELECT id FROM public.usuarios WHERE estado <> 'Inactivo' AND organizacion_id = $1", [orgId]);
+        await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: usuariosRes.rows.map(r => r.id), titulo: 'Votación MVP Abierta', mensaje: 'La votación MVP del torneo ' + (chk.rows[0].nombre || '') + ' está abierta: ya puedes votar por el jugador más valioso.' });
+      } catch (errorPush) {
+        console.error('[push] No se pudo notificar la votación MVP:', errorPush?.message || errorPush);
+      }
+    }
     await registrarAuditoria(req.usuario.id, abierta ? 'ABRIR_VOTACION_MVP' : 'CERRAR_VOTACION_MVP', 'torneos', { id: parseInt(id, 10) }, { votacion_mvp: reglas.votacion_mvp }, req.ip, orgId);
     res.json({ mensaje: abierta ? 'Votación MVP abierta: todos los usuarios de la liga pueden votar.' : 'Votación MVP cerrada: ya se muestran los resultados.', votacion_mvp: reglas.votacion_mvp });
   } catch (error) {
@@ -2243,6 +2285,12 @@ router.put('/protestas/:id/resolver', async (req, res) => {
         [notaLimpia, req.usuario.id, protestaId]
       );
       await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: protestaId, estado: 'Pendiente' }, { resolucion: 'Improcedente' }, req.ip, orgId);
+      // LOTE 5 (N4): aviso al delegado presentador
+      try {
+        await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: [protesta.presentada_por], titulo: 'Protesta Resuelta', mensaje: 'Tu protesta fue resuelta como Improcedente: el resultado del partido no cambia.' });
+      } catch (errorPush) {
+        console.error('[push] No se pudo notificar la resolución de la protesta:', errorPush?.message || errorPush);
+      }
       return res.json({ mensaje: 'Protesta resuelta como Improcedente. El resultado del partido no cambia.' });
     }
     const medidaLimpia = String(medida || '').trim().slice(0, 2000);
@@ -2268,6 +2316,18 @@ router.put('/protestas/:id/resolver', async (req, res) => {
       [medidaLimpia, notaLimpia, medidaLocal, medidaVisita, protestaId]
     );
     await registrarAuditoria(req.usuario.id, 'RESOLVER_PROTESTA', 'protestas', { id: protestaId, estado: 'Pendiente' }, { resolucion: 'Procedente', medida_marcador_local: medidaLocal, medida_marcador_visita: medidaVisita }, req.ip, orgId);
+    // LOTE 5 (N4): aviso al presentador y a los oficiales que deben confirmar
+    try {
+      const oficialesConf = await db.query('SELECT arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [protesta.partido_id]);
+      const destinosProcedente = [protesta.presentada_por];
+      if (oficialesConf.rows.length > 0) {
+        if (oficialesConf.rows[0].arbitro_id) destinosProcedente.push(oficialesConf.rows[0].arbitro_id);
+        if (oficialesConf.rows[0].anotador_id) destinosProcedente.push(oficialesConf.rows[0].anotador_id);
+      }
+      await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: destinosProcedente, titulo: 'Protesta Procedente', mensaje: 'La protesta fue marcada Procedente: el árbitro y el anotador del partido deben confirmar antes de aplicar la medida.' });
+    } catch (errorPush) {
+      console.error('[push] No se pudo notificar la resolución de la protesta:', errorPush?.message || errorPush);
+    }
     res.json({ mensaje: 'Protesta marcada Procedente. El árbitro y el anotador del partido deben confirmar antes de aplicar la medida.' });
   } catch (error) {
     console.error('Error al resolver la protesta:', error);

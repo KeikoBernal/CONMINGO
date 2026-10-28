@@ -20,7 +20,8 @@
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "pg": "^8.23.0",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "web-push": "^3.6.7"
   },
   "repository": {
     "type": "git",
