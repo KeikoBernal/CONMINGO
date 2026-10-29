@@ -14,7 +14,11 @@ const ORIGENES_DEV = [
 const origenesPermitidos = [...new Set([...ORIGENES_ENV, ...ORIGENES_DEV])];
 
 if (!ORIGENES_ENV.length && process.env.NODE_ENV === 'production') {
-  console.warn('CORS: CORS_ORIGINS no está definida. Solo se permiten orígenes localhost y *.vercel.app.');
+  // LOTE 6C: aviso accionable. Sin la variable, el frontend desplegado en
+  // *.vercel.app sigue funcionando; pero si algun dia se publica la app en
+  // un dominio propio hay que definir CORS_ORIGINS en Render (URLs completas
+  // separadas por coma) o ese dominio sera rechazado por el CORS.
+  console.warn('CORS: CORS_ORIGINS no está definida en Render. Se aceptan localhost y *.vercel.app. Si usas un dominio propio, define CORS_ORIGINS con las URLs separadas por coma.');
 }
 
 function origenPermitido(origin, callback) {

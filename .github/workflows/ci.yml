@@ -89,3 +89,31 @@ jobs:
           else
             echo 'OK: no hay emojis en el frontend ni en el backend'
           fi
+
+  npm-audit:
+    name: npm audit (informativo)
+    runs-on: ubuntu-24.04
+    # LOTE 6C: reporta vulnerabilidades de dependencias en cada PR sin
+    # bloquear el merge. Solo audita dependencias de produccion (--omit=dev)
+    # con nivel alto o critico.
+    continue-on-error: true
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v7
+
+      - name: Configurar Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Audit del backend (dependencias de produccion)
+        working-directory: backend
+        run: |
+          # El lockfile del backend esta desactualizado respecto a package.json:
+          # se regenera solo para el audit (no modifica el repo).
+          npm install --package-lock-only --ignore-scripts
+          npm audit --omit=dev --audit-level=high
+
+      - name: Audit del frontend (dependencias de produccion)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
