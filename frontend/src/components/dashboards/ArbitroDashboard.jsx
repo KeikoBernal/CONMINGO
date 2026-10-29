@@ -10,6 +10,7 @@ import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
 import ActivarNotificaciones from '../ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
 import CampanaNotificaciones from '../CampanaNotificaciones'; // LOTE 6A: bandeja de notificaciones
+import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -64,6 +65,8 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const socketRef = useRef(null);
   const partidoActivoRef = useRef(null); // LOTE T: espejo de partidoActivo para la reconexion del socket
   const avisoSocketDadoRef = useRef(false); // LOTE T: aviso de caida del tiempo real mostrado una sola vez
+  const [firmasActa, setFirmasActa] = useState({ exigibles: [], firmas: [], faltantes: [] }); // LOTE 6D: estado de las firmas del acta
+  const [modalFirma, setModalFirma] = useState(null); // LOTE 6D: rol de la firma que se esta dibujando
 
   useEffect(() => { partidoActivoRef.current = partidoActivo; }, [partidoActivo]);
 
@@ -154,6 +157,16 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
 
   const formatoT = (t) => `${Math.floor(t / 60).toString().padStart(2, '0')}:${(t % 60).toString().padStart(2, '0')}`;
 
+  // LOTE 6D: estado de las firmas del acta (exigibles, firmadas y faltantes).
+  const cargarFirmasActa = async (partidoId) => {
+    try {
+      const res = await fetchConToken(`/partidos/${partidoId}/firmas`);
+      if (res.ok) setFirmasActa(await res.json());
+    } catch (err) {
+      // La seccion de firmas conserva el ultimo estado conocido.
+    }
+  };
+
   const seleccionarPartido = async (partido) => {
     setAnotadorConectado(false); // LOTE T: no heredar la presencia del partido anterior; el servidor envia la foto actual al unirse
     setPartidoActivo(partido);
@@ -186,6 +199,11 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
       setCronometroGlobalActivo(data.cronometroGlobalActivo);
     });
 
+    socketRef.current.on('firma_acta', () => {
+      cargarFirmasActa(partido.id); // LOTE 6D: el otro oficial registro una firma en su dispositivo
+    });
+
+    cargarFirmasActa(partido.id); // LOTE 6D: estado inicial de las firmas del acta
     const res = await fetchConToken(`/partidos/${partido.id}/nomina`);
     if (res.ok) {
       const todos = await res.json();
@@ -207,7 +225,30 @@ const guardarSorteo = async () => {
     if (res.ok) { alert('Sorteo guardado exitosamente.'); setModalSorteo(null); setSorteoTexto(''); }
   };
 
-  const suspenderPartido = async () => {
+    // LOTE 6D: registra la firma dibujada. El arbitro firma su propio slot y
+  // ademas recoge en su dispositivo las firmas de los delegados; el slot del
+  // anotador lo firma el anotador desde su propio panel.
+  const guardarFirmaActa = async (dataUrl) => {
+    const rolFirma = modalFirma;
+    setModalFirma(null);
+    setIsSubmitting(true);
+    try {
+      const res = await fetchConToken(`/partidos/${partidoActivo.id}/firmas`, { method: 'POST', body: JSON.stringify({ rol_firma: rolFirma, imagen: dataUrl }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setFirmasActa(data.firmas || data);
+        alert('Firma registrada en el acta.');
+      } else {
+        alert(data.error || 'No se pudo registrar la firma.');
+      }
+    } catch (err) {
+      alert('Error de conexión al registrar la firma.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+const suspenderPartido = async () => {
     if(!partidoActivo || isSubmitting) return; // INSERCIÓN: Prevención de doble click
     const confirmacion = window.confirm("¿Estás seguro de suspender este partido? Se guardarán los resultados actuales y desaparecerá de tu panel y del anotador hasta ser reagendado.");
     if (!confirmacion) return;
@@ -745,6 +786,39 @@ const guardarSorteo = async () => {
                   <div className="text-[0.65rem] text-brand-cream/40 mt-2 uppercase tracking-wide">Controlado por el Anotador</div>
                 </div>
 
+                {/* FIRMAS DIGITALES DEL ACTA (LOTE 6D) */}
+                {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
+                  <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
+                    <h3 className="text-base font-bold text-brand-brown mb-1">Firmas del Acta</h3>
+                    <p className="text-[0.7rem] text-brand-brown/60 mb-3">Los delegados firman aquí entregando este dispositivo al responsable de cada equipo. El anotador firma desde su propio panel.</p>
+                    <div className="space-y-2">
+                      {(firmasActa.firmas || []).map(f => {
+                        const etiquetaFirma = f.rol_firma === 'arbitro' ? 'Árbitro' : f.rol_firma === 'anotador' ? 'Anotador' : f.rol_firma === 'delegado_local' ? 'Delegado ' + (partidoActivo.local_nombre || 'Local') : 'Delegado ' + (partidoActivo.visita_nombre || 'Visita');
+                        const firmableAqui = f.rol_firma !== 'anotador';
+                        return (
+                          <div key={f.rol_firma} className="flex items-center justify-between gap-2 border border-brand-gold/20 rounded-lg px-3 py-2">
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-brand-brown truncate">{etiquetaFirma}</div>
+                              <div className={'text-[0.65rem] ' + (f.firmada ? 'text-green-700' : 'text-brand-brown/50')}>
+                                {f.firmada ? 'Firmada' + (f.registrada_por_nombre ? ' por ' + f.registrada_por_nombre : '') : (f.exigible ? 'Pendiente (obligatoria)' : 'No aplica a este partido')}
+                              </div>
+                            </div>
+                            {f.firmada ? (
+                              <span className="text-[0.6rem] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 shrink-0">Firmada</span>
+                            ) : f.exigible && firmableAqui ? (
+                              <button onClick={() => setModalFirma(f.rol_firma)} disabled={isSubmitting} className="bg-brand-blue text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-brown transition-colors shadow-sm shrink-0 disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed">Firmar</button>
+                            ) : f.exigible ? (
+                              <span className="text-[0.6rem] text-brand-brown/40 shrink-0">En el panel del anotador</span>
+                            ) : (
+                              <span className="text-[0.6rem] text-brand-brown/40 shrink-0">No aplica</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
                   <h3 className="text-base font-bold text-brand-brown mb-4 flex items-center gap-2">
                     <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -801,7 +875,15 @@ const guardarSorteo = async () => {
             </div>
           )}
         </div>
-      </main>
+        {/* MODAL DE FIRMA DIGITAL DEL ACTA (LOTE 6D) */}
+      {modalFirma && (
+        <FirmaCanvas
+          titulo={'Firma: ' + (modalFirma === 'arbitro' ? 'Árbitro' : modalFirma === 'delegado_local' ? 'Delegado ' + (partidoActivo?.local_nombre || 'Local') : modalFirma === 'delegado_visita' ? 'Delegado ' + (partidoActivo?.visita_nombre || 'Visita') : modalFirma)}
+          onGuardar={guardarFirmaActa}
+          onCerrar={() => setModalFirma(null)}
+        />
+      )}
+    </main>
     </div>
   );
 }
