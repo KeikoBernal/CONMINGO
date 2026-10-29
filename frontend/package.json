@@ -14,6 +14,7 @@
     "@fullcalendar/interaction": "^6.1.21",
     "@fullcalendar/react": "^7.1.0",
     "@fullcalendar/timegrid": "^6.1.21",
+    "@sentry/react": "^10.0.0",
     "@supabase/supabase-js": "^2.115.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
