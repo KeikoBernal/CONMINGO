@@ -11,6 +11,7 @@ import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
 import ActivarNotificaciones from '../ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
 import CampanaNotificaciones from '../CampanaNotificaciones'; // LOTE 6A: bandeja de notificaciones
+import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -56,6 +57,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const partidoActivoRef = useRef(null); // LOTE T: espejo de partidoActivo para la reconexion del socket
   const estadoPlanillaRef = useRef(null); // LOTE T: ultima planilla local con datos, para resincronizar tras reconexion
   const avisoSocketDadoRef = useRef(false); // LOTE T: aviso de caida del tiempo real mostrado una sola vez
+  const [firmasActa, setFirmasActa] = useState({ exigibles: [], firmas: [], faltantes: [] }); // LOTE 6D: estado de las firmas del acta
+  const [modalFirma, setModalFirma] = useState(null); // LOTE 6D: rol de la firma que se esta dibujando
 
   const [token, setToken] = useState(null);
 
@@ -177,6 +180,16 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   const formatoT = (t) => `${Math.floor(t / 60).toString().padStart(2, '0')}:${(t % 60).toString().padStart(2, '0')}`;
 
+  // LOTE 6D: estado de las firmas del acta (exigibles, firmadas y faltantes).
+  const cargarFirmasActa = async (partidoId) => {
+    try {
+      const res = await fetchConToken(`/partidos/${partidoId}/firmas`);
+      if (res.ok) setFirmasActa(await res.json());
+    } catch (err) {
+      // La seccion de firmas conserva el ultimo estado conocido.
+    }
+  };
+
   const seleccionarPartido = async (partido) => {
     setArbitroConectado(false); // LOTE T: no heredar la presencia del partido anterior; el servidor envia la foto actual al unirse
     setPartidoActivo(partido);
@@ -220,6 +233,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
     socketRef.current.on('alerta_revision', (msg) => { alert(`SOLICITUD DEL ÁRBITRO:\n\n${msg}`); });
 
+    socketRef.current.on('firma_acta', () => {
+      cargarFirmasActa(partido.id); // LOTE 6D: el otro oficial registro una firma en su dispositivo
+    });
+
+    cargarFirmasActa(partido.id); // LOTE 6D: estado inicial de las firmas del acta
     const res = await fetchConToken(`/partidos/${partido.id}/nomina`);
     if (res.ok) {
       const todos = await res.json();
@@ -295,6 +313,29 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     return { guardadas, fallidas };
   };
 
+  // LOTE 6D: registra la firma dibujada. El anotador firma su propio slot y
+  // ademas recoge en su dispositivo las firmas de los delegados; el slot del
+  // arbitro lo firma el arbitro desde su propio panel.
+  const guardarFirmaActa = async (dataUrl) => {
+    const rolFirma = modalFirma;
+    setModalFirma(null);
+    setIsSubmitting(true);
+    try {
+      const res = await fetchConToken(`/partidos/${partidoActivo.id}/firmas`, { method: 'POST', body: JSON.stringify({ rol_firma: rolFirma, imagen: dataUrl }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setFirmasActa(data.firmas || data);
+        alert('Firma registrada en el acta.');
+      } else {
+        alert(data.error || 'No se pudo registrar la firma.');
+      }
+    } catch (err) {
+      alert('Error de conexión al registrar la firma.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const finalizarPartido = async () => {
     if (isSubmitting) return;
     if (!window.confirm('¿Cerrar acta y registrar hora final?')) return;
@@ -305,8 +346,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     const manosPersistidas = await guardarManosPersistidas();
     const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/finalizar`, { method: 'PUT', body: JSON.stringify({ hora_final: hora }) });
-    
+    // LOTE 6D: el backend rechaza el cierre si faltan firmas exigibles del acta.
+    const dataFinal = await res.json().catch(() => ({}));
     setIsSubmitting(false);
+    if (!res.ok && Array.isArray(dataFinal.firmas_faltantes) && dataFinal.firmas_faltantes.length > 0) {
+      cargarFirmasActa(partidoActivo.id);
+      alert('Faltan firmas del acta para finalizar: ' + dataFinal.firmas_faltantes.join(', ') + '. Recoge las firmas pendientes en este dispositivo o en el del árbitro y vuelve a intentar.');
+      return;
+    }
     if (res.ok) {
       setPartidoActivo(prev => ({ ...prev, estado: 'Finalizado', hora_final: hora }));
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
@@ -809,6 +856,39 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                   </div>
                 )}
 
+                {/* FIRMAS DIGITALES DEL ACTA (LOTE 6D) */}
+                {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
+                  <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
+                    <h3 className="text-base font-bold text-brand-brown mb-1">Firmas del Acta</h3>
+                    <p className="text-[0.7rem] text-brand-brown/60 mb-3">Sin las firmas exigibles el acta no se puede finalizar. Los delegados firman aquí entregando este dispositivo al responsable de cada equipo.</p>
+                    <div className="space-y-2">
+                      {(firmasActa.firmas || []).map(f => {
+                        const etiquetaFirma = f.rol_firma === 'arbitro' ? 'Árbitro' : f.rol_firma === 'anotador' ? 'Anotador' : f.rol_firma === 'delegado_local' ? 'Delegado ' + (partidoActivo.local_nombre || 'Local') : 'Delegado ' + (partidoActivo.visita_nombre || 'Visita');
+                        const firmableAqui = f.rol_firma !== 'arbitro';
+                        return (
+                          <div key={f.rol_firma} className="flex items-center justify-between gap-2 border border-brand-gold/20 rounded-lg px-3 py-2">
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-brand-brown truncate">{etiquetaFirma}</div>
+                              <div className={'text-[0.65rem] ' + (f.firmada ? 'text-green-700' : 'text-brand-brown/50')}>
+                                {f.firmada ? 'Firmada' + (f.registrada_por_nombre ? ' por ' + f.registrada_por_nombre : '') : (f.exigible ? 'Pendiente (obligatoria)' : 'No aplica a este partido')}
+                              </div>
+                            </div>
+                            {f.firmada ? (
+                              <span className="text-[0.6rem] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 shrink-0">Firmada</span>
+                            ) : f.exigible && firmableAqui ? (
+                              <button onClick={() => setModalFirma(f.rol_firma)} disabled={isSubmitting} className="bg-brand-blue text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-brown transition-colors shadow-sm shrink-0 disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed">Firmar</button>
+                            ) : f.exigible ? (
+                              <span className="text-[0.6rem] text-brand-brown/40 shrink-0">En el panel del árbitro</span>
+                            ) : (
+                              <span className="text-[0.6rem] text-brand-brown/40 shrink-0">No aplica</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* CRONÓMETRO MESA TÉCNICA */}   
                 <div className="bg-brand-brown text-white p-6 rounded-xl border border-brand-gold/20 shadow-lg text-center relative overflow-hidden">
                   <h4 className="text-sm font-bold text-brand-cream/70 uppercase tracking-wider mb-2 flex items-center justify-center gap-2">
@@ -836,7 +916,15 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
             </div>
           )}
         </div>
-      </main>
+        {/* MODAL DE FIRMA DIGITAL DEL ACTA (LOTE 6D) */}
+      {modalFirma && (
+        <FirmaCanvas
+          titulo={'Firma: ' + (modalFirma === 'anotador' ? 'Anotador' : modalFirma === 'delegado_local' ? 'Delegado ' + (partidoActivo?.local_nombre || 'Local') : modalFirma === 'delegado_visita' ? 'Delegado ' + (partidoActivo?.visita_nombre || 'Visita') : modalFirma)}
+          onGuardar={guardarFirmaActa}
+          onCerrar={() => setModalFirma(null)}
+        />
+      )}
+    </main>
     </div>
   );
 }
