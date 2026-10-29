@@ -15,6 +15,7 @@ import FotoJugador from '../FotoJugador';
 import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
 import ProtestasAdmin from '../ProtestasAdmin';
+import { QRCodeCanvas } from 'qrcode.react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // LOTE 6B: VITE_SOCKET_URL puede llegar con el sufijo /api (la URL del REST, no la del
@@ -93,6 +94,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [modalEditarPartido, setModalEditarPartido] = useState({ visible: false, partido: null, fecha_hora: '', arbitro_id: '', anotador_id: '', sede_id: '' });
   // LOTE 6D: firmas digitales del acta (modal de consulta desde el historial)
   const [modalFirmasAdmin, setModalFirmasAdmin] = useState(null);
+  // LOTE 6F (N1): QR del marcador publico de un partido (modal para proyectar/descargar)
+  const [modalQrPartido, setModalQrPartido] = useState(null);
 
   // Formularios
   const [formSede, setFormSede] = useState({ nombre: '', direccion: '' });
@@ -778,6 +781,26 @@ const confirmarReagendar = async (e) => {
       setModalFirmasAdmin({ partido, cargando: false, firmas: [], error: 'Error de conexión al cargar las firmas.' });
     }
   };
+
+  // LOTE 6F (N1): abre el modal con el QR del marcador publico del partido.
+  const abrirQrPartido = (partido) => setModalQrPartido(partido);
+
+  // LOTE 6F (N1): descarga el QR como PNG para imprimirlo o proyectarlo en la sede.
+  const descargarQrPartido = () => {
+    try {
+      const canvas = document.getElementById('canvas-qr-marcador');
+      if (!canvas) return mostrarToast('No se pudo encontrar el codigo QR.', 'error');
+      const enlace = document.createElement('a');
+      enlace.download = `qr-marcador-${modalQrPartido?.id || 'partido'}.png`;
+      enlace.href = canvas.toDataURL('image/png');
+      enlace.click();
+    } catch (e) {
+      mostrarToast('No se pudo descargar el QR.', 'error');
+    }
+  };
+
+  // LOTE 6F (N1): URL publica de la pizarra del partido (la misma del boton Acta Visual).
+  const urlMarcadorPartido = (partido) => `${window.location.origin}/?vista=puntajes&partido_id=${partido.id}`;
 
 const exportarPlanillaFormato = async (partidoId, formato) => {
     try {
@@ -2099,6 +2122,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <td className="flex justify-center gap-2">
                               <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Acta Visual</button>
                               <button onClick={() => abrirFirmasAdmin(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Firmas</button>
+                              <button onClick={() => abrirQrPartido(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">QR</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'csv')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">CSV</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'pdf')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">PDF</button>
@@ -2800,6 +2824,30 @@ const bitacoraConTexto = bitacora.map(evento => ({
               </div>
             )}
             <button onClick={() => setModalFirmasAdmin(null)} className="mt-5 w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cerrar</button>
+          </div>
+        </div>
+      )}
+      {/* MODAL QR DEL MARCADOR PUBLICO (LOTE 6F) */}
+      {modalQrPartido && (
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl border border-brand-gold/30">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-brand-brown">Marcador Publico</h3>
+              <button onClick={() => setModalQrPartido(null)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <p className="text-sm text-brand-brown/70 mb-2">{modalQrPartido.local_nombre} vs {modalQrPartido.visita_nombre}</p>
+            <p className="text-xs text-brand-brown/60 mb-4">Proyecta o imprime este codigo para que el publico siga el partido en vivo desde su telefono.</p>
+            <div className="flex justify-center bg-white p-4 border border-brand-gold/30 rounded-lg">
+              <QRCodeCanvas id="canvas-qr-marcador" value={urlMarcadorPartido(modalQrPartido)} size={220} level="M" marginSize={2} bgColor="#FFFFFF" fgColor="#000000" />
+            </div>
+            <p className="text-[0.65rem] text-brand-brown/50 mt-2 text-center break-all">{urlMarcadorPartido(modalQrPartido)}</p>
+            <div className="flex flex-col sm:flex-row gap-3 mt-5">
+              <button onClick={descargarQrPartido} className="flex-1 py-3 bg-white border border-brand-gold/40 text-brand-brown rounded-lg font-bold hover:bg-brand-rust hover:text-white transition-colors">Descargar PNG</button>
+              <button onClick={() => window.open(urlMarcadorPartido(modalQrPartido), '_blank')} className="flex-1 py-3 bg-brand-blue text-white rounded-lg font-bold hover:bg-brand-brown transition-colors">Abrir Pantalla</button>
+            </div>
+            <button onClick={() => setModalQrPartido(null)} className="mt-3 w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cerrar</button>
           </div>
         </div>
       )}
