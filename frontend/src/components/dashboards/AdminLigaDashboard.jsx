@@ -91,6 +91,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [torneoEditando, setTorneoEditando] = useState(null);
   const [modalReagendar, setModalReagendar] = useState({ visible: false, partido: null, nuevaFecha: '' });
   const [modalEditarPartido, setModalEditarPartido] = useState({ visible: false, partido: null, fecha_hora: '', arbitro_id: '', anotador_id: '', sede_id: '' });
+  // LOTE 6D: firmas digitales del acta (modal de consulta desde el historial)
+  const [modalFirmasAdmin, setModalFirmasAdmin] = useState(null);
 
   // Formularios
   const [formSede, setFormSede] = useState({ nombre: '', direccion: '' });
@@ -764,7 +766,20 @@ const confirmarReagendar = async (e) => {
     } else { mostrarToast(data.error, 'error'); }
   };
 
-  const exportarPlanillaFormato = async (partidoId, formato) => {
+    // LOTE 6D: abre el modal con las firmas registradas del acta de un partido.
+  const abrirFirmasAdmin = async (partido) => {
+    setModalFirmasAdmin({ partido, cargando: true, firmas: [] });
+    try {
+      const res = await fetchConToken(`/partidos/${partido.id}/firmas`);
+      const data = await res.json();
+      if (res.ok) setModalFirmasAdmin({ partido, cargando: false, firmas: data.firmas || [], completas: data.completas });
+      else setModalFirmasAdmin({ partido, cargando: false, firmas: [], error: data.error || 'No se pudieron cargar las firmas.' });
+    } catch (e) {
+      setModalFirmasAdmin({ partido, cargando: false, firmas: [], error: 'Error de conexión al cargar las firmas.' });
+    }
+  };
+
+const exportarPlanillaFormato = async (partidoId, formato) => {
     try {
       setMensaje(`Generando archivo ${formato.toUpperCase()} de la planilla...`);
       const resPart = await fetchConToken(`/publico/partidos/${partidoId}`);
@@ -808,9 +823,38 @@ const confirmarReagendar = async (e) => {
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
         pdf.text(`Fecha: ${partidoData.fecha_hora}   |   Generado: ${new Date().toLocaleString('es-VE')}`, 14, 38);
         autoTable(pdf, { startY: 44, head: [['Cédula', 'Nombre', 'Apellido', 'Dorsal', 'Equipo']], body: nominaData.map(j => [j.cedula ?? '—', j.nombre ?? '—', j.apellido ?? '—', j.numero_dorsal ?? '—', j.equipo_nombre || 'N/A']), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
+                // LOTE 6D: firmas digitales del acta. Se consultan las firmas registradas
+        // y cada una se incrusta sobre su linea; los slots sin firma quedan en blanco.
+        let estadoFirmasPdf = null;
+        try {
+          const resFirmasPdf = await fetchConToken(`/partidos/${partidoId}/firmas`);
+          if (resFirmasPdf.ok) estadoFirmasPdf = await resFirmasPdf.json();
+        } catch (e) {
+          // Sin firmas el PDF sale con las lineas vacias.
+        }
+        const slotsFirmaPdf = [
+          { rol: 'arbitro', etiqueta: 'Firma Árbitro', x: 14 },
+          { rol: 'anotador', etiqueta: 'Firma Anotador', x: 56 },
+          { rol: 'delegado_local', etiqueta: 'Firma Deleg. Local', x: 98 },
+          { rol: 'delegado_visita', etiqueta: 'Firma Deleg. Visita', x: 140 }
+        ];
         const filaFirmas = (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 30;
-        pdf.setDrawColor(120); pdf.line(14, filaFirmas, 80, filaFirmas); pdf.line(120, filaFirmas, 186, filaFirmas);
-        pdf.setFontSize(8); pdf.setTextColor(100); pdf.text('Firma Árbitro', 14, filaFirmas + 5); pdf.text('Firma Anotador', 120, filaFirmas + 5);
+        pdf.setDrawColor(120);
+        for (const slot of slotsFirmaPdf) pdf.line(slot.x, filaFirmas, slot.x + 38, filaFirmas);
+        for (const slot of slotsFirmaPdf) {
+          const firmaSlot = (estadoFirmasPdf?.firmas || []).find(fr => fr.rol_firma === slot.rol && fr.firmada && fr.url_firmada);
+          if (!firmaSlot) continue;
+          try {
+            const resImg = await fetch(firmaSlot.url_firmada);
+            const blobImg = await resImg.blob();
+            const dataUrlImg = await new Promise((resolve) => { const lector = new FileReader(); lector.onload = () => resolve(lector.result); lector.readAsDataURL(blobImg); });
+            pdf.addImage(dataUrlImg, 'PNG', slot.x + 2, filaFirmas - 16, 34, 14);
+          } catch (e) {
+            // La imagen no esta disponible: queda la linea en blanco.
+          }
+        }
+        pdf.setFontSize(7); pdf.setTextColor(100);
+        for (const slot of slotsFirmaPdf) pdf.text(slot.etiqueta, slot.x, filaFirmas + 5);
         pdf.save(`${nombreArchivo}.pdf`);
       }
       setMensaje('');
@@ -2054,6 +2098,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <td className="text-center font-black text-lg">{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'N/A'}</td>
                             <td className="flex justify-center gap-2">
                               <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Acta Visual</button>
+                              <button onClick={() => abrirFirmasAdmin(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Firmas</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'csv')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">CSV</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'pdf')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">PDF</button>
@@ -2722,6 +2767,42 @@ const bitacoraConTexto = bitacora.map(evento => ({
               </div>
             )}
           </div>
+      {/* MODAL FIRMAS DEL ACTA (LOTE 6D) */}
+      {modalFirmasAdmin && (
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl border border-brand-gold/30 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-brand-brown">Firmas del Acta</h3>
+              <button onClick={() => setModalFirmasAdmin(null)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <p className="text-sm text-brand-brown/70 mb-4">{modalFirmasAdmin.partido?.local_nombre} vs {modalFirmasAdmin.partido?.visita_nombre}</p>
+            {modalFirmasAdmin.cargando ? (
+              <p className="text-sm text-brand-brown/60 py-6 text-center">Cargando firmas...</p>
+            ) : modalFirmasAdmin.error ? (
+              <p className="text-sm text-red-600 py-6 text-center">{modalFirmasAdmin.error}</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {(modalFirmasAdmin.firmas || []).map(fr => (
+                  <div key={fr.rol_firma} className="border border-brand-gold/30 rounded-lg p-3 bg-brand-cream/10">
+                    <div className="text-xs font-bold text-brand-brown mb-1">{fr.rol_firma === 'arbitro' ? 'Árbitro' : fr.rol_firma === 'anotador' ? 'Anotador' : fr.rol_firma === 'delegado_local' ? 'Delegado Local' : 'Delegado Visita'}</div>
+                    {fr.firmada && fr.url_firmada ? (
+                      <>
+                        <img src={fr.url_firmada} alt={'Firma ' + fr.rol_firma} className="w-full h-20 object-contain bg-white rounded border border-brand-gold/20" />
+                        <div className="text-[0.65rem] text-brand-brown/60 mt-1">Firmada{fr.registrada_por_nombre ? ' por ' + fr.registrada_por_nombre : ''}{fr.firmado_en ? ' el ' + new Date(fr.firmado_en).toLocaleString('es-VE') : ''}</div>
+                      </>
+                    ) : (
+                      <div className="text-[0.7rem] text-brand-brown/50">{fr.exigible ? 'Pendiente (obligatoria)' : 'No aplica a este partido'}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setModalFirmasAdmin(null)} className="mt-5 w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cerrar</button>
+          </div>
+        </div>
+      )}
       </main>
     </div>
   );

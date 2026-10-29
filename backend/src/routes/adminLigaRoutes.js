@@ -8,6 +8,7 @@ const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4B (M1)
 const { enviarPush, notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4): notificaciones web push
+const firmasActa = require('../utilidades/firmasActa'); // LOTE 6D: firmas digitales del acta
 
 const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
   try {
@@ -2527,6 +2528,28 @@ router.delete('/pagos/:id', async (req, res) => {
   } catch (error) {
     console.error('Error al eliminar pago:', error);
     res.status(500).json({ error: 'Error al eliminar el pago.' });
+  }
+});
+
+// ============================================================
+// LOTE 6D: FIRMAS DEL ACTA PARA EL HISTORIAL Y EL PDF DEL ACTA
+// ============================================================
+router.get('/partidos/:id/firmas', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const partidoId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(partidoId) || partidoId < 1) return res.status(400).json({ error: 'Partido invalido.' });
+    const chk = await db.query('SELECT t.organizacion_id FROM public.partidos p LEFT JOIN public.torneos t ON p.torneo_id = t.id WHERE p.id = $1', [partidoId]);
+    if (chk.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado.' });
+    const orgPartido = chk.rows[0].organizacion_id;
+    if (orgPartido && orgId && String(orgPartido) !== String(orgId)) {
+      return res.status(403).json({ error: 'Este partido no pertenece a tu organizacion.' });
+    }
+    const firmas = await firmasActa.estadoFirmas(partidoId);
+    res.json(firmas);
+  } catch (error) {
+    console.error('Error al consultar las firmas del acta:', error);
+    res.status(500).json({ error: 'Error al consultar las firmas del acta.' });
   }
 });
 

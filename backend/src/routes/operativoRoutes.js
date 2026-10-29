@@ -4,6 +4,7 @@ const db = require('../config/db');
 const { verificarToken } = require('../middleware/authMiddleware');
 const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4C
 const { notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4): notificaciones web push
+const firmasActa = require('../utilidades/firmasActa'); // LOTE 6D: firmas digitales del acta
 
 router.use(verificarToken);
 
@@ -279,6 +280,14 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
       return res.status(400).json({ error: `El partido debe estar 'En Curso' para finalizarlo. Estado actual: ${chk.rows[0].estado}` });
     }
 
+    // LOTE 6D: el acta solo se puede finalizar con todas las firmas
+    // exigibles registradas (arbitro, anotador y los delegados de los
+    // equipos cuando estan registrados).
+    const firmasFinal = await firmasActa.estadoFirmas(parseInt(req.params.id, 10));
+    if (firmasFinal.faltantes.length > 0) {
+      return res.status(400).json({ error: 'Faltan firmas del acta para finalizar el partido: ' + firmasFinal.faltantes.join(', ') + '.', firmas_faltantes: firmasFinal.faltantes });
+    }
+
     const { hora_final } = req.body;
     const resDb = await db.query(
       `UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2 RETURNING *`,
@@ -475,8 +484,18 @@ router.post('/partidos/:id/manos', async (req, res) => {
     `, [partidoId]);
     
     let partidoFinalizado = false;
+    let firmasPendientes = false; // LOTE 6D: retencion del cierre por meta si faltan firmas
     for (const fila of puntosRes.rows) {
       if (fila.total >= metaPuntos) {
+         // LOTE 6D: la meta de puntos solo cierra el partido si las firmas
+         // exigibles del acta estan completas; si falta alguna, el anotador
+         // ve el aviso y cierra con FINALIZAR ACTA despues de recoger las
+         // firmas en su dispositivo o en el del arbitro.
+         const firmasMeta = await firmasActa.estadoFirmas(parseInt(partidoId, 10));
+         if (firmasMeta.faltantes.length > 0) {
+           firmasPendientes = true;
+           break;
+         }
          const horaFinal = new Date().toISOString();
          await db.query(`UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2`, [horaFinal, partidoId]);
          partidoFinalizado = true;
@@ -494,7 +513,7 @@ router.post('/partidos/:id/manos', async (req, res) => {
       }
     }
     
-    res.json({ mensaje: 'Mano registrada.', mano: manoDb.rows[0], partido_finalizado: partidoFinalizado });
+    res.json({ mensaje: 'Mano registrada.', mano: manoDb.rows[0], partido_finalizado: partidoFinalizado, firmas_pendientes: firmasPendientes });
   } catch (error) {
     if (error && error.code === '23505') {
       return res.status(409).json({ error: 'Esa mano ya fue registrada para este partido.' });
@@ -806,6 +825,46 @@ router.put('/protestas/:id/confirmar', async (req, res) => {
     if (responderSiErrorIntegridad(error, req, res)) return;
     console.error('Error al confirmar la protesta:', error);
     res.status(500).json({ error: 'Error al confirmar la protesta.' });
+  }
+});
+
+// ============================================================
+// LOTE 6D: FIRMAS DIGITALES DEL ACTA DEL PARTIDO
+// Cuatro roles de firma: arbitro, anotador, delegado_local y
+// delegado_visita. Los delegados firman en el dispositivo del
+// anotador o del arbitro asignado (no firman desde su propio
+// modulo), por lo que cualquiera de los dos oficiales registra
+// esas firmas; el rol se valida en el servidor.
+// ============================================================
+router.get('/partidos/:id/firmas', async (req, res) => {
+  try {
+    const acceso = await puedeAccederPartido(req, req.params.id);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    const firmas = await firmasActa.estadoFirmas(parseInt(req.params.id, 10));
+    res.json(firmas);
+  } catch (error) {
+    console.error('Error al consultar las firmas del acta:', error);
+    res.status(500).json({ error: 'Error al consultar las firmas del acta.' });
+  }
+});
+
+router.post('/partidos/:id/firmas', async (req, res) => {
+  const { rol_firma, imagen } = req.body;
+  const partidoId = parseInt(req.params.id, 10);
+  try {
+    const acceso = await puedeAccederPartido(req, req.params.id);
+    if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
+    const guardada = await firmasActa.guardarFirma({ partidoId, rolFirma: rol_firma, imagen, usuario: req.usuario });
+    if (guardada.error) return res.status(guardada.status).json({ error: guardada.error });
+    // Aviso en vivo al otro oficial y a la pantalla publica para que
+    // refresquen el estado de las firmas del acta.
+    const io = req.app.get('io');
+    if (io) io.to('partido_' + partidoId).emit('firma_acta', { partido_id: partidoId, rol_firma: rol_firma });
+    res.status(201).json({ mensaje: 'Firma registrada.', firmas: await firmasActa.estadoFirmas(partidoId) });
+  } catch (error) {
+    if (responderSiErrorIntegridad(error, req, res)) return;
+    console.error('Error al guardar la firma del acta:', error);
+    res.status(500).json({ error: 'Error al guardar la firma.' });
   }
 });
 
