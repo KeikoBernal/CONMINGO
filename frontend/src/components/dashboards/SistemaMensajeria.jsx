@@ -2,7 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
+// LOTE 6B: VITE_SOCKET_URL puede llegar con el sufijo /api (la URL del REST, no la del
+// socket). Socket.io interpreta el path del URI como NAMESPACE, asi que conectar a
+// "/api" apuntaria al namespace /api (inexistente en el servidor) y cada handshake
+// moriria con connect_error (aviso de "Conexion en tiempo real no disponible").
+// Se normaliza quitando el sufijo: el socket siempre apunta a la raiz del servidor.
+const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000').replace(/\/api\/?$/, '');
 
 export default function SistemaMensajeria({ usuario, token, ligaActivaId }) {
   const [abierto, setAbierto] = useState(false);
