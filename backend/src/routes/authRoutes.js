@@ -74,6 +74,11 @@ router.get('/partidos/:id/nomina-publica', async (req, res) => {
 // 5 intentos fallidos → 15 minutos (tabla public.login_intentos).
 // ============================================================
 const rateLimit = require('express-rate-limit');
+// LOTE 6C: ipKeyGenerator normaliza la IP (una IPv6 se trunca a su subred
+// /64). Sin esto, express-rate-limit v8 emite ERR_ERL_KEY_GEN_IPV6 con cada
+// peticion desde una IPv6 (lo que salia en el log de Render) y, peor, un
+// cliente con IPv6 podia rotar direcciones para burlar los limiters.
+const { ipKeyGenerator } = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
@@ -84,7 +89,7 @@ const MINUTOS_BLOQUEO_LOGIN = 15;
 
 const normalizarEmailLogin = (e) => String(e || '').trim().toLowerCase();
 const REGEX_EMAIL_LOGIN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const claveLoginLimiter = (req) => `${req.ip}|${normalizarEmailLogin(req.body?.email)}`;
+const claveLoginLimiter = (req) => `${ipKeyGenerator(req.ip)}|${normalizarEmailLogin(req.body?.email)}`; // LOTE 6C: IP normalizada
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
