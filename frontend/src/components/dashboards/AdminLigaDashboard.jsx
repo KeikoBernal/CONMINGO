@@ -1000,6 +1000,8 @@ const confirmarReagendar = async (e) => {
       case 'historial': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
       case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5h6m-8 4h10m-10 4h6m-6 4h10M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>;
       case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
+      case 'sanciones': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.636 5.636l12.728 12.728" /></svg>;
+      case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
       case 'pagos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
       default: return null;
     }
@@ -1595,7 +1597,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                     <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }, { key: 'equipo_filtro', label: 'Equipo' }]} categoryFields={["rol", "equipo_filtro"]} filename="credenciales_filtradas" />
                     <div className="overflow-x-auto border border-brand-gold/20 rounded-lg">
-                      <table className="w-full text-left text-sm">
+                      <table className="w-full text-left text-sm min-w-[640px]">
                         <thead className="bg-brand-cream text-brand-brown uppercase tracking-wider text-xs">
                           <tr>
                             <th className="p-3 font-semibold">Usuario</th>
@@ -2213,7 +2215,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </h3>
                           <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={partidos.filter(p => p.estado === 'Suspendido')} filteredRows={filasSuspendidos} filter={getFilter('suspendidos')} setFilter={setTableFilter('suspendidos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'fase', label: 'Fase' }]} categoryFields={["fase", "estado"]} dateFields={["fecha_hora"]} filename="partidos_suspendidos_filtrados" />
                           <div className="overflow-x-auto bg-white rounded-lg border border-red-100">
-                            <table className="w-full text-left text-sm">
+                            <table className="w-full text-left text-sm min-w-[640px]">
                               <thead className="bg-red-100 text-red-800">
                                 <tr><th className="p-3">Fecha Original</th><th className="p-3">Torneo</th><th className="p-3">Encuentro</th><th className="p-3 text-center">Acciones</th></tr>
                               </thead>

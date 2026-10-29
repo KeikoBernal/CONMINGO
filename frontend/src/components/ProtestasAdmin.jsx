@@ -79,7 +79,7 @@ export default function ProtestasAdmin({ fetchConToken }) {
         <p className="mt-3 text-sm text-brand-brown/60">No hay protestas presentadas.</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="text-left text-brand-brown/70">
                 <th className="px-3 py-2 border-b border-brand-gold/20">Partido</th>

@@ -108,7 +108,7 @@ export default function VotacionMvp() {
             <p className="text-sm text-brand-brown/60">Esta votación no recibió votos.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border border-brand-gold/20 rounded-lg overflow-hidden">
+              <table className="w-full text-sm border border-brand-gold/20 rounded-lg overflow-hidden min-w-[640px]">
                 <thead>
                   <tr className="bg-brand-brown text-brand-cream text-left">
                     <th className="px-4 py-2">#</th>

@@ -43,6 +43,9 @@ body {
 @layer components {
   .tabla-admin {
     width: 100%;
+    /* LOTE 6A: ancho minimo para que el scroll horizontal del contenedor
+       overflow-x-auto sea real en pantallas angostas. */
+    min-width: 640px;
     text-align: left;
     border-collapse: collapse;
     background-color: #fff;
@@ -131,21 +134,23 @@ body {
 /* ==========================================
    N7: MODO LUZ SOLAR (alta legibilidad al aire libre)
    Se activa con BotonModoSolar, que agrega la clase
-   modo-luz-solar al body. Agranda todas las medidas rem
-   (texto, botones, tablas y espaciados crecen juntos),
-   refuerza el peso de los botones y aclara el fondo crema
-   para maximizar el contraste a plena luz del dia.
+   modo-luz-solar al html (para el filtro) y al body
+   (para la tipografia). Convierte TODA la interfaz a
+   blanco y negro puro (escala de grises con contraste
+   reforzado), agranda las medidas rem y refuerza el peso
+   de los botones para maximizar la lectura a plena luz
+   del dia.
    ========================================== */
+:root.modo-luz-solar {
+  filter: grayscale(100%) contrast(1.15);
+}
+
 body.modo-luz-solar {
   font-size: 18px;
 }
 
 body.modo-luz-solar button {
   font-weight: 700;
-}
-
-body.modo-luz-solar .bg-brand-cream {
-  background-color: #FFFDF4;
 }
 
 /* ==========================================

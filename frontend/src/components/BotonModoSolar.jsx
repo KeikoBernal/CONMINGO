@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 
 // N7: interruptor del modo Luz Solar para las canchas.
-// Agranda todo el texto del sistema (escala rem) y aclara los fondos claros
-// para que Arbitro y Anotador puedan leer la pantalla a plena luz del dia.
-// La preferencia se guarda en localStorage y se aplica como clase en <body>.
+// Convierte toda la interfaz a blanco y negro puro (filtro de escala de
+// grises con contraste reforzado) y agranda el texto para que Arbitro y
+// Anotador puedan leer la pantalla a plena luz del dia.
+// La preferencia se guarda en localStorage y se aplica como clase en <html>
+// (para el filtro) y en <body> (para la tipografia).
 export default function BotonModoSolar({ className = '' }) {
   const [activo, setActivo] = useState(() => localStorage.getItem('modoLuzSolar') === 'true');
 
   useEffect(() => {
+    document.documentElement.classList.toggle('modo-luz-solar', activo);
     document.body.classList.toggle('modo-luz-solar', activo);
     localStorage.setItem('modoLuzSolar', String(activo));
   }, [activo]);
