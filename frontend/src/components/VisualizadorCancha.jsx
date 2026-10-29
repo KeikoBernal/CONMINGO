@@ -180,8 +180,8 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                   Sugerencia: Según la gráfica, anotar {veredicto.puntos} punto{veredicto.puntos === 1 ? '' : 's'} a {veredicto.ganador === 'Local' ? nombreLocal : nombreVisita}.
                 </p>
               )}
-              <div className="mt-3 max-h-56 overflow-y-auto">
-                <table className="w-full text-xs">
+              <div className="mt-3 max-h-56 overflow-x-auto overflow-y-auto">
+                <table className="w-full text-xs min-w-[480px]">
                   <thead>
                     <tr className="text-left text-brand-brown/60 border-b border-brand-gold/20">
                       <th className="py-1 pr-2">#</th>

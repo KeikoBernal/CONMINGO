@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ActivarNotificaciones from './ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
+import CampanaNotificaciones from './CampanaNotificaciones'; // LOTE 6A: bandeja de notificaciones
 
 // C2: barra lateral compartida de los dashboards.
 // En escritorio se contrae a modo solo-iconos (persistido en localStorage);
@@ -103,6 +104,7 @@ export default function Sidebar({
 
         {/* LOTE 5 (N4): activacion de notificaciones push del navegador */}
         <div className={`border-t border-brand-gold/20 shrink-0 ${colapsado ? 'md:px-2 md:py-3' : 'px-6 py-4'}`}>
+          <CampanaNotificaciones colapsado={colapsado} />
           <ActivarNotificaciones colapsado={colapsado} />
         </div>
       </aside>
