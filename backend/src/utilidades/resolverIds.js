@@ -33,7 +33,7 @@ const esUuidPublico = (valor) =>
 
 const esIdEntero = (valor) => {
   const s = String(valor == null ? '' : valor).trim();
-  return /^d+$/.test(s) && Number(s) > 0 && Number.isSafeInteger(Number(s));
+  return /^\d+$/.test(s) && Number(s) > 0 && Number.isSafeInteger(Number(s));
 };
 
 // Devuelve el id entero interno de la fila, o null si el valor no es un
