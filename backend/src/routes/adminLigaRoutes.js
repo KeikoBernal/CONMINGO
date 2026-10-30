@@ -1976,7 +1976,7 @@ router.get('/sanciones', async (req, res) => {
       }
     }
     const listado = await db.query(
-      "SELECT s.*, j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal, j.cedula, e.nombre AS equipo_nombre, u.email AS creada_por_email FROM public.sanciones s JOIN public.jugadores j ON s.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id LEFT JOIN public.usuarios u ON s.creada_por = u.id WHERE s.organizacion_id = $1 ORDER BY s.creado_en DESC",
+      "SELECT s.*, s.created_at AS creado_en, j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal, j.cedula, e.nombre AS equipo_nombre, u.email AS creada_por_email FROM public.sanciones s JOIN public.jugadores j ON s.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id LEFT JOIN public.usuarios u ON s.creada_por = u.id WHERE s.organizacion_id = $1 ORDER BY s.created_at DESC",
       [orgId]
     );
     res.json(listado.rows);
