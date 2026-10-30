@@ -348,12 +348,12 @@ router.get('/documentos', async (req, res) => {
     const resultado = await db.query(`
       SELECT d.id, d.titulo, d.tipo, d.torneo_id, d.archivo_path, d.tamano_bytes, d.mime_type,
              (d.organizacion_id IS NULL) AS es_global,
-             TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(d.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              t.nombre AS torneo_nombre
       FROM public.documentos d
       LEFT JOIN public.torneos t ON d.torneo_id = t.id
       WHERE (d.organizacion_id IS NULL OR d.organizacion_id = $1)
-      ORDER BY d.creado_en DESC
+      ORDER BY d.created_at DESC
     `, [orgId]);
     const documentos = await Promise.all(resultado.rows.map(async (doc) => {
       const url = await construirUrlFirmadaDoc(doc.archivo_path);
@@ -380,7 +380,7 @@ router.get('/pagos', async (req, res) => {
     if (equipoIds.length === 0) return res.json({ pagos: [] });
     const resultado = await db.query(`
       SELECT p.id, p.torneo_id, p.equipo_id, p.jugador_id, p.monto, p.moneda, p.metodo, p.referencia,
-             TO_CHAR(p.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(p.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              t.nombre AS torneo_nombre,
              e.nombre AS equipo_nombre,
              TRIM(j.nombre || ' ' || j.apellido) AS jugador_nombre
@@ -389,7 +389,7 @@ router.get('/pagos', async (req, res) => {
       LEFT JOIN public.equipos e ON p.equipo_id = e.id
       LEFT JOIN public.jugadores j ON p.jugador_id = j.id
       WHERE (p.equipo_id = ANY($1::int[]) OR j.equipo_id = ANY($1::int[]))
-      ORDER BY p.creado_en DESC
+      ORDER BY p.created_at DESC
     `, [equipoIds]);
     res.json({ pagos: resultado.rows });
   } catch (error) {
@@ -444,7 +444,7 @@ router.get('/protestas', async (req, res) => {
     const resultado = await db.query(`
       SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.estado, pr.resolucion,
              pr.medida, pr.nota_resolucion,
-             TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(pr.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              pr.confirmacion_arbitro, pr.confirmacion_anotador,
              pr.medida_marcador_local, pr.medida_marcador_visita,
              el.nombre AS equipo_local,
@@ -458,7 +458,7 @@ router.get('/protestas', async (req, res) => {
       LEFT JOIN public.equipos eq ON pr.equipo_protestante_id = eq.id
       LEFT JOIN public.resultados r ON r.partido_id = p.id
       WHERE pr.presentada_por = $1
-      ORDER BY pr.creado_en DESC
+      ORDER BY pr.created_at DESC
     `, [req.usuario.id]);
     res.json({ protestas: resultado.rows });
   } catch (error) {

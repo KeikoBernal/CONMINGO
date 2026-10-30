@@ -747,7 +747,7 @@ router.get('/protestas-confirmacion', async (req, res) => {
   try {
     const resultado = await db.query(`
       SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.medida, pr.nota_resolucion,
-             TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(pr.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              pr.confirmacion_arbitro, pr.confirmacion_anotador,
              pr.medida_marcador_local, pr.medida_marcador_visita,
              p.arbitro_id, p.anotador_id,
@@ -761,7 +761,7 @@ router.get('/protestas-confirmacion', async (req, res) => {
       LEFT JOIN public.resultados r ON r.partido_id = p.id
       WHERE pr.estado = 'Pendiente Confirmacion'
         AND (p.arbitro_id = $1 OR p.anotador_id = $1)
-      ORDER BY pr.creado_en ASC
+      ORDER BY pr.created_at ASC
     `, [req.usuario.id]);
     res.json({ protestas: resultado.rows });
   } catch (error) {

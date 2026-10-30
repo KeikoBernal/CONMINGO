@@ -157,7 +157,7 @@ router.get('/bitacora', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const { busqueda, accion, fecha_desde, fecha_hasta } = req.query;
     const params = [orgId];
-    let sql = `SELECT a.id, a.accion, a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.fecha,
+    let sql = `SELECT a.id, a.accion, a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.created_at AS fecha,
       CASE
         WHEN a.accion = 'GET /mi-organizacion' THEN 'Consultó la información de la organización y su membrete.'
         WHEN a.accion = 'GET /partidos-finalizados' THEN 'Consultó el historial de partidos finalizados y sus actas.'
@@ -201,9 +201,9 @@ router.get('/bitacora', async (req, res) => {
       WHERE (a.organizacion_id = $1 OR (a.organizacion_id IS NULL AND u.organizacion_id = $1))`;
     if (busqueda) { params.push(`%${busqueda.trim()}%`); sql += ` AND (a.accion ILIKE $${params.length} OR a.tabla ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.nombre ILIKE $${params.length} OR u.apellido ILIKE $${params.length})`; }
     if (accion) { params.push(accion); sql += ` AND a.accion = $${params.length}`; }
-    if (fecha_desde) { params.push(fecha_desde); sql += ` AND a.fecha >= $${params.length}::date`; }
-    if (fecha_hasta) { params.push(fecha_hasta); sql += ` AND a.fecha < ($${params.length}::date + INTERVAL '1 day')`; }
-    sql += ' ORDER BY a.fecha DESC LIMIT 500';
+    if (fecha_desde) { params.push(fecha_desde); sql += ` AND a.created_at >= $${params.length}::date`; }
+    if (fecha_hasta) { params.push(fecha_hasta); sql += ` AND a.created_at < ($${params.length}::date + INTERVAL '1 day')`; }
+    sql += ' ORDER BY a.created_at DESC LIMIT 500';
     const resultado = await db.query(sql, params);
     res.json(resultado.rows);
   } catch (error) {
@@ -892,7 +892,7 @@ router.put('/equipos/:id/delegado', async (req, res) => {
 router.get('/plantillas-reglas', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const resDb = await db.query(`SELECT * FROM public.plantillas_reglas WHERE organizacion_id = $1 OR organizacion_id IS NULL ORDER BY id DESC`, [orgId]);
+    const resDb = await db.query(`SELECT *, created_at AS creado_en FROM public.plantillas_reglas WHERE organizacion_id = $1 OR organizacion_id IS NULL ORDER BY id DESC`, [orgId]);
     res.json(resDb.rows);
   } catch (error) { res.status(500).json({ error: 'Error obteniendo reglas.' }); }
 });
@@ -1976,7 +1976,7 @@ router.get('/sanciones', async (req, res) => {
       }
     }
     const listado = await db.query(
-      "SELECT s.*, j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal, j.cedula, e.nombre AS equipo_nombre, u.email AS creada_por_email FROM public.sanciones s JOIN public.jugadores j ON s.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id LEFT JOIN public.usuarios u ON s.creada_por = u.id WHERE s.organizacion_id = $1 ORDER BY s.creado_en DESC",
+      "SELECT s.*, s.created_at AS creado_en, j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal, j.cedula, e.nombre AS equipo_nombre, u.email AS creada_por_email FROM public.sanciones s JOIN public.jugadores j ON s.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id LEFT JOIN public.usuarios u ON s.creada_por = u.id WHERE s.organizacion_id = $1 ORDER BY s.created_at DESC",
       [orgId]
     );
     res.json(listado.rows);
@@ -2239,7 +2239,7 @@ router.get('/protestas', async (req, res) => {
     const resultado = await db.query(`
       SELECT pr.id, pr.partido_id, pr.motivo, pr.descripcion, pr.estado, pr.resolucion,
              pr.medida, pr.nota_resolucion,
-             TO_CHAR(pr.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(pr.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              pr.confirmacion_arbitro, pr.confirmacion_anotador,
              TO_CHAR(pr.resuelta_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS resuelta_en,
              pr.medida_marcador_local, pr.medida_marcador_visita,
@@ -2256,7 +2256,7 @@ router.get('/protestas', async (req, res) => {
       LEFT JOIN public.usuarios u ON pr.presentada_por = u.id
       LEFT JOIN public.resultados r ON r.partido_id = p.id
       WHERE pr.organizacion_id = $1
-      ORDER BY pr.creado_en DESC
+      ORDER BY pr.created_at DESC
     `, [orgId || null]);
     res.json({ protestas: resultado.rows });
   } catch (error) {
@@ -2362,14 +2362,14 @@ router.get('/documentos', async (req, res) => {
     const resultado = await db.query(`
       SELECT d.id, d.titulo, d.tipo, d.torneo_id, d.archivo_path, d.tamano_bytes, d.mime_type,
              (d.organizacion_id IS NULL) AS es_global,
-             TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(d.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              t.nombre AS torneo_nombre,
              TRIM(COALESCE(u.nombre || ' ' || u.apellido, u.email, '')) AS subido_por_nombre
       FROM public.documentos d
       LEFT JOIN public.torneos t ON d.torneo_id = t.id
       LEFT JOIN public.usuarios u ON d.subido_por = u.id
       WHERE (d.organizacion_id IS NULL OR d.organizacion_id = $1)
-      ORDER BY d.creado_en DESC
+      ORDER BY d.created_at DESC
     `, [orgId || null]);
     const documentos = await Promise.all(resultado.rows.map(async (doc) => ({
       ...doc,
@@ -2453,7 +2453,7 @@ router.get('/pagos', async (req, res) => {
     const orgId = await obtenerOrgId(req.usuario);
     const resultado = await db.query(`
       SELECT p.id, p.torneo_id, p.equipo_id, p.jugador_id, p.monto, p.moneda, p.metodo, p.referencia, p.nota,
-             TO_CHAR(p.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(p.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              t.nombre AS torneo_nombre,
              e.nombre AS equipo_nombre,
              TRIM(j.nombre || ' ' || j.apellido) AS jugador_nombre,
@@ -2464,7 +2464,7 @@ router.get('/pagos', async (req, res) => {
       LEFT JOIN public.jugadores j ON p.jugador_id = j.id
       LEFT JOIN public.usuarios u ON p.registrado_por = u.id
       WHERE p.organizacion_id = $1
-      ORDER BY p.creado_en DESC
+      ORDER BY p.created_at DESC
     `, [orgId || null]);
     res.json({ organizacion_id: orgId, pagos: resultado.rows });
   } catch (error) {
