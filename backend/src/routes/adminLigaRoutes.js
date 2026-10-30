@@ -892,7 +892,7 @@ router.put('/equipos/:id/delegado', async (req, res) => {
 router.get('/plantillas-reglas', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
-    const resDb = await db.query(`SELECT * FROM public.plantillas_reglas WHERE organizacion_id = $1 OR organizacion_id IS NULL ORDER BY id DESC`, [orgId]);
+    const resDb = await db.query(`SELECT *, created_at AS creado_en FROM public.plantillas_reglas WHERE organizacion_id = $1 OR organizacion_id IS NULL ORDER BY id DESC`, [orgId]);
     res.json(resDb.rows);
   } catch (error) { res.status(500).json({ error: 'Error obteniendo reglas.' }); }
 });
