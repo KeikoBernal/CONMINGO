@@ -9,10 +9,11 @@ const { verificarToken } = require('../middleware/authMiddleware'); // FIX #12: 
 // authMiddleware.verificarToken valida ese token contra Supabase.
 
 // Ruta para obtener partidos activos o agendados con nombres de equipos y sedes
+// LOTE 7C: incluye p.uuid_publico para que la landing genere links opacos a la pizarra.
 router.get('/partidos-activos', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT p.id, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id, p.sede_id, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
+      SELECT p.id, p.uuid_publico, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id, p.sede_id, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, el.nombre as local_nombre, ev.nombre as visita_nombre, t.nombre as torneo_nombre,
              s.nombre as sede_nombre, o.nombre as organizacion_nombre
       FROM public.partidos p
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
