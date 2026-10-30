@@ -98,7 +98,7 @@ DROP INDEX IF EXISTS public.uq_torneo_equipos;            -- duplica el constrai
 ALTER TABLE public.equipos ALTER COLUMN organizacion_id SET NOT NULL;
 ALTER TABLE public.equipos ALTER COLUMN categoria SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS equipos_nombre_unico_por_categoria
-  ON public.equipos (organizacion_id, categoria)
+  ON public.equipos (organizacion_id, categoria, nombre)
   WHERE estado <> 'Inactivo';
 COMMENT ON INDEX public.equipos_nombre_unico_por_categoria IS 'LOTE 6E: el nombre de equipo puede repetirse entre categorias o ligas distintas, pero no dentro de la misma categoria de la liga mientras el equipo este activo.';
 
