@@ -25,6 +25,9 @@
 //     porque es un error del cliente y no del servidor.
 // ============================================================
 
+// LOTE 6F (M5): reporte de errores a la telemetria (no-op si Sentry no esta activo)
+const { capturarError } = require('../utilidades/telemetria');
+
 const MENSAJES_RESTRICCIONES = {
   jugadores_dorsal_unico_por_equipo: 'Ese dorsal ya está ocupado en el equipo por otro jugador activo o suspendido.',
   protestas_partido_equipo_unicas: 'Ese equipo ya tiene una protesta vigente para ese partido.',
@@ -87,6 +90,8 @@ const manejarErroresIntegridad = (error, req, res, next) => {
     return;
   }
   console.error('[errorHandler] Error no controlado:', { ruta: req.method + ' ' + req.path, mensaje: error?.message || error });
+  // LOTE 6F (M5): los 500 reales se reportan a Sentry con la ruta como contexto
+  capturarError(error, { ruta: req.method + ' ' + req.path });
   if (res.headersSent) return next(error);
   res.status(500).json({ error: 'Error interno del servidor.' });
 };

@@ -3,6 +3,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit'); // <-- NUEVA IMPORTACIÓN
 require('dotenv').config();
+// LOTE 6F (M5): telemetria de errores con Sentry. No-op si SENTRY_DSN no esta definida.
+const { inicializarTelemetria } = require('./utilidades/telemetria');
+inicializarTelemetria();
 const http = require('http'); 
 const { Server } = require('socket.io'); 
 
