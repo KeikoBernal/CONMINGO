@@ -51,7 +51,7 @@ router.post('/respaldo-programado', async (req, res) => {
     const partidos = await leerTabla('partidos', 'SELECT * FROM public.partidos');
     const jugadores = await leerTabla('jugadores', 'SELECT * FROM public.jugadores');
     const incidencias = await leerTabla('incidencias_partido', 'SELECT * FROM public.incidencias_partido');
-    const auditoria = await leerTabla('audit_logs', 'SELECT * FROM public.audit_logs ORDER BY fecha DESC LIMIT 5000');
+    const auditoria = await leerTabla('audit_logs', 'SELECT * FROM public.audit_logs ORDER BY created_at DESC LIMIT 5000');
 
     // Sin usuario con sesión: la bitácora lo registra como acción del sistema
     // (usuario_id NULL). El CASE de GET /bitacora ya lo describe como
@@ -129,7 +129,7 @@ router.get('/metricas', async (req, res) => {
 // ==========================================
 router.get('/ligas', async (req, res) => {
   try {
-    const resultado = await db.query(`SELECT id, nombre, estado_activa, logo_url, responsable_nombre, responsable_telefono, responsable_email, creado_en FROM public.organizaciones ORDER BY creado_en DESC`);
+    const resultado = await db.query(`SELECT id, nombre, estado_activa, logo_url, responsable_nombre, responsable_telefono, responsable_email, created_at AS creado_en FROM public.organizaciones ORDER BY created_at DESC`);
     res.json(resultado.rows);
   } catch (error) { res.status(500).json({ error: 'Error al consultar ligas.' }); }
 });
@@ -468,7 +468,7 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion LIKE 'GET /%' THEN 'Consultó información del sistema.'
         ELSE REPLACE(a.accion, '_', ' ')
       END AS accion_descripcion,
-      a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.fecha,
+      a.tabla, a.valores_previos, a.nuevos_valores, a.ip, a.created_at AS fecha,
       u.email as usuario_email, u.nombre as usuario_nombre, u.apellido as usuario_apellido, u.rol as usuario_rol, u.cedula as usuario_cedula,
       o.nombre as organizacion_nombre
       FROM public.audit_logs a
@@ -481,9 +481,9 @@ router.get('/bitacora', async (req, res) => {
     if (organizacion_id) { params.push(organizacion_id); sql += ` AND (a.organizacion_id = $${params.length} OR u.organizacion_id = $${params.length})`; }
     if (accion) { params.push(accion); sql += ` AND a.accion = $${params.length}`; }
     if (busqueda) { params.push(`%${busqueda.trim()}%`); sql += ` AND (a.accion ILIKE $${params.length} OR a.tabla ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.cedula ILIKE $${params.length} OR o.nombre ILIKE $${params.length})`; }
-    if (fecha_desde) { params.push(fecha_desde); sql += ` AND a.fecha >= $${params.length}::date`; }
-    if (fecha_hasta) { params.push(fecha_hasta); sql += ` AND a.fecha < ($${params.length}::date + INTERVAL '1 day')`; }
-    sql += ' ORDER BY a.fecha DESC LIMIT 500';
+    if (fecha_desde) { params.push(fecha_desde); sql += ` AND a.created_at >= $${params.length}::date`; }
+    if (fecha_hasta) { params.push(fecha_hasta); sql += ` AND a.created_at < ($${params.length}::date + INTERVAL '1 day')`; }
+    sql += ' ORDER BY a.created_at DESC LIMIT 500';
 
     const resultado = await db.query(sql, params);
     res.json(resultado.rows);
@@ -546,12 +546,12 @@ router.get('/documentos', async (req, res) => {
   try {
     const resultado = await db.query(`
       SELECT d.id, d.titulo, d.tipo, d.archivo_path, d.tamano_bytes, d.mime_type,
-             TO_CHAR(d.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             TO_CHAR(d.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
              TRIM(COALESCE(u.nombre || ' ' || u.apellido, u.email, '')) AS subido_por_nombre
       FROM public.documentos d
       LEFT JOIN public.usuarios u ON d.subido_por = u.id
       WHERE d.organizacion_id IS NULL
-      ORDER BY d.creado_en DESC
+      ORDER BY d.created_at DESC
     `);
     const documentos = await Promise.all(resultado.rows.map(async (doc) => {
       const url = await construirUrlFirmadaDocGlobal(doc.archivo_path);
