@@ -1,17 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+// LOTE 7B: los endpoints publicos aceptan el id entero o el uuid_publico
+// opaco (los links nuevos de la fase 7c usaran el uuid).
+const { resolverIdPartido } = require('../utilidades/resolverIds');
 
-// 1. OBTENER PARTIDO ESPECÍFICO CON METADATOS (Árbitro, Anotador, Capitanes)
+// 1. OBTENER PARTIDO ESPECÍFICO CON METADATOS (Árbitro, Anotador, Capitaes)
 router.get('/partidos/:id', async (req, res) => {
   try {
-    const partidoId = parseInt(req.params.id, 10);
-    if (isNaN(partidoId)) {
-      return res.status(400).json({ error: 'Formato de ID inválido. Debe ser un número entero.' });
+    const partidoId = await resolverIdPartido(req.params.id); // LOTE 7B: id entero o uuid_publico
+    if (!partidoId) {
+      return res.status(400).json({ error: 'Formato de ID inválido. Debe ser el número del partido o su uuid público.' });
     }
 
     const resDb = await db.query(`
-      SELECT p.id, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id,
+      SELECT p.id, p.uuid_publico, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id,
              TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
              p.hora_inicio, p.hora_final,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,
@@ -41,9 +44,9 @@ router.get('/partidos/:id', async (req, res) => {
 // 2. OBTENER NÓMINA PÚBLICA
 router.get('/partidos/:id/nomina', async (req, res) => {
   try {
-    const partidoId = parseInt(req.params.id, 10);
-    if (isNaN(partidoId)) {
-      return res.status(400).json({ error: 'Formato de ID inválido. Debe ser un número entero.' });
+    const partidoId = await resolverIdPartido(req.params.id); // LOTE 7B: id entero o uuid_publico
+    if (!partidoId) {
+      return res.status(400).json({ error: 'Formato de ID inválido. Debe ser el número del partido o su uuid público.' });
     }
 
     const resDb = await db.query(`
@@ -61,7 +64,7 @@ router.get('/partidos/:id/nomina', async (req, res) => {
 router.get('/partidos-activos', async (req, res) => {
   try {
     const resDb = await db.query(`
-      SELECT p.id, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id,
+      SELECT p.id, p.uuid_publico, p.estado, p.fase, p.torneo_id, p.equipo_local_id, p.equipo_visita_id,
              TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora,
              p.hora_inicio, p.hora_final,
              el.nombre AS local_nombre, ev.nombre AS visita_nombre,

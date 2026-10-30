@@ -6,6 +6,8 @@ require('dotenv').config();
 // LOTE 6F (M5): telemetria de errores con Sentry. No-op si SENTRY_DSN no esta definida.
 const { inicializarTelemetria } = require('./utilidades/telemetria');
 inicializarTelemetria();
+// LOTE 7B (uuid publico): resuelve ids opacos (uuid_publico) o enteros en endpoints y sockets.
+const { resolverIdPartido } = require('./utilidades/resolverIds');
 const http = require('http'); 
 const { Server } = require('socket.io'); 
 
@@ -480,13 +482,14 @@ io.on('connection', (socket) => {
 
   // 1. Salas por partido
     socket.on('unirse_partido', async (partidoId) => {
-    const pid = parseInt(partidoId, 10); // FIX #16: normaliza el ID (antes llegaba mezclado como texto/número)
+    const pid = await resolverIdPartido(partidoId); // LOTE 7B: acepta el id entero interno o el uuid_publico opaco (links de la fase 7c)
+    if (!pid) return; // valor invalido: no se une a ninguna sala
     const sala = `partido_${pid}`;
     socket.join(sala);
     console.log(`Cliente ${socket.id} se unió a la sala: ${sala}`);
 
     // FIX #16: si el servidor se reinició (redeploy de Render), el estado se recupera desde la BD.
-    if (!isNaN(pid) && !partidosEnMemoria[pid]) {
+    if (!partidosEnMemoria[pid]) {
       await cargarPlanilla(pid);
     }
     if (partidosEnMemoria[pid]) {
