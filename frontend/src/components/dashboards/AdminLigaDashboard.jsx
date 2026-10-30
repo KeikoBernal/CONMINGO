@@ -800,7 +800,8 @@ const confirmarReagendar = async (e) => {
   };
 
   // LOTE 6F (N1): URL publica de la pizarra del partido (la misma del boton Acta Visual).
-  const urlMarcadorPartido = (partido) => `${window.location.origin}/?vista=puntajes&partido_id=${partido.id}`;
+// LOTE 7C: usa el uuid_publico (opaco) con fallback al id entero si la fila no lo trae.
+  const urlMarcadorPartido = (partido) => `${window.location.origin}/?vista=puntajes&partido_id=${partido.uuid_publico || partido.id}`;
 
 const exportarPlanillaFormato = async (partidoId, formato) => {
     try {
@@ -2120,7 +2121,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <td className="text-center"><strong>{p.local_nombre}</strong> <span className="text-brand-rust mx-1">vs</span> <strong>{p.visita_nombre}</strong></td>
                             <td className="text-center font-black text-lg">{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'N/A'}</td>
                             <td className="flex justify-center gap-2">
-                              <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Acta Visual</button>
+                              <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.uuid_publico || p.id}`, '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Acta Visual</button>
                               <button onClick={() => abrirFirmasAdmin(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Firmas</button>
                               <button onClick={() => abrirQrPartido(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">QR</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>

@@ -23,6 +23,10 @@ export default function PantallaPuntajes() {
 
   const [cargando, setCargando] = useState(true);
   const socketRef = useRef(null);
+  // LOTE 7C: la URL publica puede traer el uuid_publico del partido en vez del id
+  // entero. El id interno se conoce cuando resuelve el GET y es el que valida
+  // los eventos del socket (que viajan con el id entero interno).
+  const idPartidoInternoRef = useRef(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -51,7 +55,7 @@ export default function PantallaPuntajes() {
     
     socketRef.current.on('actualizar_planilla', (data) => {
       // 1. Validar que la data que entra por el socket pertenece exactamente al ID en pantalla
-      if (data.partido_id && String(data.partido_id) !== String(id)) return;
+      if (data.partido_id && idPartidoInternoRef.current && String(data.partido_id) !== String(idPartidoInternoRef.current)) return;
       
       // 2. Sanitización estricta de tipos de datos antes de inyectar en el estado de React
       if (data.efectividad && typeof data.efectividad === 'object') setEfectividadJugadores(data.efectividad);
@@ -66,6 +70,9 @@ export default function PantallaPuntajes() {
       .then(data => {
         if (data && !data.error) {
           setPartidoSeleccionado(data);
+          // LOTE 7C: guardar el id entero interno para validar los eventos del socket
+          // cuando la URL trae el uuid_publico.
+          idPartidoInternoRef.current = data.id;
           return fetch(`${API_URL}/publico/partidos/${id}/nomina`)
             .then(res => res.json())
             .then(nomina => {
@@ -118,7 +125,7 @@ export default function PantallaPuntajes() {
               {partidosEnVivo.map(p => (
                 <button 
                   key={p.id} 
-                  onClick={() => window.location.href=`/?vista=puntajes&partido_id=${p.id}`} 
+                  onClick={() => window.location.href=`/?vista=puntajes&partido_id=${p.uuid_publico || p.id}`} 
                   className="bg-brand-cream text-brand-brown p-6 rounded-xl border-2 border-brand-gold/30 hover:border-brand-gold hover:shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:-translate-y-1 transition-all text-left group relative overflow-hidden"
                 >
                   <div className="absolute top-0 right-0 bg-brand-rust text-white text-[0.65rem] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">

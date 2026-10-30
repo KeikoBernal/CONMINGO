@@ -1506,11 +1506,13 @@ router.get('/estadisticas/graficos', async (req, res) => {
 });
 
 router.get('/partidos-finalizados', async (req, res) => {
+  // LOTE 7C: se incluye p.uuid_publico para que el QR del marcador publico y el boton
+  // Acta Visual del historial generen URLs opacas (programa uuid, fase 7c).
   try {
     const orgId = await obtenerOrgId(req.usuario);
     await suspenderPartidosPasados(orgId);
     const resultado = await db.query(`
-      SELECT p.id, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, 
+      SELECT p.id, p.uuid_publico, TO_CHAR(p.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_hora, 
              p.estado, t.nombre as torneo_nombre, el.nombre as local_nombre, ev.nombre as visita_nombre, 
              r.marcador_local, r.marcador_visita, p.equipo_local_id, p.equipo_visita_id, p.arbitro_id, p.anotador_id
       FROM public.partidos p
