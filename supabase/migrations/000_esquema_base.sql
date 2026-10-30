@@ -22,6 +22,9 @@
 --   - inactivo_en en jugadores, equipos, sedes y usuarios (trigger).
 --   - Todos los CHECKs VALID (la 003 los creo NOT VALID; la 015 los valido).
 --   - Indices redundantes ya eliminados (no estan en este baseline).
+--   - FKs enteras normalizadas a integer (partidos.id y torneos.id son
+--     integer; la migracion 017 alineo las bigint de incidencias_partido,
+--     sanciones, protestas, votos_mvp y planilla_estado).
 --
 -- NOTA: auth.users y los buckets de Storage pertenecen al proyecto Supabase;
 -- el trigger on_auth_user_created solo aplica con auth habilitado.
@@ -512,7 +515,7 @@ CREATE TABLE public.login_intentos (
 );
 
 CREATE TABLE public.planilla_estado (
-  partido_id bigint NOT NULL,
+  partido_id integer NOT NULL,
   datos jsonb NOT NULL DEFAULT '{}'::jsonb,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT planilla_estado_pkey PRIMARY KEY (partido_id)
@@ -520,9 +523,9 @@ CREATE TABLE public.planilla_estado (
 
 CREATE TABLE public.incidencias_partido (
   id bigint NOT NULL DEFAULT nextval('incidencias_partido_id_seq'::regclass),
-  partido_id bigint NOT NULL,
+  partido_id integer NOT NULL,
   usuario_id uuid,
-  jugador_id bigint,
+  jugador_id integer,
   tipo character varying NOT NULL,
   descripcion text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -579,7 +582,7 @@ CREATE TABLE public.sanciones (
   id bigint NOT NULL DEFAULT nextval('sanciones_id_seq'::regclass),
   organizacion_id uuid NOT NULL,
   jugador_id integer NOT NULL,
-  partido_id bigint,
+  partido_id integer,
   tipo character varying(30) NOT NULL,
   motivo text,
   partidos_suspension integer NOT NULL DEFAULT 1,
@@ -609,7 +612,7 @@ CREATE TABLE public.sanciones (
 CREATE TABLE public.protestas (
   id bigint NOT NULL DEFAULT nextval('protestas_id_seq'::regclass),
   organizacion_id uuid NOT NULL,
-  partido_id bigint NOT NULL,
+  partido_id integer NOT NULL,
   equipo_protestante_id integer NOT NULL,
   presentada_por uuid,
   motivo character varying(200) NOT NULL,
@@ -646,7 +649,7 @@ CREATE TABLE public.protestas (
 CREATE TABLE public.votos_mvp (
   id bigint NOT NULL DEFAULT nextval('votos_mvp_id_seq'::regclass),
   organizacion_id uuid NOT NULL,
-  torneo_id bigint NOT NULL,
+  torneo_id integer NOT NULL,
   votante_id uuid NOT NULL,
   jugador_id integer NOT NULL,
   creado_en timestamp with time zone NOT NULL DEFAULT now(),
