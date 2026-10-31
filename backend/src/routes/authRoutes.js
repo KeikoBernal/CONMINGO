@@ -304,9 +304,34 @@ router.post('/verificar-correo', async (req, res) => {
   const token = String(req.body?.token || '').trim();
   if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'Enlace de verificación inválido.' });
   try {
-    const fila = await consumirTokenCorreo(token, 'verificacion');
+    // LOTE 6G: el mismo enlace aterriza aqui tanto para la verificacion inicial
+    // como para la confirmacion del cambio de correo; se distingue por el tipo del token.
+    let fila = await consumirTokenCorreo(token, 'verificacion');
+    let esCambio = false;
+    if (!fila) {
+      fila = await consumirTokenCorreo(token, 'cambio_correo');
+      esCambio = true;
+    }
     if (!fila) {
       return res.status(400).json({ error: 'El enlace de verificación es inválido o ya expiró. Solicita uno nuevo desde la pantalla de acceso.' });
+    }
+    if (esCambio) {
+      const nuevoEmail = fila.email_pendiente;
+      if (!nuevoEmail) {
+        return res.status(400).json({ error: 'El enlace de confirmación es inválido o ya expiró.' });
+      }
+      const { error: errorAuth } = await supabaseAdminProxy.auth.admin.updateUserById(fila.usuario_id, { email: nuevoEmail, email_confirm: true });
+      if (errorAuth) {
+        return res.status(400).json({ error: 'No se pudo actualizar el correo en el sistema de autenticación: ' + errorAuth.message });
+      }
+      await db.query('UPDATE public.usuarios SET email = $1, email_pendiente = NULL, correo_verificado = true, verificado_en = now() WHERE id = $2', [nuevoEmail, fila.usuario_id]);
+      try {
+        await db.query(
+          'INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5, $6)',
+          [fila.usuario_id, 'CORREO_CAMBIADO', 'usuarios', JSON.stringify({ email: fila.email }), JSON.stringify({ email: nuevoEmail }), req.ip]
+        );
+      } catch (_) { /* no bloquea */ }
+      return res.json({ mensaje: 'Correo actualizado. A partir de ahora inicia sesión con tu nuevo correo.' });
     }
     await db.query('UPDATE public.usuarios SET correo_verificado = true, verificado_en = now() WHERE id = $1', [fila.usuario_id]);
     // Sincroniza el estado en Supabase Auth (best-effort: la columna propia es la puerta)
