@@ -33,6 +33,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [userEditando, setUserEditando] = useState(null);
   const [itemEliminar, setItemEliminar] = useState(null); 
   const [claveConfirmacion, setClaveConfirmacion] = useState('');
+  // LOTE 6G: cambio de correo y reenvio de verificacion desde el directorio
+  const [modalCorreo, setModalCorreo] = useState(null);
+  const [nuevoCorreoUsuario, setNuevoCorreoUsuario] = useState('');
 
   const [equiposLiga, setEquiposLiga] = useState([]);
   
@@ -388,6 +391,39 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     else setMensaje({ texto: `Error: ${(await res.json()).error}`, tipo: 'error' });
   };
 
+  // LOTE 6G: cambiar el correo de un usuario desde el panel de credenciales
+  const cambiarCorreoAccion = (u) => {
+    setModalCorreo(u);
+    setNuevoCorreoUsuario('');
+  };
+
+  const enviarCambioCorreo = async (e) => {
+    e.preventDefault();
+    if (!modalCorreo) return;
+    const correoLimpio = nuevoCorreoUsuario.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoLimpio)) {
+      setMensaje({ texto: 'El nuevo correo tiene un formato inválido.', tipo: 'error' });
+      return;
+    }
+    const res = await fetchConToken(`/usuarios/${modalCorreo.id}/cambiar-correo`, { method: 'POST', body: JSON.stringify({ nuevo_email: correoLimpio }) });
+    const data = await res.json().catch(() => ({}));
+    setModalCorreo(null);
+    if (res.ok) {
+      setMensaje({ texto: data.mensaje, tipo: 'exito' });
+      cargarDatosPestana();
+    } else {
+      setMensaje({ texto: data.error || 'No se pudo solicitar el cambio de correo.', tipo: 'error' });
+    }
+  };
+
+  // LOTE 6G: reenviar enlace de verificacion (o confirmacion de cambio pendiente)
+  const reenviarVerificacionAccion = async (u) => {
+    const res = await fetchConToken(`/usuarios/${u.id}/reenviar-verificacion`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { setMensaje({ texto: data.mensaje, tipo: 'exito' }); cargarDatosPestana(); }
+    else setMensaje({ texto: data.error || 'No se pudo reenviar la verificación.', tipo: 'error' });
+  };
+
   const iniciarEliminacionUsuario = async (u) => {
     setMensaje(null);
     try {
@@ -468,7 +504,15 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
               <tr key={u.id} className={`transition-colors ${u.estado === 'Inactivo' ? 'opacity-60 bg-gray-50' : 'hover:bg-brand-cream/10'}`}>
                 <td className="p-4 font-bold">{u.nombre} {u.apellido}</td>
                 <td className="p-4">{u.cedula || 'N/R'}</td>
-                <td className="p-4">{u.email}</td>
+                <td className="p-4">
+                  <div>{u.email}</div>
+                  {u.correo_verificado === false && (
+                    <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[0.65rem] font-bold">Sin verificar</span>
+                  )}
+                  {u.email_pendiente && (
+                    <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[0.65rem] font-bold">Cambio pendiente a {u.email_pendiente}</span>
+                  )}
+                </td>
                 <td className="p-4">
                   <span className="px-2 py-1 bg-brand-cream/50 border border-brand-gold/20 rounded-md text-xs font-semibold">
                     {u.rol}
@@ -487,6 +531,14 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   <button onClick={() => resetearPasswordAccion(u)} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded transition-colors" title="Resetear Clave">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                   </button>
+                  <button onClick={() => cambiarCorreoAccion(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded transition-colors" title="Cambiar Correo">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l9 6 9-6M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                  </button>
+                  {(u.correo_verificado === false || u.email_pendiente) && (
+                    <button onClick={() => reenviarVerificacionAccion(u)} className="p-1.5 text-brand-brown hover:bg-brand-brown/10 rounded transition-colors" title="Reenviar Verificación">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    </button>
+                  )}
                   {u.estado !== 'Inactivo' && (
                     <button onClick={() => iniciarEliminacionUsuario(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Desactivar Acceso">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -630,6 +682,35 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
+
+      {/* MODAL CAMBIO DE CORREO (LOTE 6G) */}
+      {modalCorreo && (
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-2000 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl animate-slide-up border border-brand-gold/30">
+            <h3 className="text-xl font-bold text-brand-brown mb-2">Cambiar Correo Electrónico</h3>
+            <p className="text-sm text-brand-brown/70 mb-1">Usuario: <strong>{modalCorreo.nombre} {modalCorreo.apellido}</strong></p>
+            <p className="text-sm text-brand-brown/70 mb-4">Correo actual: <strong>{modalCorreo.email}</strong></p>
+            <p className="text-xs text-brand-brown/60 mb-4 leading-relaxed">
+              Se enviará un aviso al correo actual y una confirmación al nuevo correo. El cambio se aplicará solo cuando el nuevo correo lo confirme desde el enlace recibido.
+            </p>
+            <form onSubmit={enviarCambioCorreo} className="flex flex-col gap-4">
+              <input
+                type="email"
+                placeholder="Nuevo correo electrónico"
+                value={nuevoCorreoUsuario}
+                onChange={(e) => setNuevoCorreoUsuario(e.target.value)}
+                required
+                autoFocus
+                className="w-full p-3 border border-brand-gold/40 rounded-lg focus:ring-2 focus:ring-brand-rust focus:border-brand-rust outline-none text-brand-brown bg-brand-cream/20"
+              />
+              <div className="flex gap-3 mt-2">
+                <button type="button" onClick={() => setModalCorreo(null)} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm">Enviar Confirmación</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL ELIMINAR */}
       {itemEliminar && (
