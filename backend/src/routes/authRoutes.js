@@ -84,6 +84,8 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 const supabaseAdminProxy = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
+// LOTE 6G: utilidad de correo saliente y tokens de verificacion
+const { consumirTokenCorreo, crearTokenCorreo, reenviarVerificacion } = require('../utilidades/correo');
 
 const MAX_INTENTOS_LOGIN = 5;
 const MINUTOS_BLOQUEO_LOGIN = 15;
@@ -108,6 +110,16 @@ const otpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes de código. Espera 15 minutos antes de pedir otro.' }
+});
+
+// LOTE 6G: limite para reenvios del correo de verificacion (5 cada 15 minutos)
+const reenvioLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  keyGenerator: claveLoginLimiter,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes de reenvío. Espera 15 minutos antes de pedir otro.' }
 });
 
 // Paso 1: verificación de email + contraseña (bloqueo persistente por correo)
@@ -193,7 +205,8 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
     await db.query('DELETE FROM public.login_intentos WHERE email = $1', [email]);
 
     // 4) Validar registro y estado en la tabla usuarios
-    const usuarioRes = await db.query('SELECT rol, estado FROM public.usuarios WHERE email = $1', [email]);
+    // LOTE 6G: incluye correo_verificado para bloquear el acceso sin verificar
+    const usuarioRes = await db.query('SELECT id, rol, estado, correo_verificado FROM public.usuarios WHERE email = $1', [email]);
     const usuarioBD = usuarioRes.rows[0];
 
     if (!usuarioBD) {
@@ -201,6 +214,22 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
     }
     if (usuarioBD.estado === 'Inactivo') {
       return res.status(403).json({ error: 'Tu cuenta está desactivada. Contacta al administrador de tu liga.' });
+    }
+
+    // LOTE 6G: login bloqueado hasta verificar el correo. La sesion que Supabase
+    // entrega aqui no se devuelve y se revoca (best-effort) para no dejarla viva.
+    if (usuarioBD.correo_verificado === false) {
+      try { await supabaseAdminProxy.auth.admin.signOut(data.session.access_token); } catch (_) { /* best-effort */ }
+      try {
+        await db.query(
+          'INSERT INTO public.audit_logs (usuario_id, accion, tabla, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5)',
+          [usuarioBD.id, 'LOGIN_BLOQUEADO_NO_VERIFICADO', 'usuarios', JSON.stringify({ email }), req.ip]
+        );
+      } catch (_) { /* la auditoria no debe romper el login */ }
+      return res.status(403).json({
+        error: 'Tu correo aún no ha sido verificado. Revisa tu bandeja de entrada (también la carpeta de spam) y confirma tu correo para activar la cuenta.',
+        requiere_verificacion: true
+      });
     }
 
     // 5) Superadmin requiere segundo factor (OTP); la sesión NO se entrega aquí
@@ -263,6 +292,87 @@ router.post('/login-proxy/verificar-otp', otpLimiter, async (req, res) => {
   } catch (err) {
     console.error('Error en login-proxy/verificar-otp:', err);
     return res.status(500).json({ error: 'Error interno al verificar el código.' });
+  }
+});
+
+// ============================================================
+// LOTE 6G: VERIFICACION DE CORREO
+// ============================================================
+
+// Aterriza el enlace de verificacion que llega por correo (?verificar=token)
+router.post('/verificar-correo', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'Enlace de verificación inválido.' });
+  try {
+    const fila = await consumirTokenCorreo(token, 'verificacion');
+    if (!fila) {
+      return res.status(400).json({ error: 'El enlace de verificación es inválido o ya expiró. Solicita uno nuevo desde la pantalla de acceso.' });
+    }
+    await db.query('UPDATE public.usuarios SET correo_verificado = true, verificado_en = now() WHERE id = $1', [fila.usuario_id]);
+    // Sincroniza el estado en Supabase Auth (best-effort: la columna propia es la puerta)
+    try { await supabaseAdminProxy.auth.admin.updateUserById(fila.usuario_id, { email_confirm: true }); } catch (_) { /* no bloquea */ }
+    try {
+      await db.query(
+        'INSERT INTO public.audit_logs (usuario_id, accion, tabla, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5)',
+        [fila.usuario_id, 'CORREO_VERIFICADO', 'usuarios', JSON.stringify({ email: fila.email }), req.ip]
+      );
+    } catch (_) { /* no bloquea */ }
+    return res.json({ mensaje: 'Correo verificado. Tu cuenta quedó activada; ya puedes iniciar sesión.' });
+  } catch (error) {
+    console.error('Error verificando correo:', error);
+    return res.status(500).json({ error: 'Error interno al verificar el correo.' });
+  }
+});
+
+// Reenvia el enlace de verificacion (pantalla de login, sin sesion)
+router.post('/reenviar-verificacion', reenvioLimiter, async (req, res) => {
+  const email = normalizarEmailLogin(req.body?.email);
+  if (!REGEX_EMAIL_LOGIN.test(email)) return res.status(400).json({ error: 'Correo con formato inválido.' });
+  try {
+    const usuarioRes = await db.query('SELECT id, nombre, correo_verificado FROM public.usuarios WHERE email = $1 AND estado <> $2', [email, 'Inactivo']);
+    const usuarioBD = usuarioRes.rows[0];
+    if (usuarioBD && usuarioBD.correo_verificado === false) {
+      await reenviarVerificacion({ usuarioId: usuarioBD.id, para: email, nombre: usuarioBD.nombre });
+      try {
+        await db.query(
+          'INSERT INTO public.audit_logs (usuario_id, accion, tabla, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5)',
+          [usuarioBD.id, 'REENVIAR_VERIFICACION', 'usuarios', JSON.stringify({ email }), req.ip]
+        );
+      } catch (_) { /* no bloquea */ }
+    }
+    // Respuesta generica: no revela si el correo existe en el sistema
+    return res.json({ mensaje: 'Si el correo está registrado y pendiente de verificación, se envió un nuevo enlace.' });
+  } catch (error) {
+    console.error('Error reenviando verificación:', error);
+    return res.status(500).json({ error: 'Error interno al reenviar el correo de verificación.' });
+  }
+});
+
+// Aterriza la confirmacion del cambio de correo (?verificar=token de cambio)
+router.post('/confirmar-cambio-correo', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'Enlace de confirmación inválido.' });
+  try {
+    const fila = await consumirTokenCorreo(token, 'cambio_correo');
+    if (!fila || !fila.email_pendiente) {
+      return res.status(400).json({ error: 'El enlace de confirmación es inválido o ya expiró.' });
+    }
+    const nuevoEmail = fila.email_pendiente;
+    const { error: errorAuth } = await supabaseAdminProxy.auth.admin.updateUserById(fila.usuario_id, { email: nuevoEmail, email_confirm: true });
+    if (errorAuth) {
+      return res.status(400).json({ error: 'No se pudo actualizar el correo en el sistema de autenticación: ' + errorAuth.message });
+    }
+    await db.query('UPDATE public.usuarios SET email = $1, email_pendiente = NULL, correo_verificado = true, verificado_en = now() WHERE id = $2', [nuevoEmail, fila.usuario_id]);
+    try {
+      await db.query(
+        'INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5, $6)',
+        [fila.usuario_id, 'CORREO_CAMBIADO', 'usuarios', JSON.stringify({ email: fila.email }), JSON.stringify({ email: nuevoEmail }), req.ip]
+      );
+    } catch (_) { /* no bloquea */ }
+    return res.json({ mensaje: 'Correo actualizado. A partir de ahora inicia sesión con tu nuevo correo.' });
+  } catch (error) {
+    console.error('Error confirmando cambio de correo:', error);
+    return res.status(500).json({ error: 'Error interno al confirmar el cambio de correo.' });
   }
 });
 
