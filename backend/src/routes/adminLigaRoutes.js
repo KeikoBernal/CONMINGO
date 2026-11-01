@@ -909,7 +909,7 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
     
     await db.query('UPDATE public.usuarios SET debe_cambiar_password = true, password_hash = $2 WHERE id = $1', [req.params.id, hashedPwd]);
     await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD_OPERATIVO', 'usuarios', { id: req.params.id }, { password_reset: true, motivo_correo: envioReset.motivo }, req.ip, orgId);
-    res.json({ mensaje: `No se pudo enviar el correo (${envioReset.motivo}). Contraseña restablecida con clave temporal: ${nuevaPassword}` });
+    res.json({ mensaje: `No se pudo enviar el correo (${envioReset.motivo}${envioReset.error ? ' - ' + envioReset.error : ''}). Contraseña restablecida con clave temporal: ${nuevaPassword}` });
   } catch (error) { res.status(500).json({ error: 'Error al restablecer contraseña.' }); }
 });
 
@@ -942,7 +942,7 @@ router.post('/usuarios/:id/cambiar-correo', async (req, res) => {
       const motivo = resultado.motivoNuevo || 'error_envio';
       const detalle = motivo === 'smtp_no_configurado'
         ? 'el servidor de correo no está configurado: faltan las variables SMTP_HOST, SMTP_USER y SMTP_PASS en Render'
-        : 'el servidor de correo rechazó el envío: revisa el log de Render (linea [correo] No se pudo enviar) o SMTP_USER y SMTP_PASS (contraseña de aplicación de Gmail) en Render';
+        : 'el servidor de correo rechazó el envío: revisa el log de Render (linea [correo] No se pudo enviar) o SMTP_USER y SMTP_PASS (contraseña de aplicación de Gmail) en Render' + (resultado.errorNuevo ? ' [detalle tecnico: ' + resultado.errorNuevo + ']' : '');
       return res.status(503).json({ error: `No se pudo enviar el correo de confirmación (${detalle}). El correo del usuario no fue modificado.` });
     }
     await db.query('UPDATE public.usuarios SET email_pendiente = $1 WHERE id = $2', [nuevoEmail, req.params.id]);
@@ -973,7 +973,7 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
         const motivo = resultado.motivoNuevo || 'error_envio';
         const detalle = motivo === 'smtp_no_configurado'
           ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
-          : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render';
+          : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render' + (resultado.errorNuevo ? ' [detalle tecnico: ' + resultado.errorNuevo + ']' : '');
         return res.status(503).json({ error: `No se pudo reenviar el correo de confirmación (${detalle}).` });
       }
       await registrarAuditoria(req.usuario.id, 'REENVIAR_CAMBIO_CORREO', 'usuarios', null, { email_pendiente: usuario.email_pendiente, aviso_antiguo_enviado: resultado.enviadoAntiguo }, req.ip, orgId);
@@ -991,7 +991,7 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
     if (!envio.enviado) {
       const detalle = envio.motivo === 'smtp_no_configurado'
         ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
-        : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render';
+        : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render' + (envio.error ? ' [detalle tecnico: ' + envio.error + ']' : '');
       return res.status(503).json({ error: `No se pudo enviar el correo de verificación (${detalle}).` });
     }
     await registrarAuditoria(req.usuario.id, 'REENVIAR_VERIFICACION', 'usuarios', null, { email: usuario.email }, req.ip, orgId);
