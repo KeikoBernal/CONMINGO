@@ -8,6 +8,7 @@ import DelegadoDashboard from './components/dashboards/DelegadoDashboard';
 import AnotadorDashboard from './components/dashboards/AnotadorDashboard';
 import PantallaPuntajes from './components/dashboards/PantallaPuntajes';
 import PantallaOffline, { useConexion } from './components/PantallaOffline';
+import VerificarCorreo from './components/VerificarCorreo'; // LOTE 6G: aterriza el enlace ?verificar=
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -28,6 +29,7 @@ export default function App() {
   const [cargando, setCargando] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bloqueadoHasta, setBloqueadoHasta] = useState(null);
+  const [correoPorVerificar, setCorreoPorVerificar] = useState(''); // LOTE 6G: correo del aviso de verificacion pendiente
 
   const enProcesoLoginRef = useRef(false);
 
@@ -106,6 +108,13 @@ export default function App() {
     return <PantallaPuntajes />;
   }
 
+  // LOTE 6G: aterriza el enlace de verificacion de correo (?verificar=token).
+  // Vista publica sin sesion: sirve para la verificacion inicial y para la
+  // confirmacion del cambio de correo (el backend distingue el tipo de token).
+  if (new URLSearchParams(window.location.search).get('verificar')) {
+    return <VerificarCorreo />;
+  }
+
   const manejarLogin = async (e) => {
     e.preventDefault();
     if (isSubmitting) return; 
@@ -161,6 +170,10 @@ export default function App() {
           setMensaje(restantes !== null
             ? `Credenciales incorrectas. Te queda${restantes === 1 ? '' : 'n'} ${restantes} intento${restantes === 1 ? '' : 's'}.`
             : (respuestaLogin.error || 'Credenciales incorrectas.'));
+        } else if (respuestaLogin.requiere_verificacion) {
+          // LOTE 6G: login bloqueado hasta verificar el correo
+          setCorreoPorVerificar(emailLimpio);
+          setMensaje(respuestaLogin.error || 'Tu correo aún no ha sido verificado.');
         } else {
           setMensaje(respuestaLogin.error || 'No se pudo iniciar sesión. Intenta de nuevo.');
         }
@@ -483,9 +496,34 @@ export default function App() {
             </form>
 
             {mensaje && (
-              <div className={`mt-6 p-4 rounded-lg text-sm text-center font-medium ${mensaje.toLowerCase().includes('error') || mensaje.toLowerCase().includes('incorrectas') ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+              <div className={`mt-6 p-4 rounded-lg text-sm text-center font-medium ${mensaje.toLowerCase().includes('error') || mensaje.toLowerCase().includes('incorrectas') || mensaje.toLowerCase().includes('aún no ha sido verificado') ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
                 {mensaje}
               </div>
+            )}
+
+            {correoPorVerificar && (
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={async () => {
+                  setIsSubmitting(true);
+                  try {
+                    const resReenvio = await fetch(`${API_URL}/reenviar-verificacion`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: correoPorVerificar }),
+                    });
+                    const datosReenvio = await resReenvio.json().catch(() => ({}));
+                    setMensaje(datosReenvio.mensaje || datosReenvio.error || 'Si el correo está registrado y pendiente de verificación, se envió un nuevo enlace.');
+                  } catch (err) {
+                    setMensaje('Error de conexión con el servidor. Intenta de nuevo.');
+                  }
+                  setIsSubmitting(false);
+                }}
+                className="mt-4 w-full bg-brand-brown text-white py-3 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-md"
+              >
+                Reenviar correo de verificación
+              </button>
             )}
           </div>
         )}

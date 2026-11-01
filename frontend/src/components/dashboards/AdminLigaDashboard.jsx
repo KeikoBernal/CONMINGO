@@ -96,6 +96,9 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [modalFirmasAdmin, setModalFirmasAdmin] = useState(null);
   // LOTE 6F (N1): QR del marcador publico de un partido (modal para proyectar/descargar)
   const [modalQrPartido, setModalQrPartido] = useState(null);
+  // LOTE 6G: cambio de correo y reenvio de verificacion de credenciales
+  const [modalCorreoCredencial, setModalCorreoCredencial] = useState(null);
+  const [nuevoCorreoCredencial, setNuevoCorreoCredencial] = useState('');
 
   // Formularios
   const [formSede, setFormSede] = useState({ nombre: '', direccion: '' });
@@ -649,6 +652,34 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     if (!window.confirm(`¿Restablecer contraseña para ${nombre}?`)) return;
     const res = await fetchConToken(`/usuarios/${userId}/reset-password`, { method: 'POST' });
     const data = await res.json(); if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error, 'error');
+  };
+
+  // LOTE 6G: cambiar el correo de una credencial desde el panel
+  const cambiarCorreoCredencial = (u) => {
+    setModalCorreoCredencial(u);
+    setNuevoCorreoCredencial('');
+  };
+
+  const enviarCambioCorreoCredencial = async (e) => {
+    e.preventDefault();
+    if (!modalCorreoCredencial) return;
+    const correoLimpio = nuevoCorreoCredencial.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoLimpio)) {
+      mostrarToast('El nuevo correo tiene un formato inválido.', 'error');
+      return;
+    }
+    const res = await fetchConToken(`/usuarios/${modalCorreoCredencial.id}/cambiar-correo`, { method: 'POST', body: JSON.stringify({ nuevo_email: correoLimpio }) });
+    const data = await res.json().catch(() => ({}));
+    setModalCorreoCredencial(null);
+    if (res.ok) { mostrarToast(data.mensaje, 'exito'); cargarDatos(); }
+    else mostrarToast(data.error || 'No se pudo solicitar el cambio de correo.', 'error');
+  };
+
+  // LOTE 6G: reenviar enlace de verificacion (o confirmacion de cambio pendiente)
+  const reenviarVerificacionCredencial = async (u) => {
+    const res = await fetchConToken(`/usuarios/${u.id}/reenviar-verificacion`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error || 'No se pudo reenviar la verificación.', 'error');
   };
 
   const reasignarDelegado = async (equipoId, delegadoId) => {
@@ -1684,9 +1715,22 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <tr key={u.id} className="hover:bg-brand-cream/10">
                               <td className="p-3 font-bold text-brand-brown">{u.nombre} {u.apellido}</td>
                               <td className="p-3"><span className="px-2 py-1 bg-brand-blue/10 text-brand-blue rounded text-xs font-bold uppercase">{u.rol}</span></td>
-                              <td className="p-3 text-xs text-brand-brown/70"><div>{u.cedula}</div><div>{u.email}</div></td>
+                              <td className="p-3 text-xs text-brand-brown/70">
+                                <div>{u.cedula}</div>
+                                <div>{u.email}</div>
+                                {u.correo_verificado === false && (
+                                  <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[0.65rem] font-bold">Sin verificar</span>
+                                )}
+                                {u.email_pendiente && (
+                                  <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[0.65rem] font-bold">Cambio pendiente a {u.email_pendiente}</span>
+                                )}
+                              </td>
                               <td className="p-3 flex justify-center gap-2">
                                 <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm">Reset Clave</button>
+                                <button onClick={() => cambiarCorreoCredencial(u)} className="px-3 py-1.5 bg-brand-blue text-white hover:bg-brand-brown rounded text-xs font-bold transition-colors shadow-sm">Correo</button>
+                                {(u.correo_verificado === false || u.email_pendiente) && (
+                                  <button onClick={() => reenviarVerificacionCredencial(u)} className="px-3 py-1.5 bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm">Reenviar</button>
+                                )}
                                 <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json(); if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error, 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
                               </td>
                             </tr>
@@ -2825,6 +2869,34 @@ const bitacoraConTexto = bitacora.map(evento => ({
               </div>
             )}
             <button onClick={() => setModalFirmasAdmin(null)} className="mt-5 w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cerrar</button>
+          </div>
+        </div>
+      )}
+      {/* MODAL CAMBIO DE CORREO DE CREDENCIAL (LOTE 6G) */}
+      {modalCorreoCredencial && (
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl border border-brand-gold/30">
+            <h3 className="text-xl font-bold text-brand-brown mb-2">Cambiar Correo Electrónico</h3>
+            <p className="text-sm text-brand-brown/70 mb-1">Usuario: <strong>{modalCorreoCredencial.nombre} {modalCorreoCredencial.apellido}</strong></p>
+            <p className="text-sm text-brand-brown/70 mb-4">Correo actual: <strong>{modalCorreoCredencial.email}</strong></p>
+            <p className="text-xs text-brand-brown/60 mb-4 leading-relaxed">
+              Se enviará un aviso al correo actual y una confirmación al nuevo correo. El cambio se aplicará solo cuando el nuevo correo lo confirme desde el enlace recibido.
+            </p>
+            <form onSubmit={enviarCambioCorreoCredencial} className="flex flex-col gap-4">
+              <input
+                type="email"
+                placeholder="Nuevo correo electrónico"
+                value={nuevoCorreoCredencial}
+                onChange={(e) => setNuevoCorreoCredencial(e.target.value)}
+                required
+                autoFocus
+                className="w-full p-3 border border-brand-gold/40 rounded-lg focus:ring-2 focus:ring-brand-rust focus:border-brand-rust outline-none text-brand-brown bg-brand-cream/20"
+              />
+              <div className="flex gap-3 mt-2">
+                <button type="button" onClick={() => setModalCorreoCredencial(null)} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm">Enviar Confirmación</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

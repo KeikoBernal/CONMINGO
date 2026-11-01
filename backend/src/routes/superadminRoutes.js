@@ -5,6 +5,9 @@ const { createClient } = require('@supabase/supabase-js');
 const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware');
 
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
+// LOTE 6G: utilidad de correo saliente (SMTP) y tokens de verificacion
+const { enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo } = require('../utilidades/correo');
+const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // LOTE 6G
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const capitalizarTexto = (texto) => {
@@ -182,7 +185,22 @@ router.post('/ligas', async (req, res) => {
     await db.query(`INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, debe_cambiar_password) VALUES ($1, $2, 'Administrador de Liga', $3, $4, $5, $6, true)`, [authUser.user.id, responsable_email.trim().toLowerCase(), respNombreCap, respApellidoCap, cedulaLimpia, organizacionId]);
     await registrarAuditoria(req.usuario.id, 'CREAR_LIGA_Y_ADMIN', 'organizaciones', null, { ...resDb.rows[0], adminId: authUser.user.id }, req.ip, resDb.rows[0].id);
     
-    res.status(201).json({ mensaje: `Liga creada con éxito. Contraseña del Administrador: ${passwordInicial}`, liga: resDb.rows[0] });
+    // LOTE 6G: bienvenida con clave temporal + enlace de verificacion
+    const envioLiga = await enviarBienvenidaConVerificacion({
+      usuarioId: authUser.user.id,
+      para: responsable_email.trim().toLowerCase(),
+      nombre: respNombreCap,
+      usuario: responsable_email.trim().toLowerCase(),
+      claveTemporal: passwordInicial
+    });
+    if (envioLiga.enviado) {
+      res.status(201).json({ mensaje: `Liga creada con éxito. Se envió un correo con las credenciales y el enlace de verificación a ${responsable_email.trim().toLowerCase()}.`, liga: resDb.rows[0] });
+    } else {
+      // Modo degradado (SMTP sin configurar o fallo de envio): la cuenta queda
+      // activa sin verificacion y la clave se entrega a mano, como antes del lote 6g.
+      await db.query('UPDATE public.usuarios SET correo_verificado = true, verificado_en = now() WHERE id = $1', [authUser.user.id]);
+      res.status(201).json({ mensaje: `Liga creada con éxito. No se pudo enviar el correo (${envioLiga.motivo}). Entrega esta contraseña al Administrador de Liga: ${passwordInicial}`, liga: resDb.rows[0] });
+    }
   } catch (error) { res.status(500).json({ error: 'Error general al crear liga.' }); }
 });
 
@@ -248,7 +266,7 @@ router.get('/equipos', async (req, res) => {
 // ==========================================
 router.get('/usuarios', async (req, res) => {
   try {
-    const resultado = await db.query(`SELECT u.id, u.email, u.rol, u.nombre, u.apellido, u.cedula, u.estado, u.debe_cambiar_password, u.organizacion_id, o.nombre as organizacion_nombre FROM public.usuarios u LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id ORDER BY u.email ASC`);
+    const resultado = await db.query(`SELECT u.id, u.email, u.rol, u.nombre, u.apellido, u.cedula, u.estado, u.debe_cambiar_password, u.correo_verificado, u.email_pendiente, u.organizacion_id, o.nombre as organizacion_nombre FROM public.usuarios u LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id ORDER BY u.email ASC`);
     res.json(resultado.rows);
   } catch (error) { res.status(500).json({ error: 'Error al obtener usuarios.' }); }
 });
@@ -292,7 +310,21 @@ router.post('/usuarios', async (req, res) => {
     }
 
     await registrarAuditoria(req.usuario.id, 'CREAR_USUARIO', 'usuarios', null, resDb.rows[0], req.ip, resDb.rows[0].organizacion_id || null);
-    res.status(201).json({ mensaje: `Usuario creado. Contraseña inicial: ${passwordInicial}`, usuario: resDb.rows[0] });
+    // LOTE 6G: bienvenida con clave temporal + enlace de verificacion
+    const envioUsuario = await enviarBienvenidaConVerificacion({
+      usuarioId: authUser.user.id,
+      para: email.trim().toLowerCase(),
+      nombre: nombreCap,
+      usuario: email.trim().toLowerCase(),
+      claveTemporal: passwordInicial
+    });
+    if (envioUsuario.enviado) {
+      res.status(201).json({ mensaje: `Usuario creado. Se envió un correo con las credenciales y el enlace de verificación a ${email.trim().toLowerCase()}.`, usuario: resDb.rows[0] });
+    } else {
+      // Modo degradado: sin correo la cuenta queda activa sin verificacion
+      await db.query('UPDATE public.usuarios SET correo_verificado = true, verificado_en = now() WHERE id = $1', [authUser.user.id]);
+      res.status(201).json({ mensaje: `Usuario creado. No se pudo enviar el correo (${envioUsuario.motivo}). Contraseña inicial: ${passwordInicial}`, usuario: resDb.rows[0] });
+    }
   } catch (error) {
     if (error && error.code === '23505') {
       return res.status(400).json({ error: 'Ya existe otro usuario con ese correo o cédula.' });
@@ -333,6 +365,71 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
     await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD', 'usuarios', { id }, { password_reset: true }, req.ip, userDb.rows[0].organizacion_id || null);
     res.json({ mensaje: `Contraseña restablecida correctamente. Nueva clave temporal: ${nuevaPassword}` });
   } catch (error) { res.status(500).json({ error: 'Error al restablecer contraseña.' }); }
+});
+
+// ==========================================
+// LOTE 6G: CAMBIO DE CORREO Y REENVIO DE VERIFICACION
+// ==========================================
+router.post('/usuarios/:id/cambiar-correo', async (req, res) => {
+  const { id } = req.params;
+  const nuevoEmail = String(req.body?.nuevo_email || '').trim().toLowerCase();
+  if (!REGEX_EMAIL.test(nuevoEmail)) return res.status(400).json({ error: 'El nuevo correo tiene un formato inválido.' });
+  try {
+    const previa = await db.query('SELECT id, email, nombre, organizacion_id, email_pendiente FROM public.usuarios WHERE id = $1', [id]);
+    if (previa.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    const usuario = previa.rows[0];
+    if (String(usuario.email).toLowerCase() === nuevoEmail) return res.status(400).json({ error: 'El nuevo correo es el mismo que el actual.' });
+
+    const existe = await db.query('SELECT id FROM public.usuarios WHERE LOWER(email) = $1 AND id <> $2', [nuevoEmail, id]);
+    if (existe.rows.length > 0) return res.status(400).json({ error: 'Ya existe otro usuario con ese correo.' });
+
+    // Envia aviso al correo antiguo y confirmacion al nuevo; solo si AMBOS salen
+    // se marca el cambio como pendiente (email_pendiente). Si falla el envio no
+    // se modifica nada en la base de datos.
+    const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: nuevoEmail });
+    if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
+      return res.status(502).json({ error: 'No se pudo enviar el correo de confirmación. Verifica la configuración SMTP e inténtalo de nuevo. El correo del usuario no fue modificado.' });
+    }
+    await db.query('UPDATE public.usuarios SET email_pendiente = $1 WHERE id = $2', [nuevoEmail, id]);
+    await registrarAuditoria(req.usuario.id, 'SOLICITAR_CAMBIO_CORREO', 'usuarios', { email: usuario.email, email_pendiente: usuario.email_pendiente || null }, { email_pendiente: nuevoEmail }, req.ip, usuario.organizacion_id || null);
+    res.json({ mensaje: `Se envió la confirmación a ${nuevoEmail} y un aviso a ${usuario.email}. El cambio se aplicará cuando el nuevo correo lo confirme.` });
+  } catch (error) {
+    console.error('Error solicitando cambio de correo:', error);
+    res.status(500).json({ error: 'Error al solicitar el cambio de correo.' });
+  }
+});
+
+router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const userDb = await db.query('SELECT id, email, nombre, correo_verificado, email_pendiente, organizacion_id FROM public.usuarios WHERE id = $1', [id]);
+    if (userDb.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    const usuario = userDb.rows[0];
+
+    if (usuario.email_pendiente) {
+      // Hay un cambio de correo pendiente: reenvia la confirmacion al correo nuevo
+      const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: usuario.email_pendiente });
+      if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
+        return res.status(502).json({ error: 'No se pudo reenviar el correo de confirmación. Verifica la configuración SMTP.' });
+      }
+      await registrarAuditoria(req.usuario.id, 'REENVIAR_CAMBIO_CORREO', 'usuarios', null, { email_pendiente: usuario.email_pendiente }, req.ip, usuario.organizacion_id || null);
+      return res.json({ mensaje: `Se reenvió la confirmación a ${usuario.email_pendiente}.` });
+    }
+
+    if (usuario.correo_verificado) {
+      return res.status(400).json({ error: 'El correo de este usuario ya está verificado.' });
+    }
+
+    const envio = await reenviarVerificacion({ usuarioId: id, para: usuario.email, nombre: usuario.nombre });
+    if (!envio.enviado) {
+      return res.status(502).json({ error: 'No se pudo enviar el correo de verificación. Verifica la configuración SMTP.' });
+    }
+    await registrarAuditoria(req.usuario.id, 'REENVIAR_VERIFICACION', 'usuarios', null, { email: usuario.email }, req.ip, usuario.organizacion_id || null);
+    res.json({ mensaje: `Se reenvió el enlace de verificación a ${usuario.email}.` });
+  } catch (error) {
+    console.error('Error reenviando verificación:', error);
+    res.status(500).json({ error: 'Error al reenviar la verificación.' });
+  }
 });
 
 // NUEVA RUTA: Endpoint para pre-validar en el frontend si se permite la eliminación (UX Fluida)
@@ -464,6 +561,12 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'EMITIR_SANCION' THEN 'Emitió una sanción (tarjeta) a un jugador.'
         WHEN a.accion = 'REGISTRAR_INCIDENCIA' THEN 'Registró una incidencia de partido.'
         WHEN a.accion = 'CAMBIAR_PASSWORD_PROPIO' THEN 'Cambió su propia contraseña.'
+        WHEN a.accion = 'CORREO_VERIFICADO' THEN 'Verificó su correo y activó su cuenta.'
+        WHEN a.accion = 'REENVIAR_VERIFICACION' THEN 'Reenvió el enlace de verificación de un usuario.'
+        WHEN a.accion = 'SOLICITAR_CAMBIO_CORREO' THEN 'Solicitó el cambio de correo de un usuario.'
+        WHEN a.accion = 'REENVIAR_CAMBIO_CORREO' THEN 'Reenvió la confirmación del cambio de correo de un usuario.'
+        WHEN a.accion = 'CORREO_CAMBIADO' THEN 'Confirmación recibida: cambió el correo de una cuenta.'
+        WHEN a.accion = 'LOGIN_BLOQUEADO_NO_VERIFICADO' THEN 'Intento de acceso con un correo sin verificar.'
         WHEN a.accion = 'CREAR_TORNEO_FLASH' THEN 'Creó un torneo flash (asistentes, sorteo de equipos y calendario todos contra todos).'
         WHEN a.accion LIKE 'GET /%' THEN 'Consultó información del sistema.'
         ELSE REPLACE(a.accion, '_', ' ')
