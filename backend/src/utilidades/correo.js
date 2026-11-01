@@ -22,27 +22,53 @@ console.log('[correo] SMTP al arrancar:', SMTP_CONFIGURADO ? 'configurado' : 'SI
 });
 
 let transporte = null;
+let ipActual = null; // IPv4 que usa el transporte vigente (null si conecta por nombre)
+let ipExitosa = null; // IPv4 que ya logro conectar alguna vez (se prefiere)
+let indiceIp = 0; // rotacion: la proxima reconstruccion usa otra IPv4 de la lista
+let ipsSmtp = []; // todas las IPv4 del host SMTP (vacia si se conecta por nombre)
+let usarHostname = false; // ultimo recurso tras fallar todas las IPv4
+
 const construirTransporte = async () => {
   const puerto = parseInt(process.env.SMTP_PORT || '465', 10);
   const host = process.env.SMTP_HOST;
 
   // LOTE 6I: smtp.gmail.com tiene direcciones IPv4 e IPv6 y nodemailer elige
-  // una al azar en cada conexion. En Render la ruta IPv6 hacia Gmail se cae en
-  // silencio, asi que cada correo pagaba el timeout de conexion completo (2
-  // minutos por defecto) antes de reintentar por IPv4: por eso los correos
-  // tardaban tanto. Se resuelve el host una sola vez forzando IPv4 y se
-  // conecta a esa IP; el nombre original queda como servername para que el
-  // certificado TLS de Gmail siga validando. Si la resolucion falla, se usa
-  // el host tal cual (nodemailer probara todas sus direcciones).
+  // una al azar en cada conexion; en Render la ruta IPv6 hacia Gmail se cae en
+  // silencio. Pero ademas, de las varias IPv4 que publica Gmail, algunas NO
+  // son alcanzables desde la red de Render (el TCP al puerto 465 se cae en
+  // silencio): se vio en produccion un Connection timeout con una IPv4 concreta.
+  // Por eso se resuelven TODAS las IPv4 y se conecta a una concreta (el nombre
+  // original queda como servername para que el certificado TLS de Gmail siga
+  // validando); enviarCorreo rota a la siguiente IPv4 si esa falla.
   let hostConexion = host;
   let servernameTls = null;
-  try {
-    const resolucion = await dns.promises.lookup(host, { family: 4 });
-    hostConexion = resolucion.address;
-    servernameTls = host;
-  } catch (error) {
-    console.error('[correo] No se pudo resolver ' + host + ' a IPv4, se conecta por nombre:', error?.message || error);
+  ipActual = null;
+  if (!usarHostname) {
+    try {
+      const direcciones = await dns.promises.resolve4(host);
+      if (Array.isArray(direcciones) && direcciones.length > 0) {
+        ipsSmtp = direcciones;
+        if (ipExitosa && direcciones.includes(ipExitosa)) {
+          hostConexion = ipExitosa;
+        } else {
+          hostConexion = direcciones[indiceIp % direcciones.length];
+          indiceIp += 1;
+        }
+        servernameTls = host;
+      }
+    } catch (error) {
+      // resolve4 no disponible o host sin registros A: se intenta una sola
+      // IPv4 y, si tambien falla, se conecta por nombre tal cual.
+      try {
+        const resolucion = await dns.promises.lookup(host, { family: 4 });
+        hostConexion = resolucion.address;
+        servernameTls = host;
+      } catch (error2) {
+        console.error('[correo] No se pudo resolver ' + host + ' a IPv4, se conecta por nombre:', error2?.message || error2);
+      }
+    }
   }
+  if (servernameTls) ipActual = hostConexion;
 
   const opciones = {
     host: hostConexion,
@@ -53,26 +79,39 @@ const construirTransporte = async () => {
     maxConnections: 3,
     maxMessages: 50,
     // Timeouts acotados: si una conexion cuelga, falla rapido en vez de esperar.
-    connectionTimeout: 15000,
+    connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 60000,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
   };
   if (servernameTls) opciones.servername = servernameTls;
 
+  console.log('[correo] Transporte hacia ' + hostConexion + (servernameTls ? ' (servername: ' + servernameTls + ')' : ' (por nombre)') + '. IPv4 disponibles: ' + (usarHostname ? 'no (modo nombre)' : (ipsSmtp.join(', ') || '1')));
   transporte = nodemailer.createTransport(opciones);
   return transporte;
 };
 
 const obtenerTransporte = async () => transporte || construirTransporte();
 
+// Errores que justifican rotar a otra IPv4 y reintentar (fallas de conexion).
+const esErrorDeConexion = (mensaje) => {
+  const m = String(mensaje || '').toLowerCase();
+  return m.includes('connection timeout') || m.includes('greeting never received') ||
+    m.includes('econnection') || m.includes('etimedout') || m.includes('econnrefused') ||
+    m.includes('ehostunreach') || m.includes('enetunreach') || m.includes('econnreset') ||
+    m.includes('socket hang up') || m.includes('certificate') || m.includes('tls');
+};
+
 const remitente = () => process.env.SMTP_FROM || process.env.SMTP_USER || 'CONMINGO';
 
 // Envia un correo. Devuelve { enviado: true } o { enviado: false, motivo }.
-const enviarCorreo = async ({ para, asunto, html, texto }) => {
-  if (!SMTP_CONFIGURADO) return { enviado: false, motivo: 'smtp_no_configurado' };
+// LOTE 6I: si la IPv4 en uso falla a nivel de conexion (timeout, rechazo, TLS),
+// se reconstruye el transporte con otra IPv4 de la lista y se reintenta (hasta
+// 3 IPs); la IP que funciona queda en cache para los envios siguientes. Como
+// ultimo recurso se conecta por nombre (nodemailer probara todas sus direcciones).
+const intentarEnviar = async ({ para, asunto, html, texto }) => {
+  const inicio = Date.now();
   try {
-    const inicio = Date.now();
     await (await obtenerTransporte()).sendMail({
       from: remitente(),
       to: para,
@@ -80,12 +119,49 @@ const enviarCorreo = async ({ para, asunto, html, texto }) => {
       html,
       text: texto || html.replace(/<[^>]+>/g, ' ')
     });
-    console.log('[correo] Enviado a ' + para + ' en ' + (Date.now() - inicio) + ' ms');
-    return { enviado: true };
+    return { ok: true, ms: Date.now() - inicio };
   } catch (error) {
-    console.error('[correo] No se pudo enviar:', { para, asunto, error: error?.message || error });
-    return { enviado: false, motivo: 'error_envio', error: error?.message || String(error) };
+    return { ok: false, ms: Date.now() - inicio, error: error?.message || String(error) };
   }
+};
+
+const enviarCorreo = async ({ para, asunto, html, texto }) => {
+  if (!SMTP_CONFIGURADO) return { enviado: false, motivo: 'smtp_no_configurado' };
+  await obtenerTransporte(); // resuelve las IPv4 disponibles si es la primera vez
+  const intentosMax = ipsSmtp.length > 1 ? Math.min(ipsSmtp.length, 3) : 1;
+  let ultimoError = null;
+  for (let intento = 1; intento <= intentosMax; intento++) {
+    const r = await intentarEnviar({ para, asunto, html, texto });
+    if (r.ok) {
+      if (ipActual) ipExitosa = ipActual;
+      console.log('[correo] Enviado a ' + para + ' en ' + r.ms + ' ms' + (ipActual ? ' via ' + ipActual : '') + (intento > 1 ? ' (intento ' + intento + ')' : ''));
+      return { enviado: true };
+    }
+    ultimoError = r.error;
+    console.error('[correo] Fallo el envio (intento ' + intento + ' de ' + intentosMax + (ipActual ? ' via ' + ipActual : '') + '):', { para, asunto, error: r.error });
+    if (intento >= intentosMax || !esErrorDeConexion(r.error)) break;
+    transporte = null; // fuerza reconstruir el transporte con otra IPv4
+  }
+
+  // Ultima alternativa: conectar por nombre y dejar que nodemailer pruebe
+  // todas sus direcciones (incluida la IPv6 lenta de Render, solo como red de
+  // seguridad). El proximo pedido vuelve a intentar por IPv4.
+  if (ultimoError && ipsSmtp.length > 0 && !usarHostname && esErrorDeConexion(ultimoError)) {
+    usarHostname = true;
+    transporte = null;
+    const r = await intentarEnviar({ para, asunto, html, texto });
+    if (r.ok) {
+      console.log('[correo] Enviado a ' + para + ' en ' + r.ms + ' ms (por nombre)');
+      return { enviado: true };
+    }
+    ultimoError = r.error;
+    console.error('[correo] Tambien fallo el envio por nombre:', { para, asunto, error: r.error });
+    usarHostname = false;
+    transporte = null;
+  }
+
+  console.error('[correo] No se pudo enviar:', { para, asunto, error: ultimoError });
+  return { enviado: false, motivo: 'error_envio', error: ultimoError };
 };
 
 const URL_FRONTEND = () => String(process.env.URL_FRONTEND || 'https://conmingo.vercel.app').replace(/\/+$/, '');
