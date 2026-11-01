@@ -310,14 +310,15 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     };
 
     const res = await fetchConToken('/ligas', { method: 'POST', body: JSON.stringify(payloadLimpio) });
-    const data = await res.json();
+    // LOTE 6G FIX: respuesta no JSON (proxy durante redeploy) no debe matar el handler
+    const data = await res.json().catch(() => ({}));
     
     setIsSubmitting(false); 
     if (res.ok) {
       setMensaje({ texto: data.mensaje, tipo: 'exito' }); 
       setFormLiga({ nombre: '', responsable_nombre: '', responsable_apellido: '', responsable_cedula: '', responsable_telefono: '', responsable_email: '' });
       cargarDatosPestana();
-    } else setMensaje({ texto: `Error: ${data.error}`, tipo: 'error' });
+    } else setMensaje({ texto: `Error: ${data.error || 'el servidor no respondio correctamente (redeploy en Render?)'}`, tipo: 'error' });
   };
 
   const actualizarLiga = async (e) => {
@@ -355,14 +356,14 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     };
 
     const res = await fetchConToken('/usuarios', { method: 'POST', body: JSON.stringify(payloadLimpio) });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     
     setIsSubmitting(false); 
     if (res.ok) {
       setMensaje({ texto: data.mensaje, tipo: 'exito' });
       setFormUser({ nombre: '', apellido: '', cedula: '', email: '', rol: 'administrador de liga', organizacion_id: '', equipo_id: '' });
       cargarDatosPestana();
-    } else setMensaje({ texto: `Error: ${data.error}`, tipo: 'error' });
+    } else setMensaje({ texto: `Error: ${data.error || 'el servidor no respondio correctamente (redeploy en Render?)'}`, tipo: 'error' });
   };
 
   const actualizarUsuario = async (e) => {
@@ -387,8 +388,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     const cincoDigitos = user.cedula ? user.cedula.trim().substring(0, 5) : '00000';
     if (!window.confirm(`¿Restablecer clave temporal a: ${primerNombre}${cincoDigitos}!?`)) return;
     const res = await fetchConToken(`/usuarios/${user.id}/reset-password`, { method: 'POST' });
-    if (res.ok) { setMensaje({ texto: (await res.json()).mensaje, tipo: 'exito' }); cargarDatosPestana(); } 
-    else setMensaje({ texto: `Error: ${(await res.json()).error}`, tipo: 'error' });
+    if (res.ok) { setMensaje({ texto: (await res.json().catch(() => ({}))).mensaje || 'Clave restablecida.', tipo: 'exito' }); cargarDatosPestana(); } 
+    else setMensaje({ texto: `Error: ${(await res.json().catch(() => ({}))).error || 'el servidor no respondio correctamente'}`, tipo: 'error' });
   };
 
   // LOTE 6G: cambiar el correo de un usuario desde el panel de credenciales
@@ -430,7 +431,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       const res = await fetchConToken(`/usuarios/${u.id}/verificar-eliminacion`);
       const data = await res.json();
       if (!res.ok) {
-        setMensaje({ texto: data.error, tipo: 'error' });
+        setMensaje({ texto: data.error || 'El servidor no respondio correctamente.', tipo: 'error' });
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
@@ -454,13 +455,13 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     e.preventDefault();
     if (!itemEliminar || !claveConfirmacion) return;
     const res = await fetchConToken(itemEliminar.tipo === 'liga' ? `/ligas/${itemEliminar.id}` : `/usuarios/${itemEliminar.id}`, { method: 'DELETE', body: JSON.stringify({ password: claveConfirmacion }) });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setMensaje({ texto: data.mensaje, tipo: 'exito' }); setItemEliminar(null); setClaveConfirmacion('');
       if (ligaDetalle?.liga?.id === itemEliminar.id) setLigaDetalle(null);
       cargarDatosPestana();
     } else {
-      setMensaje({ texto: data.error, tipo: 'error' }); 
+      setMensaje({ texto: data.error || 'El servidor no respondio correctamente.', tipo: 'error' }); 
     }
   };
 

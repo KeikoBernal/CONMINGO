@@ -644,14 +644,17 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const guardarCredencial = async (e) => {
     e.preventDefault();
     const res = await fetchConToken('/crear-credencial', { method: 'POST', body: JSON.stringify(formCredencial) });
-    const data = await res.json();
-    if (res.ok) { setMensaje(data.mensaje); setFormCredencial({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' }); cargarDatos(); } else { mostrarToast(data.error, 'error'); }
+    // LOTE 6G FIX: si el backend responde algo que no es JSON (pagina del proxy
+    // durante un redeploy de Render), el handler moria en silencio sin mostrar
+    // ningun mensaje al administrador.
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { setMensaje(data.mensaje || 'Credencial creada.'); setFormCredencial({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' }); cargarDatos(); } else { mostrarToast(data.error || 'No se pudo crear la credencial: el servidor no respondio correctamente. Revisa el log de Render.', 'error'); }
   };
 
   const resetearPasswordOperativo = async (userId, cedula, nombre) => {
     if (!window.confirm(`¿Restablecer contraseña para ${nombre}?`)) return;
     const res = await fetchConToken(`/usuarios/${userId}/reset-password`, { method: 'POST' });
-    const data = await res.json(); if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error, 'error');
+    const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error');
   };
 
   // LOTE 6G: cambiar el correo de una credencial desde el panel
@@ -1731,7 +1734,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 {(u.correo_verificado === false || u.email_pendiente) && (
                                   <button onClick={() => reenviarVerificacionCredencial(u)} className="px-3 py-1.5 bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm">Reenviar</button>
                                 )}
-                                <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json(); if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error, 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
+                                <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
                               </td>
                             </tr>
                           ))}
