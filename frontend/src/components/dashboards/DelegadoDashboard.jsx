@@ -8,8 +8,7 @@ import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla'
 import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
 import ProtestasDelegado from '../ProtestasDelegado';
-import ActivarNotificaciones from '../ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
-import CampanaNotificaciones from '../CampanaNotificaciones'; // LOTE 6A: bandeja de notificaciones
+import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -351,84 +350,34 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
         </div>
       )}
 
-      {/* SIDEBAR TIPO ADMIN */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-brand-brown text-brand-cream shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:shrink-0`}>
-        
-        {/* Identificación del Equipo */}
-        <div className="p-6 border-b border-brand-gold/20 shrink-0 bg-brand-brown/50">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-brand-cream/10 border border-brand-gold/50 flex items-center justify-center shrink-0 overflow-hidden">
-              {miEquipo?.logo_url ? (
-                <img src={miEquipo.logo_url} alt="Logo Equipo" className="w-full h-full object-cover" />
-              ) : (
-                <svg className="w-6 h-6 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-                </svg>
-              )}
-            </div>
-            <div className="overflow-hidden">
-              <h1 className="text-lg font-bold text-brand-cream truncate" title={miEquipo?.nombre || 'Cargando...'}>
-                {miEquipo ? miEquipo.nombre : 'Cargando...'}
-              </h1>
-              <p className="text-xs text-brand-gold font-semibold uppercase tracking-wider mt-0.5">
-                Panel Delegado
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto py-6 hide-scrollbar flex flex-col gap-6">
-          <div>
-            <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Gestión Deportiva</div>
-            <nav className="space-y-1">
-              {[
-                { id: 'equipo', label: 'Mi Equipo' },
-                { id: 'calendario', label: 'Calendario y Puntajes' },
-                { id: 'estadisticas', label: 'Analítica y Scouting' },
-                { id: 'documentos', label: 'Documentos de la Liga' },
-                { id: 'pagos', label: 'Pagos del Equipo' },
-                { id: 'votacion', label: 'Votación MVP' },
-                { id: 'protestas', label: 'Protestas' }
-              ].map(item => {
-                const isAnimating = animandoBoton === item.id;
-                const isActive = pestana === item.id && !isAnimating;
-                
-                return (
-                  <button 
-                    key={item.id} 
-                    onClick={() => cambiarPestanaConAnimacion(item.id)} 
-                    className={`w-full px-6 py-3 text-sm font-medium transition-colors ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className={`w-6 h-6 flex items-center justify-center shrink-0 ${isAnimating ? 'anim-icono-bola' : ''}`}>
-                        <NavIcon pestanaId={item.id} />
-                      </div>
-                      <span className={`transition-all ${isAnimating ? 'anim-texto-fade' : ''}`}>
-                        {item.label}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-brand-gold/20 shrink-0">
-          {/* LOTE 5 (N4): activacion de notificaciones push del navegador */}
-          <div className="mb-3"><CampanaNotificaciones /></div>
-          <div className="mb-3"><ActivarNotificaciones /></div>
-          <button onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-brand-rust text-brand-cream rounded transition-colors text-sm font-semibold">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            Cerrar Sesión
-          </button>
-        </div>
-      </aside>
-
-      {/* OVERLAY MOBILE */}
-      {menuAbierto && (
-        <div className="fixed inset-0 bg-brand-brown/50 z-30 md:hidden" onClick={() => setMenuAbierto(false)}></div>
-      )}
+      {/* UX: barra lateral compartida (se colapsa en escritorio, menu deslizante en movil) */}
+      <Sidebar
+        logoUrl={miEquipo?.logo_url || null}
+        titulo={miEquipo ? miEquipo.nombre : 'Cargando...'}
+        subtitulo="Panel Delegado"
+        grupos={[
+          { etiqueta: 'Mi Equipo', items: [
+            { id: 'equipo', label: 'Mi Equipo' },
+            { id: 'estadisticas', label: 'Analítica y Scouting' },
+            { id: 'pagos', label: 'Pagos del Equipo' },
+          ]},
+          { etiqueta: 'Competencia', items: [
+            { id: 'calendario', label: 'Calendario y Puntajes' },
+            { id: 'votacion', label: 'Votación MVP' },
+            { id: 'protestas', label: 'Protestas' },
+          ]},
+          { etiqueta: 'Liga', items: [
+            { id: 'documentos', label: 'Documentos de la Liga' },
+          ]},
+        ]}
+        pestana={pestana}
+        onPestana={cambiarPestanaConAnimacion}
+        animandoBoton={animandoBoton}
+        renderIcono={(id) => <NavIcon pestanaId={id} />}
+        menuAbierto={menuAbierto}
+        onCerrarMenu={() => setMenuAbierto(false)}
+        claveColapso="delegadoSidebarColapsada"
+      />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative">
@@ -446,6 +395,10 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
           <div className="hidden sm:block">
             {miEquipo && <span className="text-sm font-semibold text-brand-brown/70">{miEquipo.categoria} - {miEquipo.tipo_genero}</span>}
           </div>
+          <button onClick={cerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            <span className="hidden sm:inline">Cerrar Sesión</span>
+          </button>
         </header>
 
         {/* CONTENEDOR DESLIZABLE (SCROLL) */}
