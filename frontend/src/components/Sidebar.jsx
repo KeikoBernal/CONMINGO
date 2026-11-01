@@ -93,6 +93,12 @@ export default function Sidebar({
                         <span className={`transition-all ${colapsado ? 'md:hidden' : ''} ${isAnimating ? 'anim-texto-fade' : ''}`}>
                           {item.label}
                         </span>
+                        {/* UX: contador opcional por item (p. ej. partidos de hoy de Arbitro/Anotador) */}
+                        {item.badge > 0 && (
+                          <span className={`bg-brand-gold/20 text-brand-gold text-xs font-bold px-2 py-0.5 rounded-full ${colapsado ? 'md:hidden' : ''}`}>
+                            {item.badge}
+                          </span>
+                        )}
                       </div>
                     </button>
                   );
