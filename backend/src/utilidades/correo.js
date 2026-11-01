@@ -78,13 +78,23 @@ const construirTransporte = async () => {
     pool: true,
     maxConnections: 3,
     maxMessages: 50,
-    // Timeouts acotados: si una conexion cuelga, falla rapido en vez de esperar.
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 60000,
+    // Timeouts generosos (leccion del lote 6i): la conexion SMTP a Gmail desde
+    // Render puede tardar mas de un minuto en completarse. Los timeouts cortos
+    // (10-15 s) convertian esa lentitud en el error Connection timeout y
+    // rompian envios que con paciencia si llegaban. Se mantiene el log de
+    // duracion en ms para medir cuanto tarda de verdad cada envio.
+    connectionTimeout: 120000,
+    greetingTimeout: 120000,
+    socketTimeout: 300000,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
   };
-  if (servernameTls) opciones.servername = servernameTls;
+  if (servernameTls) {
+    opciones.servername = servernameTls;
+    // En el upgrade STARTTLS (puerto 587) nodemailer lee el servername de
+    // opciones.tls: sin esto, al conectar a una IP el certificado de Gmail no
+    // validaria y el envio por 587 fallaria.
+    opciones.tls = { servername: servernameTls };
+  }
 
   console.log('[correo] Transporte hacia ' + hostConexion + (servernameTls ? ' (servername: ' + servernameTls + ')' : ' (por nombre)') + '. IPv4 disponibles: ' + (usarHostname ? 'no (modo nombre)' : (ipsSmtp.join(', ') || '1')));
   transporte = nodemailer.createTransport(opciones);
