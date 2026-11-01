@@ -6,6 +6,7 @@
 // clave temporal al administrador, como hacia el sistema antes de este lote).
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const dns = require('dns');
 const db = require('../config/db');
 
 const SMTP_CONFIGURADO = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
@@ -21,17 +22,49 @@ console.log('[correo] SMTP al arrancar:', SMTP_CONFIGURADO ? 'configurado' : 'SI
 });
 
 let transporte = null;
-const obtenerTransporte = () => {
-  if (transporte) return transporte;
+const construirTransporte = async () => {
   const puerto = parseInt(process.env.SMTP_PORT || '465', 10);
-  transporte = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+  const host = process.env.SMTP_HOST;
+
+  // LOTE 6I: smtp.gmail.com tiene direcciones IPv4 e IPv6 y nodemailer elige
+  // una al azar en cada conexion. En Render la ruta IPv6 hacia Gmail se cae en
+  // silencio, asi que cada correo pagaba el timeout de conexion completo (2
+  // minutos por defecto) antes de reintentar por IPv4: por eso los correos
+  // tardaban tanto. Se resuelve el host una sola vez forzando IPv4 y se
+  // conecta a esa IP; el nombre original queda como servername para que el
+  // certificado TLS de Gmail siga validando. Si la resolucion falla, se usa
+  // el host tal cual (nodemailer probara todas sus direcciones).
+  let hostConexion = host;
+  let servernameTls = null;
+  try {
+    const resolucion = await dns.promises.lookup(host, { family: 4 });
+    hostConexion = resolucion.address;
+    servernameTls = host;
+  } catch (error) {
+    console.error('[correo] No se pudo resolver ' + host + ' a IPv4, se conecta por nombre:', error?.message || error);
+  }
+
+  const opciones = {
+    host: hostConexion,
     port: puerto,
     secure: puerto === 465,
+    // Pool: se reutilizan conexiones en lugar de abrir una nueva por correo.
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 50,
+    // Timeouts acotados: si una conexion cuelga, falla rapido en vez de esperar.
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 60000,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-  });
+  };
+  if (servernameTls) opciones.servername = servernameTls;
+
+  transporte = nodemailer.createTransport(opciones);
   return transporte;
 };
+
+const obtenerTransporte = async () => transporte || construirTransporte();
 
 const remitente = () => process.env.SMTP_FROM || process.env.SMTP_USER || 'CONMINGO';
 
@@ -39,13 +72,15 @@ const remitente = () => process.env.SMTP_FROM || process.env.SMTP_USER || 'CONMI
 const enviarCorreo = async ({ para, asunto, html, texto }) => {
   if (!SMTP_CONFIGURADO) return { enviado: false, motivo: 'smtp_no_configurado' };
   try {
-    await obtenerTransporte().sendMail({
+    const inicio = Date.now();
+    await (await obtenerTransporte()).sendMail({
       from: remitente(),
       to: para,
       subject: asunto,
       html,
       text: texto || html.replace(/<[^>]+>/g, ' ')
     });
+    console.log('[correo] Enviado a ' + para + ' en ' + (Date.now() - inicio) + ' ms');
     return { enviado: true };
   } catch (error) {
     console.error('[correo] No se pudo enviar:', { para, asunto, error: error?.message || error });
@@ -82,6 +117,9 @@ const boton = (url, etiqueta) => [
 const crearTokenCorreo = async (usuarioId, tipo, horasValidez = 48) => {
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  // LOTE 6I: un nuevo pedido invalida los enlaces previos del mismo usuario y
+  // tipo: si se presiona el boton varias veces, solo sirve el ultimo correo.
+  await db.query('UPDATE public.tokens_correo SET usado = true WHERE usuario_id = $1 AND tipo = $2 AND usado = false', [usuarioId, tipo]);
   await db.query(
     'INSERT INTO public.tokens_correo (usuario_id, tipo, token_hash, expira_en) VALUES ($1, $2, $3, now() + ($4 || \' hours\')::interval)',
     [usuarioId, tipo, tokenHash, horasValidez]

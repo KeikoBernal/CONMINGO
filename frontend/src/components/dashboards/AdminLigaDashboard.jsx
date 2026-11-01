@@ -98,6 +98,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [modalQrPartido, setModalQrPartido] = useState(null);
   // LOTE 6G: cambio de correo y reenvio de verificacion de credenciales
   const [modalCorreoCredencial, setModalCorreoCredencial] = useState(null);
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false); // LOTE 6I: bloquea botones de correo mientras el SMTP responde
   const [nuevoCorreoCredencial, setNuevoCorreoCredencial] = useState('');
 
   // Formularios
@@ -653,8 +654,14 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   const resetearPasswordOperativo = async (userId, cedula, nombre) => {
     if (!window.confirm(`¿Restablecer contraseña para ${nombre}?`)) return;
-    const res = await fetchConToken(`/usuarios/${userId}/reset-password`, { method: 'POST' });
-    const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error');
+    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
+    setEnviandoCorreo(true);
+    try {
+      const res = await fetchConToken(`/usuarios/${userId}/reset-password`, { method: 'POST' });
+      const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error');
+    } finally {
+      setEnviandoCorreo(false);
+    }
   };
 
   // LOTE 6G: cambiar el correo de una credencial desde el panel
@@ -671,18 +678,30 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       mostrarToast('El nuevo correo tiene un formato inválido.', 'error');
       return;
     }
-    const res = await fetchConToken(`/usuarios/${modalCorreoCredencial.id}/cambiar-correo`, { method: 'POST', body: JSON.stringify({ nuevo_email: correoLimpio }) });
-    const data = await res.json().catch(() => ({}));
-    setModalCorreoCredencial(null);
-    if (res.ok) { mostrarToast(data.mensaje, 'exito'); cargarDatos(); }
-    else mostrarToast(data.error || 'No se pudo solicitar el cambio de correo.', 'error');
+    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
+    setEnviandoCorreo(true);
+    try {
+      const res = await fetchConToken(`/usuarios/${modalCorreoCredencial.id}/cambiar-correo`, { method: 'POST', body: JSON.stringify({ nuevo_email: correoLimpio }) });
+      const data = await res.json().catch(() => ({}));
+      setModalCorreoCredencial(null);
+      if (res.ok) { mostrarToast(data.mensaje, 'exito'); cargarDatos(); }
+      else mostrarToast(data.error || 'No se pudo solicitar el cambio de correo.', 'error');
+    } finally {
+      setEnviandoCorreo(false);
+    }
   };
 
   // LOTE 6G: reenviar enlace de verificacion (o confirmacion de cambio pendiente)
   const reenviarVerificacionCredencial = async (u) => {
-    const res = await fetchConToken(`/usuarios/${u.id}/reenviar-verificacion`, { method: 'POST' });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error || 'No se pudo reenviar la verificación.', 'error');
+    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
+    setEnviandoCorreo(true);
+    try {
+      const res = await fetchConToken(`/usuarios/${u.id}/reenviar-verificacion`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error || 'No se pudo reenviar la verificación.', 'error');
+    } finally {
+      setEnviandoCorreo(false);
+    }
   };
 
   const reasignarDelegado = async (equipoId, delegadoId) => {
@@ -1729,10 +1748,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 )}
                               </td>
                               <td className="p-3 flex justify-center gap-2">
-                                <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm">Reset Clave</button>
+                                <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} disabled={enviandoCorreo} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando...' : 'Reset Clave'}</button>
                                 <button onClick={() => cambiarCorreoCredencial(u)} className="px-3 py-1.5 bg-brand-blue text-white hover:bg-brand-brown rounded text-xs font-bold transition-colors shadow-sm">Correo</button>
                                 {(u.correo_verificado === false || u.email_pendiente) && (
-                                  <button onClick={() => reenviarVerificacionCredencial(u)} className="px-3 py-1.5 bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm">Reenviar</button>
+                                  <button onClick={() => reenviarVerificacionCredencial(u)} disabled={enviandoCorreo} className="px-3 py-1.5 bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando...' : 'Reenviar'}</button>
                                 )}
                                 <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
                               </td>
@@ -2897,7 +2916,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               />
               <div className="flex gap-3 mt-2">
                 <button type="button" onClick={() => setModalCorreoCredencial(null)} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm">Enviar Confirmación</button>
+                <button type="submit" disabled={enviandoCorreo} className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando...' : 'Enviar Confirmación'}</button>
               </div>
             </form>
           </div>
