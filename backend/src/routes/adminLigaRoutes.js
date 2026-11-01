@@ -751,6 +751,8 @@ router.get('/usuarios-operativos', async (req, res) => {
 router.post('/crear-credencial', async (req, res) => {
   const { nombre, apellido, cedula, email, rol, equipo_id } = req.body;
   const orgId = await obtenerOrgId(req.usuario);
+  // LOTE 6G FIX: sin organizacion no se crea nada (antes dejaba un usuario huerfano en Auth)
+  if (!orgId) return res.status(400).json({ error: 'No se pudo determinar la organización de tu cuenta. Vuelve a iniciar sesión con tu cuenta de Administrador de Liga.' });
   
   if (!/^\d{5,8}$/.test(cedula?.trim())) return res.status(400).json({ error: 'La cédula debe ser numérica de 5 a 8 dígitos.' });
   const emailLimpio = String(email || '').trim().toLowerCase();
@@ -796,8 +798,12 @@ router.post('/crear-credencial', async (req, res) => {
     if (authError) return res.status(400).json({ error: authError.message });
 
     const resDb = await db.query(
+      // LOTE 6G FIX: el trigger on_auth_user_created de auth.users ya inserto la
+      // fila en usuarios (sin organizacion); el upsert la completa en vez de reventar.
       `INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, password_hash, debe_cambiar_password) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+       ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, rol = EXCLUDED.rol, nombre = EXCLUDED.nombre, apellido = EXCLUDED.apellido, cedula = EXCLUDED.cedula, organizacion_id = COALESCE(public.usuarios.organizacion_id, EXCLUDED.organizacion_id), password_hash = EXCLUDED.password_hash, debe_cambiar_password = true
+       RETURNING *`,
       [authUser.user.id, emailReal, rol, nombreFmt, apellidoFmt, cedula.trim(), orgId, hashedPwd]
     );
 
@@ -922,7 +928,13 @@ router.post('/usuarios/:id/cambiar-correo', async (req, res) => {
     // se marca el cambio como pendiente. Si falla el envio no se cambia nada.
     const resultado = await solicitarCambioCorreo({ usuarioId: req.params.id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: nuevoEmail });
     if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
-      return res.status(502).json({ error: 'No se pudo enviar el correo de confirmación. Verifica la configuración SMTP e inténtalo de nuevo. El correo del usuario no fue modificado.' });
+      // LOTE 6G FIX: 503 (no 502) para distinguirlo del proxy de Render; el motivo
+      // separa SMTP sin configurar de credenciales rechazadas por Gmail.
+      const motivo = !resultado.enviadoAntiguo ? (resultado.motivoAntiguo || 'error_envio') : (resultado.motivoNuevo || 'error_envio');
+      const detalle = motivo === 'smtp_no_configurado'
+        ? 'el servidor de correo no está configurado: faltan las variables SMTP_HOST, SMTP_USER y SMTP_PASS en Render'
+        : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS (contraseña de aplicación de Gmail) en Render';
+      return res.status(503).json({ error: `No se pudo enviar el correo de confirmación (${detalle}). El correo del usuario no fue modificado.` });
     }
     await db.query('UPDATE public.usuarios SET email_pendiente = $1 WHERE id = $2', [nuevoEmail, req.params.id]);
     await registrarAuditoria(req.usuario.id, 'SOLICITAR_CAMBIO_CORREO', 'usuarios', { email: usuario.email, email_pendiente: usuario.email_pendiente || null }, { email_pendiente: nuevoEmail }, req.ip, orgId);
@@ -947,7 +959,11 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
       // Cambio de correo pendiente: reenvia la confirmacion al correo nuevo
       const resultado = await solicitarCambioCorreo({ usuarioId: req.params.id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: usuario.email_pendiente });
       if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
-        return res.status(502).json({ error: 'No se pudo reenviar el correo de confirmación. Verifica la configuración SMTP.' });
+        const motivo = !resultado.enviadoAntiguo ? (resultado.motivoAntiguo || 'error_envio') : (resultado.motivoNuevo || 'error_envio');
+        const detalle = motivo === 'smtp_no_configurado'
+          ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
+          : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render';
+        return res.status(503).json({ error: `No se pudo reenviar el correo de confirmación (${detalle}).` });
       }
       await registrarAuditoria(req.usuario.id, 'REENVIAR_CAMBIO_CORREO', 'usuarios', null, { email_pendiente: usuario.email_pendiente }, req.ip, orgId);
       return res.json({ mensaje: `Se reenvió la confirmación a ${usuario.email_pendiente}.` });
@@ -959,7 +975,10 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
 
     const envio = await reenviarVerificacion({ usuarioId: req.params.id, para: usuario.email, nombre: usuario.nombre });
     if (!envio.enviado) {
-      return res.status(502).json({ error: 'No se pudo enviar el correo de verificación. Verifica la configuración SMTP.' });
+      const detalle = envio.motivo === 'smtp_no_configurado'
+        ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
+        : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render';
+      return res.status(503).json({ error: `No se pudo enviar el correo de verificación (${detalle}).` });
     }
     await registrarAuditoria(req.usuario.id, 'REENVIAR_VERIFICACION', 'usuarios', null, { email: usuario.email }, req.ip, orgId);
     res.json({ mensaje: `Se reenvió el enlace de verificación a ${usuario.email}.` });
@@ -1059,7 +1078,7 @@ const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
         await db.query(
           `INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, password_hash, debe_cambiar_password) 
            VALUES ($1, $2, 'delegado de equipo', $3, $4, $5, $6, $7, true)
-           ON CONFLICT (id) DO UPDATE SET rol = 'delegado de equipo'`,
+           ON CONFLICT (id) DO UPDATE SET rol = 'delegado de equipo', organizacion_id = COALESCE(public.usuarios.organizacion_id, EXCLUDED.organizacion_id)`,
           [usuarioId, emailReal, nombre, apellido, cedula.trim(), orgId, hashedPwd]
         );
         await db.query(
