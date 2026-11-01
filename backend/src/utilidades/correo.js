@@ -84,7 +84,13 @@ const construirTransporte = async () => {
     socketTimeout: 60000,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
   };
-  if (servernameTls) opciones.servername = servernameTls;
+  if (servernameTls) {
+    opciones.servername = servernameTls;
+    // En el upgrade STARTTLS (puerto 587) nodemailer lee el servername de
+    // opciones.tls: sin esto, al conectar a una IP el certificado de Gmail no
+    // validaria y el envio por 587 fallaria.
+    opciones.tls = { servername: servernameTls };
+  }
 
   console.log('[correo] Transporte hacia ' + hostConexion + (servernameTls ? ' (servername: ' + servernameTls + ')' : ' (por nombre)') + '. IPv4 disponibles: ' + (usarHostname ? 'no (modo nombre)' : (ipsSmtp.join(', ') || '1')));
   transporte = nodemailer.createTransport(opciones);
