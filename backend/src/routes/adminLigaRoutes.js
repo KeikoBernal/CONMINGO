@@ -896,6 +896,10 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
       return res.json({ mensaje: `Se envió a ${userDb.rows[0].email} un enlace para establecer una nueva contraseña. Es válido por 24 horas y la clave actual sigue funcionando hasta entonces.` });
     }
 
+    // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos):
+    // no sale otro correo ni se genera clave temporal; el enlace anterior sigue valido.
+    if (envioReset.motivo === 'reenvio_reciente') return res.json({ mensaje: envioReset.mensaje });
+
     // Modo degradado (SMTP caido): clave temporal de siempre, entregada a mano.
     const primerNombre = nombre ? nombre.trim().split(' ')[0] : 'User';
     const nuevaPassword = `${primerNombre}${String(cedula || '').trim().substring(0, 5)}!`;
@@ -938,6 +942,8 @@ router.post('/usuarios/:id/cambiar-correo', async (req, res) => {
     // correo antiguo es best-effort: muchos correos legados no existen
     // (por ejemplo @liga.local) y no deben trabar el cambio para siempre.
     const resultado = await solicitarCambioCorreo({ usuarioId: req.params.id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: nuevoEmail });
+    // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos).
+    if (resultado.motivoNuevo === 'reenvio_reciente') return res.json({ mensaje: resultado.mensajeNuevo });
     if (!resultado.enviadoNuevo) {
       const motivo = resultado.motivoNuevo || 'error_envio';
       const detalle = motivo === 'smtp_no_configurado'
@@ -969,6 +975,8 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
     if (usuario.email_pendiente) {
       // Cambio de correo pendiente: reenvia la confirmacion al correo nuevo
       const resultado = await solicitarCambioCorreo({ usuarioId: req.params.id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: usuario.email_pendiente });
+      // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos).
+      if (resultado.motivoNuevo === 'reenvio_reciente') return res.json({ mensaje: resultado.mensajeNuevo });
       if (!resultado.enviadoNuevo) {
         const motivo = resultado.motivoNuevo || 'error_envio';
         const detalle = motivo === 'smtp_no_configurado'
@@ -988,6 +996,8 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
     }
 
     const envio = await reenviarVerificacion({ usuarioId: req.params.id, para: usuario.email, nombre: usuario.nombre });
+    // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos).
+    if (envio.motivo === 'reenvio_reciente') return res.json({ mensaje: envio.mensaje });
     if (!envio.enviado) {
       const detalle = envio.motivo === 'smtp_no_configurado'
         ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
@@ -1110,6 +1120,9 @@ const gestionarDelegadoPorCapitan = async (equipoId, jugadorId, orgId) => {
         });
         if (envioCapitan.enviado) {
           mensajeResultado = ` Credencial de delegado creada automáticamente. Se envió un correo con las credenciales y el enlace de verificación a ${emailReal}.`;
+        } else if (envioCapitan.motivo === 'reenvio_reciente') {
+          // LOTE 6J: envio repetido dentro de la ventana anti-reenvio (2 minutos).
+          mensajeResultado = ` Credencial de delegado creada automáticamente. ${envioCapitan.mensaje}`;
         } else {
           await db.query('UPDATE public.usuarios SET correo_verificado = true, verificado_en = now() WHERE id = $1', [usuarioId]);
           mensajeResultado = ` Credencial de delegado creada automáticamente. No se pudo enviar el correo (${envioCapitan.motivo}); contraseña inicial temporal: ${passwordInicial}`;
