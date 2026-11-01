@@ -36,6 +36,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   // LOTE 6G: cambio de correo y reenvio de verificacion desde el directorio
   const [modalCorreo, setModalCorreo] = useState(null);
   const [nuevoCorreoUsuario, setNuevoCorreoUsuario] = useState('');
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false); // LOTE 6I: bloquea botones de correo mientras el SMTP responde
 
   const [equiposLiga, setEquiposLiga] = useState([]);
   
@@ -387,9 +388,12 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     const primerNombre = user.nombre ? user.nombre.trim().split(' ')[0] : 'User';
     const cincoDigitos = user.cedula ? user.cedula.trim().substring(0, 5) : '00000';
     if (!window.confirm(`¿Restablecer clave temporal a: ${primerNombre}${cincoDigitos}!?`)) return;
+    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
+    setEnviandoCorreo(true);
     const res = await fetchConToken(`/usuarios/${user.id}/reset-password`, { method: 'POST' });
     if (res.ok) { setMensaje({ texto: (await res.json().catch(() => ({}))).mensaje || 'Clave restablecida.', tipo: 'exito' }); cargarDatosPestana(); } 
     else setMensaje({ texto: `Error: ${(await res.json().catch(() => ({}))).error || 'el servidor no respondio correctamente'}`, tipo: 'error' });
+    setEnviandoCorreo(false);
   };
 
   // LOTE 6G: cambiar el correo de un usuario desde el panel de credenciales
@@ -406,6 +410,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       setMensaje({ texto: 'El nuevo correo tiene un formato inválido.', tipo: 'error' });
       return;
     }
+    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
+    setEnviandoCorreo(true);
     const res = await fetchConToken(`/usuarios/${modalCorreo.id}/cambiar-correo`, { method: 'POST', body: JSON.stringify({ nuevo_email: correoLimpio }) });
     const data = await res.json().catch(() => ({}));
     setModalCorreo(null);
@@ -415,14 +421,18 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     } else {
       setMensaje({ texto: data.error || 'No se pudo solicitar el cambio de correo.', tipo: 'error' });
     }
+    setEnviandoCorreo(false);
   };
 
   // LOTE 6G: reenviar enlace de verificacion (o confirmacion de cambio pendiente)
   const reenviarVerificacionAccion = async (u) => {
+    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
+    setEnviandoCorreo(true);
     const res = await fetchConToken(`/usuarios/${u.id}/reenviar-verificacion`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) { setMensaje({ texto: data.mensaje, tipo: 'exito' }); cargarDatosPestana(); }
     else setMensaje({ texto: data.error || 'No se pudo reenviar la verificación.', tipo: 'error' });
+    setEnviandoCorreo(false);
   };
 
   const iniciarEliminacionUsuario = async (u) => {
@@ -529,14 +539,14 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   <button onClick={() => setUserEditando(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded transition-colors" title="Editar">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                   </button>
-                  <button onClick={() => resetearPasswordAccion(u)} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded transition-colors" title="Resetear Clave">
+                  <button onClick={() => resetearPasswordAccion(u)} disabled={enviandoCorreo} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Resetear Clave">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                   </button>
                   <button onClick={() => cambiarCorreoAccion(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded transition-colors" title="Cambiar Correo">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l9 6 9-6M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                   </button>
                   {(u.correo_verificado === false || u.email_pendiente) && (
-                    <button onClick={() => reenviarVerificacionAccion(u)} className="p-1.5 text-brand-brown hover:bg-brand-brown/10 rounded transition-colors" title="Reenviar Verificación">
+                    <button onClick={() => reenviarVerificacionAccion(u)} disabled={enviandoCorreo} className="p-1.5 text-brand-brown hover:bg-brand-brown/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Reenviar Verificación">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
                   )}
@@ -706,7 +716,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
               />
               <div className="flex gap-3 mt-2">
                 <button type="button" onClick={() => setModalCorreo(null)} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm">Enviar Confirmación</button>
+                <button type="submit" disabled={enviandoCorreo} className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando...' : 'Enviar Confirmación'}</button>
               </div>
             </form>
           </div>
