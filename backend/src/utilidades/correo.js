@@ -28,6 +28,60 @@ let indiceIp = 0; // rotacion: la proxima reconstruccion usa otra IPv4 de la lis
 let ipsSmtp = []; // todas las IPv4 del host SMTP (vacia si se conecta por nombre)
 let usarHostname = false; // ultimo recurso tras fallar todas las IPv4
 
+// ============================================================================
+// LOTE 6J: control anti-reenvio (contrarresta la impaciencia)
+// ============================================================================
+// Los envios por Gmail desde Render pueden tardar hasta ~2 minutos. Sin este
+// control, repetir el clic (o recargar la pagina y volver a intentarlo, o
+// pedirlo desde otra sesion de administrador) genera varios correos iguales.
+// Por cada usuario y tipo de token se marca un envio EN CURSO; mientras esta
+// en curso, o durante MARGEN_REENVIO_MS despues de un envio exitoso, un pedido
+// repetido NO genera otro correo: devuelve motivo 'reenvio_reciente' con un
+// mensaje listo para mostrar. Si el envio falla, la marca se libera para
+// permitir un reintento real. Es estado en memoria del proceso: se pierde al
+// reiniciar, aceptable para una ventana de minutos.
+const MARGEN_REENVIO_MS = 120000;
+const enviosMarcados = new Map(); // clave usuarioId|tipo -> { desde, enCurso }
+
+const formaBloqueoCorreo = (mensaje) => ({ enviado: false, motivo: 'reenvio_reciente', mensaje });
+
+const mensajeReenvioReciente = (reciente) => reciente.enCurso
+  ? 'Ya hay un correo en proceso de envio para esta persona; puede tardar hasta 2 minutos. No es necesario volver a enviarlo.'
+  : 'Hace menos de 2 minutos se envio el mismo correo a esta persona y el enlace anterior sigue siendo valido. Revisa la bandeja (y el correo no deseado) antes de volver a enviar.';
+
+const reenvioReciente = (usuarioId, tipo) => {
+  const clave = String(usuarioId) + '|' + tipo;
+  const marca = enviosMarcados.get(clave);
+  if (!marca) return null;
+  const transcurrido = Date.now() - marca.desde;
+  if (marca.enCurso || transcurrido < MARGEN_REENVIO_MS) {
+    return { enCurso: marca.enCurso, segundosRestantes: Math.max(1, Math.ceil((MARGEN_REENVIO_MS - transcurrido) / 1000)) };
+  }
+  return null;
+};
+
+// Envuelve un flujo de correo completo con el control anti-reenvio.
+// formaBloqueo moldea la respuesta cuando hay un reenvio reciente (cada flujo
+// tiene su propia forma de resultado).
+const conControlReenvio = async (usuarioId, tipo, hacer, formaBloqueo) => {
+  const reciente = reenvioReciente(usuarioId, tipo);
+  if (reciente) return (formaBloqueo || formaBloqueoCorreo)(mensajeReenvioReciente(reciente));
+  const clave = String(usuarioId) + '|' + tipo;
+  enviosMarcados.set(clave, { desde: Date.now(), enCurso: true });
+  try {
+    const resultado = await hacer();
+    if (resultado && (resultado.enviado || resultado.enviadoNuevo)) {
+      enviosMarcados.set(clave, { desde: Date.now(), enCurso: false });
+    } else {
+      enviosMarcados.delete(clave);
+    }
+    return resultado;
+  } catch (error) {
+    enviosMarcados.delete(clave);
+    throw error;
+  }
+};
+
 const construirTransporte = async () => {
   const puerto = parseInt(process.env.SMTP_PORT || '465', 10);
   const host = process.env.SMTP_HOST;
@@ -233,7 +287,7 @@ const consumirTokenCorreo = async (token, tipo) => {
 // ============================================================================
 
 // Bienvenida al crear credenciales: usuario, clave temporal y enlace de verificacion.
-const enviarBienvenidaConVerificacion = async ({ usuarioId, para, nombre, usuario, claveTemporal }) => {
+const enviarBienvenidaConVerificacion = async ({ usuarioId, para, nombre, usuario, claveTemporal }) => conControlReenvio(usuarioId, 'verificacion', async () => {
   const token = await crearTokenCorreo(usuarioId, 'verificacion', 48);
   const url = URL_FRONTEND() + '/?verificar=' + token;
   const cuerpo = [
@@ -245,10 +299,10 @@ const enviarBienvenidaConVerificacion = async ({ usuarioId, para, nombre, usuari
     '<p style="font-size: 12px; color: #7a6a55;">Tu acceso permanecera bloqueado hasta que verifiques el correo. El enlace es valido por 48 horas.</p>'
   ].join('\n');
   return enviarCorreo({ para, asunto: 'Bienvenido a CONMINGO - Credenciales de acceso', html: plantilla('Credenciales de acceso', cuerpo) });
-};
+});
 
 // Reenvio del enlace de verificacion (solo el enlace, sin clave).
-const reenviarVerificacion = async ({ usuarioId, para, nombre }) => {
+const reenviarVerificacion = async ({ usuarioId, para, nombre }) => conControlReenvio(usuarioId, 'verificacion', async () => {
   const token = await crearTokenCorreo(usuarioId, 'verificacion', 48);
   const url = URL_FRONTEND() + '/?verificar=' + token;
   const cuerpo = [
@@ -258,10 +312,10 @@ const reenviarVerificacion = async ({ usuarioId, para, nombre }) => {
     '<p style="font-size: 12px; color: #7a6a55;">Si no recuerdas tu clave temporal, contacta al administrador de tu liga. El enlace es valido por 48 horas.</p>'
   ].join('\n');
   return enviarCorreo({ para, asunto: 'Verifica tu correo - CONMINGO', html: plantilla('Verificacion de correo', cuerpo) });
-};
+});
 
 // Cambio de correo: aviso al correo antiguo + confirmacion al nuevo.
-const solicitarCambioCorreo = async ({ usuarioId, nombre, paraAntiguo, paraNuevo }) => {
+const solicitarCambioCorreo = async ({ usuarioId, nombre, paraAntiguo, paraNuevo }) => conControlReenvio(usuarioId, 'cambio_correo', async () => {
   const token = await crearTokenCorreo(usuarioId, 'cambio_correo', 24);
   const url = URL_FRONTEND() + '/?verificar=' + token;
 
@@ -284,12 +338,16 @@ const solicitarCambioCorreo = async ({ usuarioId, nombre, paraAntiguo, paraNuevo
   const resNuevo = await enviarCorreo({ para: paraNuevo, asunto: 'Confirma tu nuevo correo - CONMINGO', html: plantilla('Confirmacion de nuevo correo', cuerpoNuevo) });
 
   return { enviadoAntiguo: resAntiguo.enviado, motivoAntiguo: resAntiguo.motivo, errorAntiguo: resAntiguo.error, enviadoNuevo: resNuevo.enviado, motivoNuevo: resNuevo.motivo, errorNuevo: resNuevo.error };
-};
+}, (mensaje) => ({
+  enviadoAntiguo: false, motivoAntiguo: 'reenvio_reciente', errorAntiguo: null,
+  enviadoNuevo: false, motivoNuevo: 'reenvio_reciente', errorNuevo: null,
+  mensajeNuevo: mensaje
+}));
 
 // LOTE 6H: restablecimiento de clave. El administrador pide el reset desde el
 // panel y la persona recibe un enlace para establecer su propia contrasena
 // (token de 'recuperacion', 24 horas). La clave nunca viaja en el correo.
-const enviarRestablecerPassword = async ({ usuarioId, para, nombre }) => {
+const enviarRestablecerPassword = async ({ usuarioId, para, nombre }) => conControlReenvio(usuarioId, 'recuperacion', async () => {
   const token = await crearTokenCorreo(usuarioId, 'recuperacion', 24);
   const url = URL_FRONTEND() + '/?restablecer=' + token;
   const cuerpo = [
@@ -300,7 +358,7 @@ const enviarRestablecerPassword = async ({ usuarioId, para, nombre }) => {
     '<p style="font-size: 12px; color: #7a6a55;">El enlace es válido por 24 horas. Tu contraseña actual sigue funcionando hasta que establezcas la nueva.</p>'
   ].join('\n');
   return enviarCorreo({ para, asunto: 'Restablece tu contraseña - CONMINGO', html: plantilla('Restablecimiento de contraseña', cuerpo) });
-};
+});
 
 module.exports = {
   enviarCorreo,
