@@ -98,19 +98,24 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [modalQrPartido, setModalQrPartido] = useState(null);
   // LOTE 6G: cambio de correo y reenvio de verificacion de credenciales
   const [modalCorreoCredencial, setModalCorreoCredencial] = useState(null);
-  const [enviandoCorreo, setEnviandoCorreo] = useState(false); // LOTE 6I: bloquea botones de correo mientras el SMTP responde
+  const [enviosEnCurso, setEnviosEnCurso] = useState([]); // LOTE 6J: ids con un envio de correo en curso (bloqueo por persona)
   const [nuevoCorreoCredencial, setNuevoCorreoCredencial] = useState('');
   const [segundosCorreo, setSegundosCorreo] = useState(0); // LOTE 6J: cronometro visible del envio de correo
+  const [guardandoCredencial, setGuardandoCredencial] = useState(false); // LOTE 6J: envio de bienvenida al crear credencial
 
-  // LOTE 6J: contrarresta la impaciencia del usuario. Los envios de correo
-  // pueden tardar hasta ~2 minutos, asi que mientras hay uno en curso quedan
-  // bloqueados TODOS los botones que disparan correos y los de texto muestran
-  // el tiempo transcurrido, para que nadie repita la accion creyendo que fallo.
+  // LOTE 6J (revision a pedido de Keiko): el bloqueo es POR PERSONA, no global.
+  // No se repite un envio hacia la misma persona mientras este en curso, pero
+  // el administrador puede seguir trabajando con otras personas. El cronometro
+  // aparece en los botones de la persona con el envio en curso.
+  const envioEnCurso = (id) => enviosEnCurso.includes(id);
+  const bloquearEnvio = (id) => setEnviosEnCurso((prev) => prev.includes(id) ? prev : [...prev, id]);
+  const liberarEnvio = (id) => setEnviosEnCurso((prev) => prev.filter((x) => x !== id));
+
   useEffect(() => {
-    if (!enviandoCorreo) { setSegundosCorreo(0); return; }
+    if (enviosEnCurso.length === 0 && !guardandoCredencial) { setSegundosCorreo(0); return; }
     const intervalo = setInterval(() => setSegundosCorreo((s) => s + 1), 1000);
     return () => clearInterval(intervalo);
-  }, [enviandoCorreo]);
+  }, [enviosEnCurso.length, guardandoCredencial]);
 
   // Formularios
   const [formSede, setFormSede] = useState({ nombre: '', direccion: '' });
@@ -655,33 +660,31 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   const guardarCredencial = async (e) => {
     e.preventDefault();
-    // LOTE 6J: crear una credencial dispara el correo de bienvenida (hasta
-    // ~2 min), asi que participa del mismo bloqueo global que los demas correos.
-    if (enviandoCorreo) return;
-    setEnviandoCorreo(true);
+    // LOTE 6J (revision): crear credencial envia la bienvenida (hasta ~2 min),
+    // pero solo bloquea SU propio formulario: el resto del panel queda libre.
+    if (guardandoCredencial) return;
+    setGuardandoCredencial(true);
     mostrarToast('Creando la credencial y enviando el correo de bienvenida... Puede tardar hasta 2 minutos. Espera el aviso de éxito antes de repetir la acción.', 'info');
     try {
       const res = await fetchConToken('/crear-credencial', { method: 'POST', body: JSON.stringify(formCredencial) });
-      // LOTE 6G FIX: si el backend responde algo que no es JSON (pagina del proxy
-      // durante un redeploy de Render), el handler moria en silencio sin mostrar
-      // ningun mensaje al administrador.
       const data = await res.json().catch(() => ({}));
       if (res.ok) { setMensaje(data.mensaje || 'Credencial creada.'); setFormCredencial({ nombre: '', apellido: '', cedula: '', email: '', rol: 'arbitro', equipo_id: '' }); cargarDatos(); } else { mostrarToast(data.error || 'No se pudo crear la credencial: el servidor no respondio correctamente. Revisa el log de Render.', 'error'); }
     } finally {
-      setEnviandoCorreo(false);
+      setGuardandoCredencial(false);
     }
   };
 
   const resetearPasswordOperativo = async (userId, cedula, nombre) => {
     if (!window.confirm(`¿Restablecer contraseña para ${nombre}?`)) return;
-    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
-    setEnviandoCorreo(true);
+    // LOTE 6J (revision): bloqueo por persona, no global. Otras personas siguen operativas.
+    if (envioEnCurso(userId)) return;
+    bloquearEnvio(userId);
     mostrarToast('Enviando el correo de restablecimiento... Puede tardar hasta 2 minutos. Espera el aviso de éxito antes de repetir la acción.', 'info');
     try {
       const res = await fetchConToken(`/usuarios/${userId}/reset-password`, { method: 'POST' });
       const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error');
     } finally {
-      setEnviandoCorreo(false);
+      liberarEnvio(userId);
     }
   };
 
@@ -694,36 +697,39 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const enviarCambioCorreoCredencial = async (e) => {
     e.preventDefault();
     if (!modalCorreoCredencial) return;
+    const usuarioId = modalCorreoCredencial.id;
     const correoLimpio = nuevoCorreoCredencial.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoLimpio)) {
       mostrarToast('El nuevo correo tiene un formato inválido.', 'error');
       return;
     }
-    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
-    setEnviandoCorreo(true);
+    // LOTE 6J (revision): bloqueo por persona, no global. Otras personas siguen operativas.
+    if (envioEnCurso(usuarioId)) return;
+    bloquearEnvio(usuarioId);
     mostrarToast('Enviando la confirmación al nuevo correo... Puede tardar hasta 2 minutos. Espera el aviso de éxito antes de repetir la acción.', 'info');
     try {
-      const res = await fetchConToken(`/usuarios/${modalCorreoCredencial.id}/cambiar-correo`, { method: 'POST', body: JSON.stringify({ nuevo_email: correoLimpio }) });
+      const res = await fetchConToken(`/usuarios/${usuarioId}/cambiar-correo`, { method: 'POST', body: JSON.stringify({ nuevo_email: correoLimpio }) });
       const data = await res.json().catch(() => ({}));
       setModalCorreoCredencial(null);
       if (res.ok) { mostrarToast(data.mensaje, 'exito'); cargarDatos(); }
       else mostrarToast(data.error || 'No se pudo solicitar el cambio de correo.', 'error');
     } finally {
-      setEnviandoCorreo(false);
+      liberarEnvio(usuarioId);
     }
   };
 
   // LOTE 6G: reenviar enlace de verificacion (o confirmacion de cambio pendiente)
   const reenviarVerificacionCredencial = async (u) => {
-    if (enviandoCorreo) return; // LOTE 6I: evita clics repetidos mientras el SMTP responde
-    setEnviandoCorreo(true);
+    // LOTE 6J (revision): bloqueo por persona, no global. Otras personas siguen operativas.
+    if (envioEnCurso(u.id)) return;
+    bloquearEnvio(u.id);
     mostrarToast('Enviando el correo de verificación... Puede tardar hasta 2 minutos. Espera el aviso de éxito antes de repetir la acción.', 'info');
     try {
       const res = await fetchConToken(`/usuarios/${u.id}/reenviar-verificacion`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (res.ok) mostrarToast(data.mensaje, 'exito'); else mostrarToast(data.error || 'No se pudo reenviar la verificación.', 'error');
     } finally {
-      setEnviandoCorreo(false);
+      liberarEnvio(u.id);
     }
   };
 
@@ -1731,7 +1737,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                       <CampoTexto etiqueta="Correo Electrónico" tipo="email" valor={formCredencial.email} onChange={e => setFormCredencial({...formCredencial, email: e.target.value})} requerido />
 
-                      <button type="submit" disabled={enviandoCorreo} className="w-full bg-brand-rust text-white py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-2 disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando... ' + segundosCorreo + ' s' : 'Generar Credencial'}</button>
+                      <button type="submit" disabled={guardandoCredencial} className="w-full bg-brand-rust text-white py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-2 disabled:opacity-50 disabled:cursor-not-allowed">{guardandoCredencial ? 'Enviando... ' + segundosCorreo + ' s' : 'Generar Credencial'}</button>
                     </form>
                   </div>
 
@@ -1771,10 +1777,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 )}
                               </td>
                               <td className="p-3 flex justify-center gap-2">
-                                <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} disabled={enviandoCorreo} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando... ' + segundosCorreo + ' s' : 'Reset Clave'}</button>
-                                <button onClick={() => cambiarCorreoCredencial(u)} disabled={enviandoCorreo} className="px-3 py-1.5 bg-brand-blue text-white hover:bg-brand-brown rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Correo</button>
+                                <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} disabled={envioEnCurso(u.id)} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{envioEnCurso(u.id) ? 'Enviando... ' + segundosCorreo + ' s' : 'Reset Clave'}</button>
+                                <button onClick={() => cambiarCorreoCredencial(u)} disabled={envioEnCurso(u.id)} className="px-3 py-1.5 bg-brand-blue text-white hover:bg-brand-brown rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Correo</button>
                                 {(u.correo_verificado === false || u.email_pendiente) && (
-                                  <button onClick={() => reenviarVerificacionCredencial(u)} disabled={enviandoCorreo} className="px-3 py-1.5 bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando... ' + segundosCorreo + ' s' : 'Reenviar'}</button>
+                                  <button onClick={() => reenviarVerificacionCredencial(u)} disabled={envioEnCurso(u.id)} className="px-3 py-1.5 bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{envioEnCurso(u.id) ? 'Enviando... ' + segundosCorreo + ' s' : 'Reenviar'}</button>
                                 )}
                                 <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
                               </td>
@@ -2939,7 +2945,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               />
               <div className="flex gap-3 mt-2">
                 <button type="button" onClick={() => setModalCorreoCredencial(null)} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
-                <button type="submit" disabled={enviandoCorreo} className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{enviandoCorreo ? 'Enviando... ' + segundosCorreo + ' s' : 'Enviar Confirmación'}</button>
+                <button type="submit" disabled={envioEnCurso(modalCorreoCredencial.id)} className="flex-1 bg-brand-blue text-white py-2.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{envioEnCurso(modalCorreoCredencial.id) ? 'Enviando... ' + segundosCorreo + ' s' : 'Enviar Confirmación'}</button>
               </div>
             </form>
           </div>
