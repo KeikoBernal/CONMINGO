@@ -149,7 +149,7 @@ const solicitarCambioCorreo = async ({ usuarioId, nombre, paraAntiguo, paraNuevo
   ].join('\n');
   const resNuevo = await enviarCorreo({ para: paraNuevo, asunto: 'Confirma tu nuevo correo - CONMINGO', html: plantilla('Confirmacion de nuevo correo', cuerpoNuevo) });
 
-  return { enviadoAntiguo: resAntiguo.enviado, enviadoNuevo: resNuevo.enviado, motivoNuevo: resNuevo.motivo };
+  return { enviadoAntiguo: resAntiguo.enviado, motivoAntiguo: resAntiguo.motivo, enviadoNuevo: resNuevo.enviado, motivoNuevo: resNuevo.motivo };
 };
 
 module.exports = {
