@@ -8,8 +8,7 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import BotonModoSolar from '../BotonModoSolar';
 import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
-import ActivarNotificaciones from '../ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
-import CampanaNotificaciones from '../CampanaNotificaciones'; // LOTE 6A: bandeja de notificaciones
+import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 
 
@@ -477,69 +476,29 @@ const suspenderPartido = async () => {
         </div>
       )}
 
-      {/* SIDEBAR LATERAL DEL ÁRBITRO */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-brand-brown text-brand-cream shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:shrink-0`}>
-        <div className="p-6 border-b border-brand-gold/20 shrink-0 bg-brand-brown/50">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-brand-cream/10 border border-brand-gold/50 flex items-center justify-center shrink-0">
-              <svg className="w-6 h-6 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" /></svg>
-            </div>
-            <div className="overflow-hidden">
-              <h1 className="text-base font-bold text-brand-cream truncate">Árbitro Oficial</h1>
-              <p className="text-xs text-brand-gold font-semibold uppercase tracking-wider mt-0.5">Control de Cancha</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto py-6 hide-scrollbar flex flex-col gap-6">
-          <div>
-            <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Navegación</div>
-            <nav className="space-y-1">
-              {[
-                { id: 'hoy', label: 'Partidos de Hoy', badge: partidosHoy.length },
-                { id: 'proximos', label: 'Próximos Partidos', badge: partidosAgendados.length },
-                { id: 'historial', label: 'Historial Reciente', badge: partidosFinalizados.length },
-                { id: 'calendario', label: 'Calendario de Partidos', badge: partidosFiltrados.length },
-                { id: 'votacion', label: 'Votación MVP', badge: 0 },
-                { id: 'protestas', label: 'Protestas', badge: 0 }
-              ].map(item => {
-                const isActive = pestana === item.id;
-                return (
-                  <button 
-                    key={item.id} 
-                    onClick={() => { setPestana(item.id); setMenuAbierto(false); }} 
-                    className={`w-full px-6 py-3 text-sm font-medium transition-colors flex items-center justify-between ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <NavIcon id={item.id} />
-                      <span>{item.label}</span>
-                    </div>
-                    {item.badge > 0 && (
-                      <span className="bg-brand-gold/20 text-brand-gold text-xs font-bold px-2 py-0.5 rounded-full">
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-brand-gold/20 shrink-0">
-          {/* LOTE 5 (N4): activacion de notificaciones push del navegador */}
-          <div className="mb-3"><CampanaNotificaciones /></div>
-          <div className="mb-3"><ActivarNotificaciones /></div>
-          <button onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-brand-rust text-brand-cream rounded-lg transition-colors text-sm font-semibold">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            Cerrar Sesión
-          </button>
-        </div>
-      </aside>
-
-      {menuAbierto && (
-        <div className="fixed inset-0 bg-brand-brown/50 z-30 md:hidden" onClick={() => setMenuAbierto(false)}></div>
-      )}
+      {/* UX: barra lateral compartida (se colapsa en escritorio, menu deslizante en movil) */}
+      <Sidebar
+        titulo="Árbitro Oficial"
+        subtitulo="Control de Cancha"
+        grupos={[
+          { etiqueta: 'Partidos', items: [
+            { id: 'hoy', label: 'Hoy', badge: partidosHoy.length },
+            { id: 'proximos', label: 'Próximos', badge: partidosAgendados.length },
+            { id: 'historial', label: 'Historial Reciente', badge: partidosFinalizados.length },
+            { id: 'calendario', label: 'Calendario', badge: partidosFiltrados.length },
+          ]},
+          { etiqueta: 'Cierre de Jornada', items: [
+            { id: 'votacion', label: 'Votación MVP' },
+            { id: 'protestas', label: 'Protestas' },
+          ]},
+        ]}
+        pestana={pestana}
+        onPestana={(id) => { setPestana(id); setMenuAbierto(false); }}
+        renderIcono={(id) => <NavIcon id={id} />}
+        menuAbierto={menuAbierto}
+        onCerrarMenu={() => setMenuAbierto(false)}
+        claveColapso="arbitroSidebarColapsada"
+      />
 
       {/* CONTENEDOR PRINCIPAL */}
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto">
@@ -567,6 +526,10 @@ const suspenderPartido = async () => {
               </select>
             )}
           </div>
+          <button onClick={cerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            <span className="hidden sm:inline">Cerrar Sesión</span>
+          </button>
         </header>
 
         {/* CONTENIDO DE LAS PESTAÑAS O PARTIDO ACTIVO */}

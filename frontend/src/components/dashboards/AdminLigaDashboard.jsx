@@ -26,7 +26,25 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000').replace(/\/api\/?$/, '');
 
 export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
-  const [pestana, setPestana] = useState(localStorage.getItem('adminLigaPestana') || 'equipos');
+  // UX (menus por ciclo real): las pestanas individuales se consolidan en contenedores
+  // con sub-pestanas. Se migra el valor guardado para no romper la sesion abierta.
+  const migrarPestanaGuardada = () => {
+    const guardada = localStorage.getItem('adminLigaPestana');
+    if (['sanciones', 'protestas', 'estadisticas', 'historial', 'pagos'].includes(guardada)) {
+      const contenedor = { sanciones: 'disciplina', protestas: 'disciplina', estadisticas: 'resultados', historial: 'resultados', pagos: 'equipos' }[guardada];
+      return { pestana: contenedor, sub: guardada };
+    }
+    if (['sedes', 'reglas', 'documentos', 'credenciales'].includes(guardada)) {
+      return { pestana: 'configuracion', sub: guardada };
+    }
+    return { pestana: guardada || 'equipos', sub: null };
+  };
+  const migracionPestana = migrarPestanaGuardada();
+  const [pestana, setPestana] = useState(migracionPestana.pestana);
+  const [subEquipos, setSubEquipos] = useState(migracionPestana.pestana === 'equipos' && migracionPestana.sub === 'pagos' ? 'pagos' : 'nomina');
+  const [subDisciplina, setSubDisciplina] = useState(migracionPestana.pestana === 'disciplina' ? migracionPestana.sub : 'sanciones');
+  const [subResultados, setSubResultados] = useState(migracionPestana.pestana === 'resultados' ? migracionPestana.sub : 'estadisticas');
+  const [subConfig, setSubConfig] = useState(migracionPestana.pestana === 'configuracion' ? migracionPestana.sub : 'sedes');
 
   // LOTE K: notificaciones tipo toast (reemplazan los alert nativos)
   const { toasts, mostrarToast, cerrarToast } = useToasts();
@@ -257,13 +275,23 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const cargarDatos = async () => {
     setMensaje('');
     try {
-      if (pestana === 'equipos' || pestana === 'credenciales') {
+      if (pestana === 'equipos') {
         const res = await fetchConToken('/equipos'); if (res.ok) setEquipos(await res.json());
         const resOp = await fetchConToken('/usuarios-operativos'); if (resOp.ok) setUsuariosOperativos(await resOp.json());
-      } else if (pestana === 'sedes') {
-        const res = await fetchConToken('/sedes'); if (res.ok) setSedes(await res.json());
-      } else if (pestana === 'reglas') {
-        const res = await fetchConToken('/plantillas-reglas'); if (res.ok) setPlantillasReglas(await res.json());
+        const resPagos = await fetchConToken('/pagos'); if (resPagos.ok) setPagos((await resPagos.json()).pagos || []);
+        const resTorEq = await fetchConToken('/torneos'); if (resTorEq.ok) setTorneosList(await resTorEq.json());
+      } else if (pestana === 'configuracion') {
+        const resSedes = await fetchConToken('/sedes'); if (resSedes.ok) setSedes(await resSedes.json());
+        const resReglas = await fetchConToken('/plantillas-reglas'); if (resReglas.ok) setPlantillasReglas(await resReglas.json());
+        const resDocCfg = await fetchConToken('/documentos');
+        if (resDocCfg.ok) {
+          const dataDocCfg = await resDocCfg.json();
+          setDocumentos(dataDocCfg.documentos || []);
+          setOrgIdDocumentos(dataDocCfg.organizacion_id || null);
+        }
+        const resTorCfg = await fetchConToken('/torneos'); if (resTorCfg.ok) setTorneosList(await resTorCfg.json());
+        const resEqCfg = await fetchConToken('/equipos'); if (resEqCfg.ok) setEquipos(await resEqCfg.json());
+        const resOpCfg = await fetchConToken('/usuarios-operativos'); if (resOpCfg.ok) setUsuariosOperativos(await resOpCfg.json());
       } else if (pestana === 'torneos') {
         const resEq = await fetchConToken('/equipos'); if (resEq.ok) setEquipos(await resEq.json());
         const resReg = await fetchConToken('/plantillas-reglas'); if (resReg.ok) setPlantillasReglas(await resReg.json());
@@ -271,7 +299,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
         const resTor = await fetchConToken('/torneos'); if (resTor.ok) setTorneosList(await resTor.json());
         // Cargamos partidos globales para obtener los suspendidos
         const resPart = await fetchConToken('/partidos-finalizados'); if (resPart.ok) setPartidos(await resPart.json());
-      } else if (pestana === 'estadisticas') {
+      } else if (pestana === 'resultados') {
         const res = await fetchConToken('/estadisticas'); if (res.ok) setEstadisticas(await res.json());
         const resGraf = await fetchConToken('/estadisticas/graficos'); if (resGraf.ok) setEstadisticasGraficos(await resGraf.json());
         // LOTE 4C (N3): torneos, partidos y equipos para estadisticas
@@ -279,27 +307,13 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
         const resTorEst = await fetchConToken('/torneos'); if (resTorEst.ok) setTorneosList(await resTorEst.json());
         const resPartEst = await fetchConToken('/partidos-finalizados'); if (resPartEst.ok) setPartidos(await resPartEst.json());
         const resEqEst = await fetchConToken('/equipos'); if (resEqEst.ok) setEquipos(await resEqEst.json());
-      } else if (pestana === 'sanciones') {
+        const resHistRes = await fetchConToken('/partidos-finalizados'); if (resHistRes.ok) setPartidos(await resHistRes.json());
+      } else if (pestana === 'disciplina') {
         // LOTE 4C (N6): listado de sanciones con cumplimiento auto-evaluado.
         const resSanc = await fetchConToken('/sanciones'); if (resSanc.ok) setSanciones(await resSanc.json());
         const resEqSanc = await fetchConToken('/equipos'); if (resEqSanc.ok) setEquipos(await resEqSanc.json());
-      } else if (pestana === 'historial') {
-        const res = await fetchConToken('/partidos-finalizados'); if (res.ok) setPartidos(await res.json());
       } else if (pestana === 'bitacora') {
         const res = await fetchConToken('/bitacora'); if (res.ok) setBitacora(await res.json());
-      } else if (pestana === 'documentos') {
-        const resDoc = await fetchConToken('/documentos');
-        if (resDoc.ok) {
-          const dataDoc = await resDoc.json();
-          setDocumentos(dataDoc.documentos || []);
-          setOrgIdDocumentos(dataDoc.organizacion_id || null);
-        }
-        const resTor = await fetchConToken('/torneos'); if (resTor.ok) setTorneosList(await resTor.json());
-      } else if (pestana === 'pagos') {
-        const resPagos = await fetchConToken('/pagos');
-        if (resPagos.ok) setPagos((await resPagos.json()).pagos || []);
-        const resTor = await fetchConToken('/torneos'); if (resTor.ok) setTorneosList(await resTor.json());
-        const resEq = await fetchConToken('/equipos'); if (resEq.ok) setEquipos(await resEq.json());
       }
     } catch (e) { setMensaje('Error cargando datos del servidor.'); }
   };
@@ -1144,6 +1158,33 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
     else mostrarToast(data.error || 'Error eliminando el pago.', 'error');
   };
 
+  const TITULOS_PESTANA = {
+    torneos: 'Torneos',
+    equipos: 'Equipos, Nominas y Pagos',
+    disciplina: 'Disciplina',
+    resultados: 'Resultados',
+    configuracion: 'Configuracion de la Liga',
+    bitacora: 'Bitacora de Actividad',
+  };
+
+  // UX (menus por ciclo real): barra de sub-pestanas reutilizable dentro de las
+  // vistas contenedoras (Equipos, Disciplina, Resultados, Configuracion).
+  const BarraSubPestanas = ({ opciones, valor, onChange }) => (
+    <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm animate-fade-in">
+      <div className="flex flex-wrap gap-1 bg-brand-cream/30 p-2 border-b border-brand-gold/20">
+        {opciones.map(sub => (
+          <button
+            key={sub.id}
+            onClick={() => onChange(sub.id)}
+            className={`min-h-10 rounded-lg border px-4 py-2 text-sm font-bold transition-colors ${valor === sub.id ? 'border-brand-gold/30 bg-white text-brand-rust shadow-sm' : 'border-transparent text-brand-brown/70 hover:border-brand-gold/20 hover:bg-white/70 hover:text-brand-brown'}`}
+          >
+            {sub.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   const NavIcon = ({ pestanaId }) => {
     switch (pestanaId) {
       case 'equipos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>;
@@ -1158,6 +1199,9 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
       case 'sanciones': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.636 5.636l12.728 12.728" /></svg>;
       case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
       case 'pagos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
+      case 'disciplina': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.636 5.636l12.728 12.728" /></svg>;
+      case 'resultados': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
+      case 'configuracion': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
       default: return null;
     }
   };
@@ -1316,21 +1360,15 @@ const bitacoraConTexto = bitacora.map(evento => ({
         titulo={orgData.nombre}
         subtitulo="Admin. de Liga"
         grupos={[
-          { etiqueta: 'General', items: [
-            { id: 'torneos', label: 'Torneos Activos' },
-            { id: 'equipos', label: 'Equipos y Nóminas' },
-            { id: 'sedes', label: 'Sedes Deportivas' },
+          { etiqueta: 'Operación', items: [
+            { id: 'torneos', label: 'Torneos' },
+            { id: 'equipos', label: 'Equipos, Nóminas y Pagos' },
+            { id: 'disciplina', label: 'Disciplina' },
+            { id: 'resultados', label: 'Resultados' },
           ]},
-          { etiqueta: 'Administración', items: [
-            { id: 'credenciales', label: 'Credenciales' },
-            { id: 'reglas', label: 'Plantillas y Reglas' },
-            { id: 'estadisticas', label: 'Estadísticas Globales' },
-                        { id: 'sanciones', label: 'Sanciones' },
-                        { id: 'protestas', label: 'Protestas' },
-{ id: 'historial', label: 'Historial / Archivo' },
-            { id: 'bitacora', label: 'Bitácora de actividad' },
-            { id: 'documentos', label: 'Documentos' },
-            { id: 'pagos', label: 'Pagos de Inscripción' },
+          { etiqueta: 'Administración de la Liga', items: [
+            { id: 'configuracion', label: 'Configuración de la Liga' },
+            { id: 'bitacora', label: 'Bitácora de Actividad' },
           ]},
         ]}
         pestana={pestana}
@@ -1352,7 +1390,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <h2 className="text-2xl font-bold text-brand-brown hidden sm:block">
-              {pestana.charAt(0).toUpperCase() + pestana.slice(1)}
+              {TITULOS_PESTANA[pestana] || (pestana.charAt(0).toUpperCase() + pestana.slice(1))}
             </h2>
           </div>
           
@@ -1380,8 +1418,18 @@ const bitacoraConTexto = bitacora.map(evento => ({
               </div>
             )}
 
+            {/* BARRA SUB-PESTAÑAS: CONFIGURACIÓN DE LA LIGA */}
+            {pestana === 'configuracion' && (
+              <BarraSubPestanas opciones={[
+                { id: 'sedes', label: 'Sedes Deportivas' },
+                { id: 'reglas', label: 'Plantillas y Reglas' },
+                { id: 'documentos', label: 'Documentos' },
+                { id: 'credenciales', label: 'Credenciales' },
+              ]} valor={subConfig} onChange={setSubConfig} />
+            )}
+
             {/* === VISTA: SEDES === */}
-            {pestana === 'sedes' && (
+            {pestana === 'configuracion' && subConfig === 'sedes' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
@@ -1435,7 +1483,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             )}
 
             {/* === VISTA: REGLAS === */}
-            {pestana === 'reglas' && (
+            {pestana === 'configuracion' && subConfig === 'reglas' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
@@ -1505,6 +1553,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
             {/* === VISTA: EQUIPOS === */}
             {pestana === 'equipos' && (
               <div className="space-y-6 animate-fade-in">
+                <BarraSubPestanas opciones={[
+                  { id: 'nomina', label: 'Equipos y Nóminas' },
+                  { id: 'pagos', label: 'Pagos de Inscripción' },
+                ]} valor={subEquipos} onChange={setSubEquipos} />
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
                     <NavIcon pestanaId="equipos" />
@@ -1697,7 +1749,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             )}
 
             {/* === VISTA: CREDENCIALES === */}
-            {pestana === 'credenciales' && (
+            {pestana === 'configuracion' && subConfig === 'credenciales' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20 flex flex-col lg:flex-row gap-8">
                   
@@ -1795,8 +1847,16 @@ const bitacoraConTexto = bitacora.map(evento => ({
               </div>
             )}
 
+            {/* BARRA SUB-PESTAÑAS: RESULTADOS */}
+            {pestana === 'resultados' && (
+              <BarraSubPestanas opciones={[
+                { id: 'estadisticas', label: 'Estadísticas Globales' },
+                { id: 'historial', label: 'Historial / Archivo' },
+              ]} valor={subResultados} onChange={setSubResultados} />
+            )}
+
             {/* === VISTA: ESTADISTICAS === */}
-            {pestana === 'estadisticas' && estadisticas && (
+            {pestana === 'resultados' && subResultados === 'estadisticas' && estadisticas && (
               <div className="space-y-6 animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <h3 className="text-xl font-bold text-brand-brown flex items-center gap-2">
@@ -2014,7 +2074,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             )}
 
             {/* === VISTA: DOCUMENTOS === */}
-            {pestana === 'documentos' && (
+            {pestana === 'configuracion' && subConfig === 'documentos' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
@@ -2101,7 +2161,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             )}
 
             {/* === VISTA: PAGOS (LOTE 3C) === */}
-            {pestana === 'pagos' && (
+            {pestana === 'equipos' && subEquipos === 'pagos' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
@@ -2187,7 +2247,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             )}
 
             {/* === VISTA: HISTORIAL === */}
-            {pestana === 'historial' && (
+            {pestana === 'resultados' && subResultados === 'historial' && (
               <div className="space-y-8 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
@@ -2232,8 +2292,16 @@ const bitacoraConTexto = bitacora.map(evento => ({
               </div>
             )}
 
+            {/* BARRA SUB-PESTAÑAS: DISCIPLINA */}
+            {pestana === 'disciplina' && (
+              <BarraSubPestanas opciones={[
+                { id: 'sanciones', label: 'Sanciones' },
+                { id: 'protestas', label: 'Protestas' },
+              ]} valor={subDisciplina} onChange={setSubDisciplina} />
+            )}
+
             {/* === VISTA: SANCIONES (LOTE 4C N6) === */}
-            {pestana === 'sanciones' && (
+            {pestana === 'disciplina' && subDisciplina === 'sanciones' && (
               <div className="space-y-8 animate-fade-in">
                 <div className="rounded-xl border border-brand-gold/20 bg-white p-6 shadow-sm">
                   <h3 className="text-lg font-bold text-brand-brown mb-4">Registrar Sanción</h3>
@@ -2317,7 +2385,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             )}
 
             {/* === VISTA: PROTESTAS (LOTE 4D P1) === */}
-            {pestana === 'protestas' && (
+            {pestana === 'disciplina' && subDisciplina === 'protestas' && (
               <div className="animate-fade-in">
                 <ProtestasAdmin fetchConToken={fetchConToken} />
               </div>

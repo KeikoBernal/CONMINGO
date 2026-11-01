@@ -6,8 +6,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
-import ActivarNotificaciones from '../ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
-import CampanaNotificaciones from '../CampanaNotificaciones'; // LOTE 6A: bandeja de notificaciones
+import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -725,6 +724,15 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+  const TITULOS_PESTANA = {
+    metricas: 'Métricas Globales',
+    calendario: 'Calendario de Partidos',
+    ligas: 'Ligas',
+    usuarios: 'Usuarios',
+    documentos: 'Documentos',
+    bitacora: 'Bitácora de Actividad',
+  };
+
   const NavIcon = ({ id }) => {
     switch (id) {
       case 'metricas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
@@ -801,52 +809,31 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       )}
 
       {/* SIDEBAR LATERAL */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-brand-brown text-brand-cream shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:shrink-0`}>
-        <div className="p-6 border-b border-brand-gold/20 shrink-0 bg-brand-brown/50">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-brand-cream/10 border border-brand-gold/50 flex items-center justify-center shrink-0">
-              <svg className="w-6 h-6 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-            </div>
-            <div className="overflow-hidden">
-              <h1 className="text-base font-bold text-brand-cream truncate">Superadmin</h1>
-              <p className="text-xs text-brand-gold font-semibold uppercase tracking-wider mt-0.5">Control Global</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto py-6 hide-scrollbar flex flex-col gap-6">
-          <div>
-            <div className="px-6 mb-2 text-xs font-bold text-brand-blue uppercase tracking-wider">Módulos del Sistema</div>
-            <nav className="space-y-1">
-              {['metricas', 'calendario', 'documentos', 'ligas', 'usuarios', 'bitacora'].map(item => {
-                const isActive = pestana === item;
-                return (
-                  <button 
-                    key={item} 
-                    onClick={() => { setPestana(item); setLigaDetalle(null); setMenuAbierto(false); }} 
-                    className={`w-full px-6 py-3 text-sm font-medium transition-colors flex items-center gap-3 capitalize ${isActive ? 'bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold' : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
-                  >
-                    <NavIcon id={item} />
-                    <span>{item}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-brand-gold/20 shrink-0">
-          {/* LOTE 5 (N4): activacion de notificaciones push del navegador */}
-          <div className="mb-3"><CampanaNotificaciones /></div>
-          <div className="mb-3"><ActivarNotificaciones /></div>
-          <button onClick={ejecutarCerrarSesion} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-cream/10 hover:bg-red-500 text-brand-cream rounded transition-colors text-sm font-semibold">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            Cerrar Sesión
-          </button>
-        </div>
-      </aside>
-
-      {menuAbierto && <div className="fixed inset-0 bg-brand-brown/50 z-30 md:hidden" onClick={() => setMenuAbierto(false)}></div>}
+      {/* UX: barra lateral compartida (se colapsa en escritorio, menu deslizante en movil) */}
+      <Sidebar
+        titulo="Superadmin"
+        subtitulo="Control Global"
+        grupos={[
+          { etiqueta: 'Operación', items: [
+            { id: 'metricas', label: 'Métricas Globales' },
+            { id: 'calendario', label: 'Calendario de Partidos' },
+          ]},
+          { etiqueta: 'Estructura', items: [
+            { id: 'ligas', label: 'Ligas' },
+            { id: 'usuarios', label: 'Usuarios' },
+          ]},
+          { etiqueta: 'Recursos y Auditoría', items: [
+            { id: 'documentos', label: 'Documentos' },
+            { id: 'bitacora', label: 'Bitácora de Actividad' },
+          ]},
+        ]}
+        pestana={pestana}
+        onPestana={(id) => { setPestana(id); setLigaDetalle(null); setMenuAbierto(false); }}
+        renderIcono={(id) => <NavIcon id={id} />}
+        menuAbierto={menuAbierto}
+        onCerrarMenu={() => setMenuAbierto(false)}
+        claveColapso="superadminSidebarColapsada"
+      />
 
       {/* CONTENEDOR PRINCIPAL */}
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto">
@@ -858,7 +845,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <h2 className="text-xl font-bold text-brand-brown capitalize flex items-center gap-2">
-              <NavIcon id={pestana} /> {pestana}
+              <NavIcon id={pestana} /> {TITULOS_PESTANA[pestana] || pestana}
             </h2>
           </div>
           
@@ -870,6 +857,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
             <button onClick={() => exportarRespaldoBD('sql')} className="px-3 py-1.5 bg-brand-brown text-brand-cream rounded-lg hover:bg-brand-brown/80 transition-colors text-xs font-bold">SQL</button>
             <button onClick={() => exportarRespaldoBD('json')} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold">JSON</button>
           </div>
+          <button onClick={ejecutarCerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            <span className="hidden sm:inline">Cerrar Sesión</span>
+          </button>
         </header>
 
         {/* CONTENIDO PRINCIPAL */}
