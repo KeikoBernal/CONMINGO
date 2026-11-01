@@ -182,7 +182,9 @@ router.post('/ligas', async (req, res) => {
       return res.status(400).json({ error: authError.message });
     }
 
-    await db.query(`INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, debe_cambiar_password) VALUES ($1, $2, 'Administrador de Liga', $3, $4, $5, $6, true)`, [authUser.user.id, responsable_email.trim().toLowerCase(), respNombreCap, respApellidoCap, cedulaLimpia, organizacionId]);
+    // LOTE 6G FIX: el trigger on_auth_user_created de auth.users ya inserto la fila
+    // en usuarios (sin organizacion); el upsert la completa en vez de reventar.
+    await db.query(`INSERT INTO public.usuarios (id, email, rol, nombre, apellido, cedula, organizacion_id, debe_cambiar_password) VALUES ($1, $2, 'Administrador de Liga', $3, $4, $5, $6, true) ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, rol = 'Administrador de Liga', nombre = EXCLUDED.nombre, apellido = EXCLUDED.apellido, cedula = EXCLUDED.cedula, organizacion_id = COALESCE(public.usuarios.organizacion_id, EXCLUDED.organizacion_id), debe_cambiar_password = true`, [authUser.user.id, responsable_email.trim().toLowerCase(), respNombreCap, respApellidoCap, cedulaLimpia, organizacionId]);
     await registrarAuditoria(req.usuario.id, 'CREAR_LIGA_Y_ADMIN', 'organizaciones', null, { ...resDb.rows[0], adminId: authUser.user.id }, req.ip, resDb.rows[0].id);
     
     // LOTE 6G: bienvenida con clave temporal + enlace de verificacion
@@ -388,7 +390,13 @@ router.post('/usuarios/:id/cambiar-correo', async (req, res) => {
     // se modifica nada en la base de datos.
     const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: nuevoEmail });
     if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
-      return res.status(502).json({ error: 'No se pudo enviar el correo de confirmación. Verifica la configuración SMTP e inténtalo de nuevo. El correo del usuario no fue modificado.' });
+      // LOTE 6G FIX: 503 (no 502) para distinguirlo de los 502 del proxy de Render;
+      // el motivo separa SMTP sin configurar de credenciales rechazadas.
+      const motivo = !resultado.enviadoAntiguo ? (resultado.motivoAntiguo || 'error_envio') : (resultado.motivoNuevo || 'error_envio');
+      const detalle = motivo === 'smtp_no_configurado'
+        ? 'el servidor de correo no está configurado: faltan las variables SMTP_HOST, SMTP_USER y SMTP_PASS en Render'
+        : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS (contraseña de aplicación de Gmail) en Render';
+      return res.status(503).json({ error: `No se pudo enviar el correo de confirmación (${detalle}). El correo del usuario no fue modificado.` });
     }
     await db.query('UPDATE public.usuarios SET email_pendiente = $1 WHERE id = $2', [nuevoEmail, id]);
     await registrarAuditoria(req.usuario.id, 'SOLICITAR_CAMBIO_CORREO', 'usuarios', { email: usuario.email, email_pendiente: usuario.email_pendiente || null }, { email_pendiente: nuevoEmail }, req.ip, usuario.organizacion_id || null);
@@ -410,7 +418,11 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
       // Hay un cambio de correo pendiente: reenvia la confirmacion al correo nuevo
       const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: usuario.email_pendiente });
       if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
-        return res.status(502).json({ error: 'No se pudo reenviar el correo de confirmación. Verifica la configuración SMTP.' });
+        const motivo = !resultado.enviadoAntiguo ? (resultado.motivoAntiguo || 'error_envio') : (resultado.motivoNuevo || 'error_envio');
+        const detalle = motivo === 'smtp_no_configurado'
+          ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
+          : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render';
+        return res.status(503).json({ error: `No se pudo reenviar el correo de confirmación (${detalle}).` });
       }
       await registrarAuditoria(req.usuario.id, 'REENVIAR_CAMBIO_CORREO', 'usuarios', null, { email_pendiente: usuario.email_pendiente }, req.ip, usuario.organizacion_id || null);
       return res.json({ mensaje: `Se reenvió la confirmación a ${usuario.email_pendiente}.` });
@@ -422,7 +434,10 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
 
     const envio = await reenviarVerificacion({ usuarioId: id, para: usuario.email, nombre: usuario.nombre });
     if (!envio.enviado) {
-      return res.status(502).json({ error: 'No se pudo enviar el correo de verificación. Verifica la configuración SMTP.' });
+      const detalle = envio.motivo === 'smtp_no_configurado'
+        ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
+        : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render';
+      return res.status(503).json({ error: `No se pudo enviar el correo de verificación (${detalle}).` });
     }
     await registrarAuditoria(req.usuario.id, 'REENVIAR_VERIFICACION', 'usuarios', null, { email: usuario.email }, req.ip, usuario.organizacion_id || null);
     res.json({ mensaje: `Se reenvió el enlace de verificación a ${usuario.email}.` });
