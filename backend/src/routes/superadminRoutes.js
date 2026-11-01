@@ -365,10 +365,14 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
     // clave (politica: 8+ caracteres con letras, numeros y caracter especial).
     // Mientras no lo use, su clave actual sigue funcionando.
     const envioReset = await enviarRestablecerPassword({ usuarioId: id, para: usuarioSup.email, nombre: usuarioSup.nombre });
+    // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos):
+    // no sale otro correo, pero el enlace anterior sigue siendo valido.
     if (envioReset.enviado) {
       await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD', 'usuarios', { id }, { reset_via: 'enlace_correo' }, req.ip, usuarioSup.organizacion_id || null);
-      return res.json({ mensaje: `Se envió a ${usuarioSup.email} un enlace para establecer una nueva contraseña. Es válido por 24 horas y la clave actual sigue funcionando hasta entonces.` });
+      return res.json({ mensaje: `Se envió a ${usuarioSup.email} un enlace para establecer una nueva contraseña. Es válido por 24 horas y la clave actual sigue funcionando hasta entonces. El correo puede tardar unos minutos en llegar; revisa también el correo no deseado.` });
     }
+
+    if (envioReset.motivo === 'reenvio_reciente') return res.json({ mensaje: envioReset.mensaje });
 
     // Modo degradado (SMTP caido): clave temporal de siempre, entregada a mano.
     const nuevaPassword = `${usuarioSup.nombre ? usuarioSup.nombre.trim().split(' ')[0] : 'User'}${String(usuarioSup.cedula || '').trim().substring(0, 5)}!`;
@@ -401,6 +405,8 @@ router.post('/usuarios/:id/cambiar-correo', async (req, res) => {
     // correo antiguo es best-effort: muchos correos legados no existen
     // (por ejemplo @liga.local) y no deben trabar el cambio para siempre.
     const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: nuevoEmail });
+    // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos).
+    if (resultado.motivoNuevo === 'reenvio_reciente') return res.json({ mensaje: resultado.mensajeNuevo });
     if (!resultado.enviadoNuevo) {
       const motivo = resultado.motivoNuevo || 'error_envio';
       const detalle = motivo === 'smtp_no_configurado'
@@ -429,6 +435,8 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
     if (usuario.email_pendiente) {
       // Hay un cambio de correo pendiente: reenvia la confirmacion al correo nuevo
       const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: usuario.email_pendiente });
+      // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos).
+      if (resultado.motivoNuevo === 'reenvio_reciente') return res.json({ mensaje: resultado.mensajeNuevo });
       if (!resultado.enviadoNuevo) {
         const motivo = resultado.motivoNuevo || 'error_envio';
         const detalle = motivo === 'smtp_no_configurado'
@@ -448,6 +456,8 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
     }
 
     const envio = await reenviarVerificacion({ usuarioId: id, para: usuario.email, nombre: usuario.nombre });
+    // LOTE 6J: pedido repetido dentro de la ventana anti-reenvio (2 minutos).
+    if (envio.motivo === 'reenvio_reciente') return res.json({ mensaje: envio.mensaje });
     if (!envio.enviado) {
       const detalle = envio.motivo === 'smtp_no_configurado'
         ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
