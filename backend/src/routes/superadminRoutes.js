@@ -6,7 +6,7 @@ const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware
 
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 // LOTE 6G: utilidad de correo saliente (SMTP) y tokens de verificacion
-const { enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo } = require('../utilidades/correo');
+const { enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo, enviarRestablecerPassword } = require('../utilidades/correo');
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // LOTE 6G
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
@@ -358,14 +358,26 @@ router.post('/usuarios/:id/reset-password', async (req, res) => {
   const { id } = req.params;
   try {
     const userDb = await db.query('SELECT id, email, cedula, nombre, organizacion_id FROM public.usuarios WHERE id = $1', [id]);
-    const { cedula, nombre } = userDb.rows[0];
-    const nuevaPassword = `${nombre ? nombre.trim().split(' ')[0] : 'User'}${cedula.trim().substring(0, 5)}!`;
+    if (userDb.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    const usuarioSup = userDb.rows[0];
+
+    // LOTE 6H: se envia a la persona un enlace para que establezca su propia
+    // clave (politica: 8+ caracteres con letras, numeros y caracter especial).
+    // Mientras no lo use, su clave actual sigue funcionando.
+    const envioReset = await enviarRestablecerPassword({ usuarioId: id, para: usuarioSup.email, nombre: usuarioSup.nombre });
+    if (envioReset.enviado) {
+      await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD', 'usuarios', { id }, { reset_via: 'enlace_correo' }, req.ip, usuarioSup.organizacion_id || null);
+      return res.json({ mensaje: `Se envió a ${usuarioSup.email} un enlace para establecer una nueva contraseña. Es válido por 24 horas y la clave actual sigue funcionando hasta entonces.` });
+    }
+
+    // Modo degradado (SMTP caido): clave temporal de siempre, entregada a mano.
+    const nuevaPassword = `${usuarioSup.nombre ? usuarioSup.nombre.trim().split(' ')[0] : 'User'}${String(usuarioSup.cedula || '').trim().substring(0, 5)}!`;
     const { error } = await supabaseAdmin.auth.admin.updateUserById(id, { password: nuevaPassword, user_metadata: { debe_cambiar_password: true } });
     if (error) return res.status(400).json({ error: error.message });
 
     await db.query('UPDATE public.usuarios SET debe_cambiar_password = true WHERE id = $1', [id]);
-    await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD', 'usuarios', { id }, { password_reset: true }, req.ip, userDb.rows[0].organizacion_id || null);
-    res.json({ mensaje: `Contraseña restablecida correctamente. Nueva clave temporal: ${nuevaPassword}` });
+    await registrarAuditoria(req.usuario.id, 'RESET_PASSWORD', 'usuarios', { id }, { password_reset: true, motivo_correo: envioReset.motivo }, req.ip, usuarioSup.organizacion_id || null);
+    res.json({ mensaje: `No se pudo enviar el correo (${envioReset.motivo}). Contraseña restablecida con clave temporal: ${nuevaPassword}` });
   } catch (error) { res.status(500).json({ error: 'Error al restablecer contraseña.' }); }
 });
 
@@ -385,22 +397,22 @@ router.post('/usuarios/:id/cambiar-correo', async (req, res) => {
     const existe = await db.query('SELECT id FROM public.usuarios WHERE LOWER(email) = $1 AND id <> $2', [nuevoEmail, id]);
     if (existe.rows.length > 0) return res.status(400).json({ error: 'Ya existe otro usuario con ese correo.' });
 
-    // Envia aviso al correo antiguo y confirmacion al nuevo; solo si AMBOS salen
-    // se marca el cambio como pendiente (email_pendiente). Si falla el envio no
-    // se modifica nada en la base de datos.
+    // LOTE 6H: solo la confirmacion al correo NUEVO es bloqueante. El aviso al
+    // correo antiguo es best-effort: muchos correos legados no existen
+    // (por ejemplo @liga.local) y no deben trabar el cambio para siempre.
     const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: nuevoEmail });
-    if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
-      // LOTE 6G FIX: 503 (no 502) para distinguirlo de los 502 del proxy de Render;
-      // el motivo separa SMTP sin configurar de credenciales rechazadas.
-      const motivo = !resultado.enviadoAntiguo ? (resultado.motivoAntiguo || 'error_envio') : (resultado.motivoNuevo || 'error_envio');
+    if (!resultado.enviadoNuevo) {
+      const motivo = resultado.motivoNuevo || 'error_envio';
       const detalle = motivo === 'smtp_no_configurado'
         ? 'el servidor de correo no está configurado: faltan las variables SMTP_HOST, SMTP_USER y SMTP_PASS en Render'
-        : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS (contraseña de aplicación de Gmail) en Render';
+        : 'el servidor de correo rechazó el envío: revisa el log de Render (linea [correo] No se pudo enviar) o SMTP_USER y SMTP_PASS (contraseña de aplicación de Gmail) en Render';
       return res.status(503).json({ error: `No se pudo enviar el correo de confirmación (${detalle}). El correo del usuario no fue modificado.` });
     }
     await db.query('UPDATE public.usuarios SET email_pendiente = $1 WHERE id = $2', [nuevoEmail, id]);
-    await registrarAuditoria(req.usuario.id, 'SOLICITAR_CAMBIO_CORREO', 'usuarios', { email: usuario.email, email_pendiente: usuario.email_pendiente || null }, { email_pendiente: nuevoEmail }, req.ip, usuario.organizacion_id || null);
-    res.json({ mensaje: `Se envió la confirmación a ${nuevoEmail} y un aviso a ${usuario.email}. El cambio se aplicará cuando el nuevo correo lo confirme.` });
+    await registrarAuditoria(req.usuario.id, 'SOLICITAR_CAMBIO_CORREO', 'usuarios', { email: usuario.email, email_pendiente: usuario.email_pendiente || null }, { email_pendiente: nuevoEmail, aviso_antiguo_enviado: resultado.enviadoAntiguo }, req.ip, usuario.organizacion_id || null);
+    res.json({ mensaje: resultado.enviadoAntiguo
+      ? `Se envió la confirmación a ${nuevoEmail} y un aviso a ${usuario.email}. El cambio se aplicará cuando el nuevo correo lo confirme.`
+      : `Se envió la confirmación a ${nuevoEmail}. No se pudo avisar al correo anterior (${usuario.email}), pero el cambio se aplicará cuando el nuevo correo lo confirme.` });
   } catch (error) {
     console.error('Error solicitando cambio de correo:', error);
     res.status(500).json({ error: 'Error al solicitar el cambio de correo.' });
@@ -417,15 +429,18 @@ router.post('/usuarios/:id/reenviar-verificacion', async (req, res) => {
     if (usuario.email_pendiente) {
       // Hay un cambio de correo pendiente: reenvia la confirmacion al correo nuevo
       const resultado = await solicitarCambioCorreo({ usuarioId: id, nombre: usuario.nombre, paraAntiguo: usuario.email, paraNuevo: usuario.email_pendiente });
-      if (!resultado.enviadoAntiguo || !resultado.enviadoNuevo) {
-        const motivo = !resultado.enviadoAntiguo ? (resultado.motivoAntiguo || 'error_envio') : (resultado.motivoNuevo || 'error_envio');
+      if (!resultado.enviadoNuevo) {
+        const motivo = resultado.motivoNuevo || 'error_envio';
         const detalle = motivo === 'smtp_no_configurado'
           ? 'el servidor de correo no está configurado: faltan las variables SMTP en Render'
           : 'el servidor de correo rechazó el envío: revisa SMTP_USER y SMTP_PASS en Render';
         return res.status(503).json({ error: `No se pudo reenviar el correo de confirmación (${detalle}).` });
       }
-      await registrarAuditoria(req.usuario.id, 'REENVIAR_CAMBIO_CORREO', 'usuarios', null, { email_pendiente: usuario.email_pendiente }, req.ip, usuario.organizacion_id || null);
-      return res.json({ mensaje: `Se reenvió la confirmación a ${usuario.email_pendiente}.` });
+      await registrarAuditoria(req.usuario.id, 'REENVIAR_CAMBIO_CORREO', 'usuarios', null, { email_pendiente: usuario.email_pendiente, aviso_antiguo_enviado: resultado.enviadoAntiguo }, req.ip, usuario.organizacion_id || null);
+      const mensajeReenvio = resultado.enviadoAntiguo
+        ? `Se reenvió la confirmación a ${usuario.email_pendiente}.`
+        : `Se reenvió la confirmación a ${usuario.email_pendiente}. No se pudo avisar al correo anterior (${usuario.email}).`;
+      return res.json({ mensaje: mensajeReenvio });
     }
 
     if (usuario.correo_verificado) {

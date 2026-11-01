@@ -9,6 +9,7 @@ import AnotadorDashboard from './components/dashboards/AnotadorDashboard';
 import PantallaPuntajes from './components/dashboards/PantallaPuntajes';
 import PantallaOffline, { useConexion } from './components/PantallaOffline';
 import VerificarCorreo from './components/VerificarCorreo'; // LOTE 6G: aterriza el enlace ?verificar=
+import RestablecerContrasena from './components/RestablecerContrasena'; // LOTE 6H: aterriza el enlace ?restablecer=
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -113,6 +114,13 @@ export default function App() {
   // confirmacion del cambio de correo (el backend distingue el tipo de token).
   if (new URLSearchParams(window.location.search).get('verificar')) {
     return <VerificarCorreo />;
+  }
+
+  // LOTE 6H: aterriza el enlace de restablecimiento de contrasena (?restablecer=token).
+  // Vista publica sin sesion: la persona establece su propia clave con la misma
+  // politica de la clave provisional (letras, numeros y caracter especial).
+  if (new URLSearchParams(window.location.search).get('restablecer')) {
+    return <RestablecerContrasena />;
   }
 
   const manejarLogin = async (e) => {
