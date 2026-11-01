@@ -10,6 +10,16 @@ const db = require('../config/db');
 
 const SMTP_CONFIGURADO = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
+// LOTE 6G: aviso de arranque para diagnosticar el SMTP desde el log de Render
+// (nunca imprime la contrasena, solo si esta definida).
+console.log('[correo] SMTP al arrancar:', SMTP_CONFIGURADO ? 'configurado' : 'SIN CONFIGURAR (faltan SMTP_HOST, SMTP_USER o SMTP_PASS)', {
+  host: process.env.SMTP_HOST || '(falta)',
+  puerto: process.env.SMTP_PORT || '(falta, se usara 465)',
+  usuario: process.env.SMTP_USER || '(falta)',
+  contrasena: process.env.SMTP_PASS ? 'definida' : '(falta)',
+  remitente: process.env.SMTP_FROM || '(falta, se usara SMTP_USER)'
+});
+
 let transporte = null;
 const obtenerTransporte = () => {
   if (transporte) return transporte;
