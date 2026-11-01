@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const bcrypt = require('bcryptjs'); // LOTE 6H: hash local de la clave establecida desde el enlace
 const { verificarToken } = require('../middleware/authMiddleware'); // FIX #12: rol resuelto siempre en el servidor
 
 // FIX #4: se eliminó el endpoint POST /login (JWT propio + fallback 'secreto_desarrollo').
@@ -120,6 +121,16 @@ const reenvioLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes de reenvío. Espera 15 minutos antes de pedir otro.' }
+});
+
+// LOTE 6H: limite del endpoint publico de restablecimiento (10 cada 15 minutos)
+const restablecerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: claveLoginLimiter,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de restablecer la contraseña. Espera unos minutos antes de reintentar.' }
 });
 
 // Paso 1: verificación de email + contraseña (bloqueo persistente por correo)
@@ -398,6 +409,46 @@ router.post('/confirmar-cambio-correo', async (req, res) => {
   } catch (error) {
     console.error('Error confirmando cambio de correo:', error);
     return res.status(500).json({ error: 'Error interno al confirmar el cambio de correo.' });
+  }
+});
+
+// ============================================================
+// LOTE 6H: RESTABLECER CONTRASENA DESDE EL ENLACE DEL CORREO
+// (?restablecer=token de 'recuperacion'). El administrador pide el reset
+// desde el panel y la persona establece su propia clave con la misma
+// politica de la clave provisional: letras + numeros + caracter especial.
+// ============================================================
+router.post('/restablecer-password', restablecerLimiter, async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  const nuevaPassword = typeof req.body?.nueva_password === 'string' ? req.body.nueva_password : '';
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'Enlace de restablecimiento inválido.' });
+  if (!/^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).{8,}$/.test(nuevaPassword.trim())) {
+    return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres e incluir letras, números y al menos un carácter especial.' });
+  }
+  try {
+    const fila = await consumirTokenCorreo(token, 'recuperacion');
+    if (!fila) {
+      return res.status(400).json({ error: 'El enlace de restablecimiento es inválido o ya expiró. Pide al administrador de tu liga que envíe uno nuevo.' });
+    }
+    const { error: errorAuth } = await supabaseAdminProxy.auth.admin.updateUserById(fila.usuario_id, {
+      password: nuevaPassword.trim(),
+      user_metadata: { debe_cambiar_password: false }
+    });
+    if (errorAuth) {
+      return res.status(400).json({ error: 'No se pudo actualizar la contraseña: ' + errorAuth.message });
+    }
+    const hashedPwd = await bcrypt.hash(nuevaPassword.trim(), 10);
+    await db.query('UPDATE public.usuarios SET password_hash = $2, debe_cambiar_password = false WHERE id = $1', [fila.usuario_id, hashedPwd]);
+    try {
+      await db.query(
+        'INSERT INTO public.audit_logs (usuario_id, accion, tabla, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5)',
+        [fila.usuario_id, 'PASSWORD_RESTABLECIDO', 'usuarios', JSON.stringify({ via: 'enlace_correo' }), req.ip]
+      );
+    } catch (_) { /* no bloquea */ }
+    return res.json({ mensaje: 'Contraseña actualizada. Ya puedes iniciar sesión con tu nueva contraseña.' });
+  } catch (error) {
+    console.error('Error restableciendo contraseña:', error);
+    return res.status(500).json({ error: 'Error interno al restablecer la contraseña.' });
   }
 });
 

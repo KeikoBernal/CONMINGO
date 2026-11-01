@@ -162,11 +162,28 @@ const solicitarCambioCorreo = async ({ usuarioId, nombre, paraAntiguo, paraNuevo
   return { enviadoAntiguo: resAntiguo.enviado, motivoAntiguo: resAntiguo.motivo, enviadoNuevo: resNuevo.enviado, motivoNuevo: resNuevo.motivo };
 };
 
+// LOTE 6H: restablecimiento de clave. El administrador pide el reset desde el
+// panel y la persona recibe un enlace para establecer su propia contrasena
+// (token de 'recuperacion', 24 horas). La clave nunca viaja en el correo.
+const enviarRestablecerPassword = async ({ usuarioId, para, nombre }) => {
+  const token = await crearTokenCorreo(usuarioId, 'recuperacion', 24);
+  const url = URL_FRONTEND() + '/?restablecer=' + token;
+  const cuerpo = [
+    '<p>Hola <strong>' + (nombre || para) + '</strong>:</p>',
+    '<p>Se solicitó restablecer la contraseña de tu cuenta de CONMINGO.</p>',
+    '<p>Usa el siguiente enlace para establecer tu nueva contraseña:</p>',
+    boton(url, 'Establecer mi contraseña'),
+    '<p style="font-size: 12px; color: #7a6a55;">El enlace es válido por 24 horas. Tu contraseña actual sigue funcionando hasta que establezcas la nueva.</p>'
+  ].join('\n');
+  return enviarCorreo({ para, asunto: 'Restablece tu contraseña - CONMINGO', html: plantilla('Restablecimiento de contraseña', cuerpo) });
+};
+
 module.exports = {
   enviarCorreo,
   crearTokenCorreo,
   consumirTokenCorreo,
   enviarBienvenidaConVerificacion,
   reenviarVerificacion,
-  solicitarCambioCorreo
+  solicitarCambioCorreo,
+  enviarRestablecerPassword
 };
