@@ -10,6 +10,7 @@ import BotonModoSolar from '../BotonModoSolar';
 import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
@@ -32,6 +33,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   // PESTAÑAS DEL PANEL LATERAL: 'hoy' | 'proximos' | 'historial'
   const [pestana, setPestana] = useState(localStorage.getItem('anotadorPestana') || 'hoy');
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [tourActivo, setTourActivo] = useState(() => tourPendiente('anotador'));
+  const cerrarTour = () => {
+    marcarTourVisto('anotador');
+    setTourActivo(false);
+  };
 
   // FASE 1 UX: toasts y dialogo de confirmacion en vez de alert/confirm nativos
   const { toasts, mostrarToast, cerrarToast } = useToasts();
@@ -494,6 +500,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
+      <TourGuia rol="anotador" activo={tourActivo} onCerrar={cerrarTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
       
       {/* MODAL SIMULADOR VISUAL DE CANCHA (LOTE S) */}
@@ -599,6 +606,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="anotadorSidebarColapsada"
+        onVerGuia={() => setTourActivo(true)}
       />
 
       {/* CONTENEDOR PRINCIPAL */}
