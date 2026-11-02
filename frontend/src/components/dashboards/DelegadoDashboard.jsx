@@ -12,6 +12,8 @@ import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grup
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
+import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -44,6 +46,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const [debeCambiarPass, setDebeCambiarPass] = useState(false);
   const [nuevaClave, setNuevaClave] = useState('');
   const [isSubmittingPass, setIsSubmittingPass] = useState(false);
+
+  // FASE 3C
+  const [cargando, setCargando] = useState(false);
+  const [cargandoPlanilla, setCargandoPlanilla] = useState(false);
+  const [exportandoPlanilla, setExportandoPlanilla] = useState(false);
 
   const [token, setToken] = useState(null);
 
@@ -113,6 +120,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
 
   const cargarDatos = async () => {
     setMensaje('');
+    setCargando(true);
     try {
       if (pestana === 'equipo' || pestana === 'estadisticas') {
         const resEq = await fetchConToken('/mi-equipo');
@@ -141,10 +149,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
       }
     } catch (e) {
       setMensaje('Error conectando con el servidor.');
-    }
+    } finally { setCargando(false); }
   };
 
-  const cargarPlanillaPartido = async (partidoId) => {
+  const cargarPlanillaPartido = async (partidoId) => { if (cargandoPlanilla) return; setCargandoPlanilla(true); try { await cargarPlanillaPartidoBase(partidoId); } finally { setCargandoPlanilla(false); } };
+const cargarPlanillaPartidoBase = async (partidoId) => {
     setMensaje('');
     const res = await fetchConToken(`/partidos/${partidoId}/planilla`);
     if (res.ok) {
@@ -251,7 +260,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  const exportarPlanilla = async (partidoId, formato) => {
+  const exportarPlanilla = async (partidoId, formato) => { if (exportandoPlanilla) return; setExportandoPlanilla(true); try { await exportarPlanillaBase(partidoId, formato); } finally { setExportandoPlanilla(false); } };
+const exportarPlanillaBase = async (partidoId, formato) => {
     try {
       setMensaje(`Generando archivo ${formato.toUpperCase()} de la planilla...`);
       
@@ -424,8 +434,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filasNomina.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
+                      {cargando && filasNomina.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={6} columnas={6} /></td></tr>
+                      ) : filasNomina.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="usuarios" titulo="Sin jugadores para mostrar" descripcion={jugadores.length === 0 ? 'Aún no hay jugadores inscritos en el equipo.' : 'Ningún jugador coincide con los filtros aplicados.'} /></td></tr>
                       ) : (
                         pagNomina.filasPagina.map(j => (
                           <tr key={j.id} className={j.estado === 'Inactivo' ? 'bg-gray-50 opacity-60' : ''}>
@@ -477,10 +489,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                     </button>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-brand-brown mr-2">Descargar Planilla:</span>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'pdf')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">PDF</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">Excel</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'csv')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">CSV</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'json')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">JSON</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'pdf')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">PDF</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'excel')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Excel</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'csv')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">CSV</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'json')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">JSON</button>
                     </div>
                   </div>
                   <PlanillaUniversal
@@ -517,8 +529,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                     <CalendarioPartidos partidos={filasPartidos} sedesPorPartido={sedesDelegado} />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filasPartidos.length === 0 ? (
-                      <div className="col-span-full text-center py-8 text-brand-brown/50">No hay partidos que coincidan con los filtros aplicados.</div>
+                    {cargando && filasPartidos.length === 0 ? (
+                      <div className="col-span-full"><SkeletonTarjetas cantidad={6} clasesGrid="grid-cols-1 md:grid-cols-2 lg:grid-cols-3" /></div>
+                    ) : filasPartidos.length === 0 ? (
+                      <div className="col-span-full"><EmptyState icono="calendario" titulo="Sin partidos para mostrar" descripcion={partidos.length === 0 ? 'Aún no hay encuentros agendados para tu equipo.' : 'Ningún partido coincide con los filtros aplicados.'} /></div>
                     ) : (
                       filasPartidos.map(p => (
                         <div key={p.id} className={`flex flex-col justify-between p-5 rounded-xl border ${p.estado === 'Finalizado' ? 'border-brand-rust bg-brand-rust/5 shadow-sm ring-1 ring-brand-rust' : 'border-brand-gold/30 bg-white hover:border-brand-blue hover:shadow-sm'} transition-all`}>
@@ -533,14 +547,14 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                           </div>
                           
                           <div className="mt-auto space-y-2">
-                            <button onClick={() => cargarPlanillaPartido(p.id)} className="w-full py-2 bg-brand-blue text-white rounded font-bold hover:bg-brand-brown transition-colors text-sm flex items-center justify-center gap-2">
+                            <button onClick={() => cargarPlanillaPartido(p.id)} disabled={cargandoPlanilla} className="w-full py-2 bg-brand-blue text-white rounded-lg font-bold hover:bg-brand-brown transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                              Ver Planilla Detallada
+                              {cargandoPlanilla ? 'Abriendo...' : 'Ver Planilla Detallada'}
                             </button>
                             <div className="flex gap-2">
-                              <button onClick={() => exportarPlanilla(p.id, 'pdf')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">PDF</button>
-                              <button onClick={() => exportarPlanilla(p.id, 'excel')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
-                              <button onClick={() => exportarPlanilla(p.id, 'csv')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">CSV</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'pdf')} disabled={exportandoPlanilla} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">PDF</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'excel')} disabled={exportandoPlanilla} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Excel</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'csv')} disabled={exportandoPlanilla} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">CSV</button>
                             </div>
                           </div>
                         </div>
@@ -606,8 +620,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filasScouting.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
+                      {cargando && filasScouting.length === 0 ? (
+                        <tr><td colSpan={7} className="p-0 border-0"><SkeletonTabla filas={6} columnas={7} /></td></tr>
+                      ) : filasScouting.length === 0 ? (
+                        <tr><td colSpan={7} className="p-0 border-0"><EmptyState icono="estadisticas" titulo="Sin datos de scouting" descripcion={(estadisticas.individual || []).length === 0 ? 'Juega partidos para generar métricas de tus jugadores.' : 'Ningún jugador coincide con los filtros aplicados.'} /></td></tr>
                       ) : (
                         pagScouting.filasPagina.map((j, idx) => (
                           <tr key={idx}>
@@ -655,8 +671,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {documentosLiga.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">La liga aún no ha publicado documentos.</td></tr>
+                      {cargando && documentosLiga.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={4} columnas={6} /></td></tr>
+                      ) : documentosLiga.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="documentos" titulo="Sin documentos publicados" descripcion="La liga aún no ha publicado documentos para tus equipos." /></td></tr>
                       ) : (
                         documentosLiga.map(d => (
                           <tr key={d.id}>
@@ -701,8 +719,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filasPagosEquipo.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay pagos registrados para tu equipo.</td></tr>
+                      {cargando && pagosEquipo.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={4} columnas={6} /></td></tr>
+                      ) : filasPagosEquipo.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="pagos" titulo="Sin pagos registrados" descripcion="Cuando la liga registre pagos de tu equipo aparecerán aquí." /></td></tr>
                       ) : (
                         pagPagosEquipo.filasPagina.map(p => (
                           <tr key={p.id}>
