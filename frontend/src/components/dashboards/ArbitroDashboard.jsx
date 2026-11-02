@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import PlanillaUniversal from './PlanillaUniversal';
 import SistemaMensajeria from './SistemaMensajeria';
-import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import { TableTools, EMPTY_FILTER, rowMatchesFilter, usePaginacion, PaginacionTabla } from './HerramientasTabla'; // FASE A1 UX: paginacion compartida
 import CalendarioPartidos from '../CalendarioPartidos';
 import BotonModoSolar from '../BotonModoSolar';
 import VotacionMvp from '../VotacionMvp';
@@ -410,6 +410,11 @@ const suspenderPartido = async () => {
   const partidosFinalizados = filtrarTabla('historial', partidosFinalizadosBase, ['estado'], ['fecha_hora']);
   const sedesCalendario = Object.fromEntries(partidosFiltrados.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
+  // FASE A1 UX: los listados de temporada crecen sin control; se paginan del lado
+  // del cliente igual que AdminLiga, Superadmin y Delegado (Fase 2).
+  const pagProximos = usePaginacion(partidosAgendados);
+  const pagHistorial = usePaginacion(partidosFinalizados);
+
   // Íconos para la barra lateral del árbitro
   // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
   const ICONOS_PESTANA = { hoy: 'calendario', proximos: 'reloj', historial: 'documento', calendario: 'calendario', protestas: 'protesta', votacion: 'votacion' };
@@ -631,7 +636,7 @@ const suspenderPartido = async () => {
                     />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {partidosAgendados.map(p => (
+                      {pagProximos.filasPagina.map(p => (
                         <div key={p.id} className="bg-white border-l-4 border-brand-gold border-y border-r border-y-brand-gold/20 border-r-brand-gold/20 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
                           <div className="font-bold text-brand-brown mb-1.5 leading-tight">{p.local_nombre} <span className="text-brand-rust mx-1 text-xs">vs</span> {p.visita_nombre}</div>
                           <div className="flex items-center gap-2 text-xs font-semibold text-brand-brown/60">
@@ -642,6 +647,7 @@ const suspenderPartido = async () => {
                       ))}
                     </div>
                   )}
+                  <PaginacionTabla {...pagProximos} />
                 </div>
               )}
 
@@ -700,7 +706,7 @@ const suspenderPartido = async () => {
                     />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {partidosFinalizados.map(p => (
+                      {pagHistorial.filasPagina.map(p => (
                         <div key={p.id} className="bg-white border border-brand-gold/30 rounded-xl p-4 shadow-sm">
                           <div className="font-bold text-brand-brown mb-1 leading-tight">{p.local_nombre} <span className="text-brand-rust mx-1 text-xs">vs</span> {p.visita_nombre}</div>
                           <div className="flex items-center gap-2 text-xs font-semibold text-brand-brown/60 mb-3">
@@ -717,6 +723,7 @@ const suspenderPartido = async () => {
                       ))}
                     </div>
                   )}
+                  <PaginacionTabla {...pagHistorial} />
                 </div>
               )}
 
