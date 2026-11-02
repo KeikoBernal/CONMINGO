@@ -14,6 +14,7 @@ import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de nave
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
+import { tecladoModal } from '../Accesibilidad';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -626,27 +627,27 @@ const ejecutarEliminacionBase = async (e) => {
                   </span>
                 </td>
                 <td className="p-4 flex gap-2 justify-center">
-                  <button onClick={() => setUserEditando(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded-lg transition-colors" title="Editar">
+                  <button onClick={() => setUserEditando(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded-lg transition-colors" title="Editar" aria-label="Editar">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                   </button>
-                  <button onClick={() => resetearPasswordAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Resetear Clave">
+                  <button onClick={() => resetearPasswordAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Resetear Clave" aria-label="Resetear Clave">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                   </button>
-                  <button onClick={() => cambiarCorreoAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Cambiar Correo">
+                  <button onClick={() => cambiarCorreoAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Cambiar Correo" aria-label="Cambiar Correo">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l9 6 9-6M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                   </button>
                   {(u.correo_verificado === false || u.email_pendiente) && (
-                    <button onClick={() => reenviarVerificacionAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-brown hover:bg-brand-brown/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Reenviar Verificación">
+                    <button onClick={() => reenviarVerificacionAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-brown hover:bg-brand-brown/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Reenviar Verificación" aria-label="Reenviar Verificación">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
                   )}
                   {u.estado !== 'Inactivo' && (
-                    <button onClick={() => iniciarEliminacionUsuario(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Desactivar Acceso">
+                    <button onClick={() => iniciarEliminacionUsuario(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Desactivar Acceso" aria-label="Desactivar Acceso">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   )}
                   {u.estado === 'Inactivo' && (
-                    <button onClick={() => reactivarUsuario(u)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Reactivar Acceso">
+                    <button onClick={() => reactivarUsuario(u)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Reactivar Acceso" aria-label="Reactivar Acceso">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
                   )}
@@ -799,7 +800,7 @@ const ejecutarEliminacionBase = async (e) => {
 
       {/* MODAL CAMBIO DE CORREO (LOTE 6G) */}
       {modalCorreo && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-2000 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-2000 p-4" role="dialog" aria-modal="true" aria-label="Cambiar Correo Electrónico" onKeyDown={(evento) => tecladoModal(evento, () => setModalCorreo(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl animate-slide-up border border-brand-gold/30">
             <h3 className="text-xl font-bold text-brand-brown mb-2">Cambiar Correo Electrónico</h3>
             <p className="text-sm text-brand-brown/70 mb-1">Usuario: <strong>{modalCorreo.nombre} {modalCorreo.apellido}</strong></p>
@@ -828,7 +829,7 @@ const ejecutarEliminacionBase = async (e) => {
 
       {/* MODAL ELIMINAR */}
       {itemEliminar && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-2000 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-2000 p-4" role="dialog" aria-modal="true" aria-label="Confirmar Eliminación">
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl animate-slide-up border border-red-200">
             <h3 className="text-xl font-bold text-red-600 mb-4 flex items-center gap-2">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
