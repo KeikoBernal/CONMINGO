@@ -18,6 +18,7 @@ import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de nave
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
+import TarjetasMovil from '../TarjetasMovil'; // FASE A2 UX: tarjetas apiladas en pantallas chicas
 import FotoJugador from '../FotoJugador';
 import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
@@ -1757,7 +1758,33 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </div>
                       </form>
 
-                    <div className="overflow-x-auto">
+                    <div className="md:hidden">
+                      {cargando && jugadores.length === 0 ? (
+                        <SkeletonTarjetas cantidad={5} />
+                      ) : jugadores.length === 0 ? (
+                        <EmptyState icono="usuarios" titulo="Ningún jugador inscrito" descripcion="Registra la nómina del equipo desde el formulario de esta vista." />
+                      ) : (
+                        <TarjetasMovil
+                          filas={pagNomina.filasPagina}
+                          clave="id"
+                          campos={[
+                            { etiqueta: 'Dorsal', valor: (j) => '#' + (j.numero_dorsal || 'Sin dorsal') },
+                            { etiqueta: 'Jugador', valor: (j) => j.nombre + ' ' + j.apellido + (equipoSeleccionado.capitan_id === j.id ? ' (Capitán)' : '') },
+                            { etiqueta: 'Estado', valor: (j) => j.estado }
+                          ]}
+                          detalle={[{ etiqueta: 'Cédula', valor: (j) => j.cedula }]}
+                          acciones={(j) => (
+                            <>
+                              <button type="button" onClick={() => iniciarEdicionJugador(j)} className="flex-1 px-3 py-1.5 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded-lg text-xs font-bold transition-colors shadow-sm">Editar</button>
+                              <button type="button" onClick={() => cambiarEstadoJugador(j.id, j.estado)} className={'px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm ' + (j.estado === 'Activo' ? 'bg-red-100 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-green-100 text-green-700 hover:bg-green-600 hover:text-white')}>{j.estado === 'Activo' ? 'Desactivar' : 'Activar'}</button>
+                              <button type="button" onClick={() => iniciarTransferencia(j)} className="px-3 py-1.5 bg-brand-rust/10 text-brand-rust hover:bg-brand-rust hover:text-white rounded-lg text-xs font-bold transition-colors shadow-sm">Transferir</button>
+                              <button type="button" onClick={() => generarCarnetJugador(j)} disabled={generandoCarnets} className="px-3 py-1.5 bg-brand-cream border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white rounded-lg text-xs font-bold transition-colors shadow-sm disabled:opacity-60">Carnet</button>
+                            </>
+                          )}
+                        />
+                      )}
+                    </div>
+                    <div className="hidden md:block overflow-x-auto">
                       <table className="tabla-admin">
                         <thead>
                           <tr>
@@ -2291,7 +2318,33 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4">Pagos de Inscripción Registrados</h3>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={pagosConTexto} filteredRows={filasPagos} filter={getFilter('pagos')} setFilter={setTableFilter('pagos')} columns={[{ key: 'torneo_nombre', label: 'Torneo' }, { key: 'inscrito', label: 'Inscrito' }, { key: 'monto', label: 'Monto' }, { key: 'metodo', label: 'Metodo' }]} filename="pagos_filtrados" />
-                  <div className="overflow-x-auto">
+                  <div className="md:hidden">
+                    {cargando && pagos.length === 0 ? (
+                      <SkeletonTarjetas cantidad={4} />
+                    ) : filasPagos.length === 0 ? (
+                      <EmptyState icono="pagos" titulo="Aún no hay pagos de inscripción" descripcion="Registra el primer pago desde el formulario de esta vista." />
+                    ) : (
+                      <TarjetasMovil
+                        filas={pagPagos.filasPagina}
+                        clave="id"
+                        campos={[
+                          { etiqueta: 'Inscrito', valor: (p) => p.inscrito },
+                          { etiqueta: 'Torneo', valor: (p) => p.torneo_nombre || 'N/D' },
+                          { etiqueta: 'Monto', valor: (p) => Number(p.monto).toFixed(2) + ' ' + p.moneda }
+                        ]}
+                        detalle={[
+                          { etiqueta: 'Método', valor: (p) => p.metodo },
+                          { etiqueta: 'Referencia', valor: (p) => p.referencia || '—' },
+                          { etiqueta: 'Registrado por', valor: (p) => p.registrado_por_nombre || 'N/D' },
+                          { etiqueta: 'Fecha', valor: (p) => (p.creado_en ? p.creado_en.slice(0, 10).split('-').reverse().join('/') : '') }
+                        ]}
+                        acciones={(p) => (
+                          <BotonAccionTabla titulo="Eliminar" tono="peligro" onClick={() => eliminarPago(p.id)}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></BotonAccionTabla>
+                        )}
+                      />
+                    )}
+                  </div>
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="tabla-admin">
                       <thead>
                         <tr>
@@ -2343,7 +2396,37 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     Archivo Documental y Resultados Finalizados
                   </h3>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }, { key: 'resultado_filtro', label: 'Resultado' }]} categoryFields={["torneo_nombre", "local_nombre", "visita_nombre", "resultado_filtro"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
-                  <div className="overflow-x-auto">
+                  <div className="md:hidden">
+                    {cargando && partidos.length === 0 ? (
+                      <SkeletonTarjetas cantidad={5} />
+                    ) : partidos.filter(p => p.estado === 'Finalizado').length === 0 ? (
+                      <EmptyState icono="reloj" titulo="Sin partidos finalizados todavía" descripcion="Cuando cierres actas de partidos aparecerán aquí." />
+                    ) : (
+                      <TarjetasMovil
+                        filas={pagHistorial.filasPagina}
+                        clave="id"
+                        campos={[
+                          { etiqueta: 'Encuentro', valor: (p) => p.local_nombre + ' vs ' + p.visita_nombre },
+                          { etiqueta: 'Marcador', valor: (p) => (p.marcador_local !== null ? p.marcador_local + ' - ' + p.marcador_visita : 'N/A') }
+                        ]}
+                        detalle={[
+                          { etiqueta: 'Fecha', valor: (p) => new Date(p.fecha_hora).toLocaleString('es-VE') },
+                          { etiqueta: 'Torneo', valor: (p) => p.torneo_nombre }
+                        ]}
+                        acciones={(p) => (
+                          <>
+                            <button onClick={() => window.open('/?vista=puntajes&partido_id=' + (p.uuid_publico || p.id), '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Acta Visual</button>
+                            <button onClick={() => abrirFirmasAdmin(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Firmas</button>
+                            <button onClick={() => abrirQrPartido(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">QR</button>
+                            <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
+                            <button onClick={() => exportarPlanillaFormato(p.id, 'csv')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">CSV</button>
+                            <button onClick={() => exportarPlanillaFormato(p.id, 'pdf')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">PDF</button>
+                          </>
+                        )}
+                      />
+                    )}
+                  </div>
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="tabla-admin whitespace-nowrap">
                       <thead>
                         <tr>
