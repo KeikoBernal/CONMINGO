@@ -12,6 +12,9 @@ import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginac
 import CampoTexto from '../CampoTexto';
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
+import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
+import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
+import { SkeletonTabla } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import FotoJugador from '../FotoJugador';
 import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
@@ -1188,26 +1191,8 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
     </div>
   );
 
-  const NavIcon = ({ pestanaId }) => {
-    switch (pestanaId) {
-      case 'equipos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>;
-      case 'sedes': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
-      case 'credenciales': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" /></svg>;
-      case 'reglas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>;
-      case 'torneos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>;
-      case 'estadisticas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
-      case 'historial': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-      case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5h6m-8 4h10m-10 4h6m-6 4h10M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>;
-      case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
-      case 'sanciones': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.636 5.636l12.728 12.728" /></svg>;
-      case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-      case 'pagos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
-      case 'disciplina': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.636 5.636l12.728 12.728" /></svg>;
-      case 'resultados': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
-      case 'configuracion': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
-      default: return null;
-    }
-  };
+  // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
+  const ICONOS_PESTANA = { equipos: 'equipos', sedes: 'sedes', credenciales: 'credencial', reglas: 'reglas', torneos: 'torneo', estadisticas: 'estadisticas', historial: 'reloj', bitacora: 'bitacora', documentos: 'documentos', sanciones: 'sancion', protestas: 'protesta', pagos: 'pagos', disciplina: 'sancion', resultados: 'estadisticas', configuracion: 'configuracion' };
 
   const filasSedes = filteredRows('sedes', sedes, ['nombre'], []);
   const filasDocumentos = filteredRows('documentos', documentos, ['tipo'], []);
@@ -1388,7 +1373,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
         pestana={pestana}
         onPestana={cambiarPestanaConAnimacion}
         animandoBoton={animandoBoton}
-        renderIcono={(id) => <NavIcon pestanaId={id} />}
+        renderIcono={(id) => <NavIcon nombre={ICONOS_PESTANA[id]} />}
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="adminLigaSidebarColapsada"
@@ -1398,30 +1383,16 @@ const bitacoraConTexto = bitacora.map(evento => ({
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto"> {/* INSERCIÓN: overflow-y-auto */}
         
         {/* HEADER SUPERIOR */}
-        <header className="h-16 sm:h-20 bg-white border-b border-brand-gold/20 flex items-center justify-between px-4 sm:px-6 shadow-sm shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setMenuAbierto(true)} className="md:hidden p-2 text-brand-brown hover:bg-brand-cream rounded-md">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
-            <h2 className="text-2xl font-bold text-brand-brown hidden sm:block">
-              {TITULOS_PESTANA[pestana] || (pestana.charAt(0).toUpperCase() + pestana.slice(1))}
-            </h2>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-4 py-2 rounded-lg font-semibold text-sm cursor-pointer transition-colors shadow-sm">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              Actualizar Logo
-              <input type="file" accept="image/*" onChange={subirLogoOrganizacion} className="hidden" />
-            </label>
-            <button onClick={cerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              <span className="hidden sm:inline">Cerrar Sesión</span>
-            </button>
-          </div>
-        </header>
+        <HeaderPanel
+          titulo={TITULOS_PESTANA[pestana] || (pestana.charAt(0).toUpperCase() + pestana.slice(1))}
+          onAbrirMenu={() => setMenuAbierto(true)}
+          onCerrarSesion={cerrarSesion}
+          acciones={<label className="flex items-center gap-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-4 py-2 rounded-lg font-semibold text-sm cursor-pointer transition-colors shadow-sm">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            Actualizar Logo
+            <input type="file" accept="image/*" onChange={subirLogoOrganizacion} className="hidden" />
+          </label>}
+        />
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-8">
 
@@ -1447,7 +1418,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <NavIcon pestanaId="sedes" />
+                    <NavIcon nombre="sedes" />
                     {sedeEditando ? 'Editar Sede Deportiva' : 'Registrar Nueva Sede'}
                   </h3>
                   <form onSubmit={guardarSede} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1496,7 +1467,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <NavIcon pestanaId="reglas" />
+                    <NavIcon nombre="reglas" />
                     Plantillas de Reglas y Puntuación
                   </h3>
                   <form onSubmit={guardarPlantillaReglas} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1568,7 +1539,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 ]} valor={subEquipos} onChange={setSubEquipos} />
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <NavIcon pestanaId="equipos" />
+                    <NavIcon nombre="equipos" />
                     Registrar Nuevo Equipo
                   </h3>
                   <form onSubmit={guardarEquipo} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1759,7 +1730,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   
                   <div className="lg:w-1/3 space-y-4">
                     <h3 className="text-lg font-bold text-brand-brown flex items-center gap-2">
-                      <NavIcon pestanaId="credenciales" />
+                      <NavIcon nombre="credencial" />
                       Nueva Credencial
                     </h3>
                     <p className="text-sm text-brand-brown/70 leading-relaxed">Genera accesos para el personal operativo (Árbitros, Anotadores y Delegados). Ingresa la cédula primero para verificar si el usuario ya existe.</p>
@@ -1859,7 +1830,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="space-y-6 animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <h3 className="text-xl font-bold text-brand-brown flex items-center gap-2">
-                    <NavIcon pestanaId="estadisticas" />
+                    <NavIcon nombre="estadisticas" />
                     Panel Analítico Global
                   </h3>
                   <select value="" onChange={event => { const formato = event.target.value; if (formato) exportarReporteEstadisticas(formato); }} className="w-full min-h-10 rounded-lg border border-brand-gold/40 bg-white px-4 py-2 text-sm font-bold text-brand-brown focus:border-brand-rust focus:outline-none sm:w-52">
@@ -2077,7 +2048,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <NavIcon pestanaId="documentos" />
+                    <NavIcon nombre="documentos" />
                     Subir Documento
                   </h3>
                   <form onSubmit={subirDocumento} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2165,7 +2136,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="space-y-6 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <NavIcon pestanaId="pagos" />
+                    <NavIcon nombre="pagos" />
                     Registrar Pago de Inscripción
                   </h3>
                   <form onSubmit={registrarPago} className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2252,7 +2223,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="space-y-8 animate-fade-in">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <NavIcon pestanaId="historial" />
+                    <NavIcon nombre="reloj" />
                     Archivo Documental y Resultados Finalizados
                   </h3>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }, { key: 'resultado_filtro', label: 'Resultado' }]} categoryFields={["torneo_nombre", "local_nombre", "visita_nombre", "resultado_filtro"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
@@ -2399,7 +2370,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 <div className="rounded-xl border border-brand-gold/20 bg-white p-6 shadow-sm">
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <h3 className="flex items-center gap-2 text-lg font-bold text-brand-brown"><NavIcon pestanaId="bitacora" /> Bitácora de actividad</h3>
+                      <h3 className="flex items-center gap-2 text-lg font-bold text-brand-brown"><NavIcon nombre="bitacora" /> Bitácora de actividad</h3>
                       <p className="mt-1 text-sm text-brand-brown/65">Registro de acciones realizadas por los usuarios de esta organización.</p>
                     </div>
                     <span className="rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-brown">Máximo 500 eventos recientes</span>
@@ -2971,7 +2942,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             </div>
             <p className="text-sm text-brand-brown/70 mb-4">{modalFirmasAdmin.partido?.local_nombre} vs {modalFirmasAdmin.partido?.visita_nombre}</p>
             {modalFirmasAdmin.cargando ? (
-              <p className="text-sm text-brand-brown/60 py-6 text-center">Cargando firmas...</p>
+              <div className="py-4"><SkeletonTabla filas={2} columnas={2} compacto /></div>
             ) : modalFirmasAdmin.error ? (
               <p className="text-sm text-red-600 py-6 text-center">{modalFirmasAdmin.error}</p>
             ) : (
