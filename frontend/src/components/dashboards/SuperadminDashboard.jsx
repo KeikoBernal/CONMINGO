@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
@@ -18,6 +19,11 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [pestana, setPestana] = useState(localStorage.getItem('superadminPestana') || 'metricas');
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [tourActivo, setTourActivo] = useState(() => tourPendiente('superadmin'));
+  const cerrarTour = () => {
+    marcarTourVisto('superadmin');
+    setTourActivo(false);
+  };
 
   // FASE 1 UX: confirmacion con dialogo de marca en vez del confirm nativo
   const [confirmacion, setConfirmacion] = useState(null);
@@ -773,6 +779,7 @@ const ejecutarEliminacionBase = async (e) => {
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
+      <TourGuia rol="superadmin" activo={tourActivo} onCerrar={cerrarTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
 
       {/* MODAL CAMBIO DE CORREO (LOTE 6G) */}
@@ -859,6 +866,7 @@ const ejecutarEliminacionBase = async (e) => {
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="superadminSidebarColapsada"
+        onVerGuia={() => setTourActivo(true)}
       />
 
       {/* CONTENEDOR PRINCIPAL */}
