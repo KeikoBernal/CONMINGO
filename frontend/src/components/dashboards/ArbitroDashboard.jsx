@@ -11,6 +11,7 @@ import ConfirmarProtestas from '../ConfirmarProtestas';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
+import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 
 
@@ -555,9 +556,11 @@ const suspenderPartido = async () => {
                   </h3>
                   <TableTools rows={partidosHoyBase} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="arbitro_partidos_hoy" modulo="Árbitro oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {partidosHoy.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay partidos agendados para el día de hoy.</p>
-                    </div>
+                    <EmptyState
+                      titulo="Sin partidos hoy"
+                      descripcion="No hay partidos agendados para el día de hoy. Revisa el calendario o vuelve mas tarde."
+                      icono="calendario"
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {partidosHoy.map(p => (
