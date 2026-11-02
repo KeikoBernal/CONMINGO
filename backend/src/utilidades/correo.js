@@ -49,44 +49,74 @@ console.log('[correo] Ruta de envio activa:', GMAIL_CONFIGURADO
   ? 'Gmail por Apps Script (HTTPS, variables GMAIL_* presentes)'
   : 'SMTP (sin variables GMAIL_*, el puente de Apps Script esta apagado)');
 
+// Pausa entre reintentos del puente de Apps Script.
+const esperarMs = (ms) => new Promise((resolver) => setTimeout(resolver, ms));
+
+// Un intento de llamada a la aplicacion web del Apps Script. Devuelve
+// { exito: true } o { exito: false, error, esHtml }.
+const intentarLlamadaScript = async ({ para, asunto, html, texto }) => {
+  // Apps Script no recibe los POST con Content-Type application/json: el
+  // endpoint /exec responde con una cadena de redirecciones que convierte
+  // el POST en GET (el cuerpo se pierde, doPost nunca corre y la respuesta
+  // final es una pagina HTML con estado 200). Con text/plain el POST llega
+  // directo al script y e.postData.contents trae el JSON: es el patron
+  // canonico documentado para integrar apps web de Apps Script.
+  const res = await fetch(GMAIL_SCRIPT_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({
+      secreto: GMAIL_SCRIPT_SECRETO,
+      para,
+      asunto,
+      html,
+      texto: texto || html.replace(/<[^>]+>/g, ' ')
+    })
+  });
+  const cuerpo = await res.text().catch(() => '');
+  let data = null;
+  try {
+    data = JSON.parse(cuerpo);
+  } catch (error) {
+    data = null;
+  }
+  if (res.ok && data && data.ok === true) return { exito: true };
+  const esHtml = data === null && cuerpo.trim().charAt(0) === '<';
+  const detalle = data && data.error
+    ? data.error
+    : 'respuesta inesperada del script (verificar el despliegue con acceso Cualquier usuario): ' + cuerpo.slice(0, 120).replace(/\s+/g, ' ');
+  return { exito: false, error: 'HTTP ' + res.status + ': ' + detalle, esHtml };
+};
+
 // Llama a la aplicacion web del Apps Script con el mensaje ya compuesto.
+// LECCION (incidente del 2/11/2026): durante arranques en frio del proxy
+// de Apps Script o cambios de enrutado de borde, Google sirve
+// transitoriamente una pagina HTML de desafio (window['ppConfig']) en
+// lugar del JSON del script; al reintentar a los pocos segundos el mismo
+// pedido responde bien (comportamiento documentado por otros
+// integradores). Se reintentan hasta 3 veces con pausa de 3 segundos SOLO
+// ante ese caso (respuestas HTML); los errores reales del script (secreto
+// invalido, campos faltantes) o de HTTP no se reintentan.
 const enviarPorGmailApi = async ({ para, asunto, html, texto }) => {
   const inicio = Date.now();
+  let ultimoError = null;
   try {
-    // Apps Script no recibe los POST con Content-Type application/json: el
-    // endpoint /exec responde con una cadena de redirecciones que convierte
-    // el POST en GET (el cuerpo se pierde, doPost nunca corre y la respuesta
-    // final es una pagina HTML con estado 200). Con text/plain el POST llega
-    // directo al script y e.postData.contents trae el JSON: es el patron
-    // canonico documentado para integrar apps web de Apps Script.
-    const res = await fetch(GMAIL_SCRIPT_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        secreto: GMAIL_SCRIPT_SECRETO,
-        para,
-        asunto,
-        html,
-        texto: texto || html.replace(/<[^>]+>/g, ' ')
-      })
-    });
-    const cuerpo = await res.text().catch(() => '');
-    let data = null;
-    try {
-      data = JSON.parse(cuerpo);
-    } catch (error) {
-      data = null;
+    for (let intento = 1; intento <= 3; intento++) {
+      const r = await intentarLlamadaScript({ para, asunto, html, texto });
+      if (r.exito) {
+        const ms = Date.now() - inicio;
+        console.log('[correo] Enviado a ' + para + ' en ' + ms + ' ms (via Gmail/Script)' + (intento > 1 ? ' (intento ' + intento + ')' : ''));
+        return { ok: true, ms };
+      }
+      ultimoError = r.error;
+      console.error('[correo] Fallo el envio via Apps Script (intento ' + intento + ' de 3):', { para, error: r.error });
+      if (intento < 3 && r.esHtml) {
+        await esperarMs(3000);
+        continue;
+      }
+      break;
     }
-    if (!res.ok || !data || data.ok !== true) {
-      const detalle = data && data.error
-        ? data.error
-        : 'respuesta inesperada del script (verificar el despliegue con acceso Cualquier usuario): ' + cuerpo.slice(0, 120).replace(/\s+/g, ' ');
-      throw new Error('HTTP ' + res.status + ': ' + detalle);
-    }
-    const ms = Date.now() - inicio;
-    console.log('[correo] Enviado a ' + para + ' en ' + ms + ' ms (via Gmail/Script)');
-    return { ok: true, ms };
+    return { ok: false, ms: Date.now() - inicio, error: 'Gmail Script: ' + ultimoError };
   } catch (error) {
     return { ok: false, ms: Date.now() - inicio, error: 'Gmail Script: ' + (error?.message || String(error)) };
   }
