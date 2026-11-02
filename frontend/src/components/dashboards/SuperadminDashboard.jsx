@@ -587,13 +587,13 @@ const ejecutarEliminacionBase = async (e) => {
       <table className="w-full text-left text-sm text-brand-brown whitespace-nowrap">
         <thead className="bg-brand-cream/50 text-brand-brown uppercase tracking-wider text-xs font-bold border-b border-brand-gold/30">
           <tr>
-            <th className="p-4">Usuario</th>
-            <th className="p-4">Cédula</th>
-            <th className="p-4">Email</th>
-            <th className="p-4">Rol</th>
-            <th className="p-4">Liga</th>
-            <th className="p-4">Estado</th>
-            <th className="p-4 text-center">Acciones</th>
+            <th scope="col" className="p-4">Usuario</th>
+            <th scope="col" className="p-4">Cédula</th>
+            <th scope="col" className="p-4">Email</th>
+            <th scope="col" className="p-4">Rol</th>
+            <th scope="col" className="p-4">Liga</th>
+            <th scope="col" className="p-4">Estado</th>
+            <th scope="col" className="p-4 text-center">Acciones</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-brand-gold/20 bg-white">
@@ -1001,7 +1001,7 @@ const ejecutarEliminacionBase = async (e) => {
                   ) : (
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead className="bg-red-50/50 text-red-700/70 uppercase text-[0.7rem] font-bold">
-                        <tr><th className="p-3 text-center">ID</th><th className="p-3">Liga</th><th className="p-3 text-center">Fecha y Hora</th></tr>
+                        <tr><th scope="col" className="p-3 text-center">ID</th><th scope="col" className="p-3">Liga</th><th scope="col" className="p-3 text-center">Fecha y Hora</th></tr>
                       </thead>
                       <tbody className="divide-y divide-red-100 text-brand-brown font-medium">
                         {filasPartidosVivo.map(p => (
@@ -1046,7 +1046,7 @@ const ejecutarEliminacionBase = async (e) => {
                   ) : (
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-[0.7rem] font-bold">
-                        <tr><th className="p-3 text-center">ID</th><th className="p-3">Liga</th><th className="p-3 text-center">Fecha y Hora</th></tr>
+                        <tr><th scope="col" className="p-3 text-center">ID</th><th scope="col" className="p-3">Liga</th><th scope="col" className="p-3 text-center">Fecha y Hora</th></tr>
                       </thead>
                       <tbody className="divide-y divide-brand-gold/20 text-brand-brown font-medium">
                         {filasAgendados.map(p => (
@@ -1154,7 +1154,7 @@ const ejecutarEliminacionBase = async (e) => {
                     <div className="overflow-x-auto hide-scrollbar">
                       <table className="w-full text-left text-sm whitespace-nowrap">
                         <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-xs font-bold">
-                          <tr><th className="p-4">Nombre</th><th className="p-4">Administrador</th><th className="p-4">Estado</th><th className="p-4 text-center">Acciones</th></tr>
+                          <tr><th scope="col" className="p-4">Nombre</th><th scope="col" className="p-4">Administrador</th><th scope="col" className="p-4">Estado</th><th scope="col" className="p-4 text-center">Acciones</th></tr>
                         </thead>
                         <tbody className="divide-y divide-brand-gold/20 text-brand-brown">
                           {cargandoPestana && filasLigas.length === 0 ? (
@@ -1293,7 +1293,7 @@ const ejecutarEliminacionBase = async (e) => {
               <div className="overflow-x-auto hide-scrollbar max-h-[60vh]">
                 <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-xs font-bold sticky top-0">
-                    <tr><th className="p-4 border-b border-brand-gold/30">Fecha</th><th className="p-4 border-b border-brand-gold/30">Usuario</th><th className="p-4 border-b border-brand-gold/30">Rol</th><th className="p-4 border-b border-brand-gold/30">Acción</th><th className="p-4 border-b border-brand-gold/30">Tabla</th><th className="p-4 border-b border-brand-gold/30">Liga</th></tr>
+                    <tr><th scope="col" className="p-4 border-b border-brand-gold/30">Fecha</th><th scope="col" className="p-4 border-b border-brand-gold/30">Usuario</th><th scope="col" className="p-4 border-b border-brand-gold/30">Rol</th><th scope="col" className="p-4 border-b border-brand-gold/30">Acción</th><th scope="col" className="p-4 border-b border-brand-gold/30">Tabla</th><th scope="col" className="p-4 border-b border-brand-gold/30">Liga</th></tr>
                   </thead>
                   <tbody className="divide-y divide-brand-gold/10 text-brand-brown font-medium">
                     {cargandoPestana && bitacora.length === 0 ? (
@@ -1378,12 +1378,12 @@ const ejecutarEliminacionBase = async (e) => {
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-xs font-bold">
                       <tr>
-                        <th className="p-4 border-b border-brand-gold/30">Documento</th>
-                        <th className="p-4 border-b border-brand-gold/30">Tipo</th>
-                        <th className="p-4 border-b border-brand-gold/30">Subido por</th>
-                        <th className="p-4 border-b border-brand-gold/30">Tamaño</th>
-                        <th className="p-4 border-b border-brand-gold/30">Fecha</th>
-                        <th className="p-4 border-b border-brand-gold/30 text-center w-28">Acciones</th>
+                        <th scope="col" className="p-4 border-b border-brand-gold/30">Documento</th>
+                        <th scope="col" className="p-4 border-b border-brand-gold/30">Tipo</th>
+                        <th scope="col" className="p-4 border-b border-brand-gold/30">Subido por</th>
+                        <th scope="col" className="p-4 border-b border-brand-gold/30">Tamaño</th>
+                        <th scope="col" className="p-4 border-b border-brand-gold/30">Fecha</th>
+                        <th scope="col" className="p-4 border-b border-brand-gold/30 text-center w-28">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-brand-gold/10 text-brand-brown font-medium">
