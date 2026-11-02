@@ -5,7 +5,7 @@ import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmac
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 
@@ -314,6 +314,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const filasAgendados = filtrarTabla('partidosAgendados', partidosAgendadosFiltrados(), []);
   const filasLigasBase = ligas.map(l => ({ ...l, estado_liga: l.estado_activa ? 'Activa' : 'Inactiva' }));
   const filasLigas = filtrarTabla('ligas', filasLigasBase, ['estado_liga']);
+
+  // FASE 2 UX: paginacion compartida del directorio de ligas y pagina del directorio de usuarios
+  const pagLigas = usePaginacion(filasLigas);
+  const [paginaUsuarios, setPaginaUsuarios] = useState(1);
   const sedesGlobales = Object.fromEntries(partidosGlobales.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   const guardarLiga = async (e) => {
@@ -543,6 +547,12 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
   const renderTablaUsuarios = (arregloUsuarios) => {
     const filasUsuariosVista = filtrarTabla('usuarios', arregloUsuarios, ['rol', 'estado']);
+    // FASE 2 UX: recorte de la pagina vigente (calculo puro, el estado vive arriba)
+    const porPaginaUsuarios = 12;
+    const totalPaginasUsuarios = Math.max(1, Math.ceil(filasUsuariosVista.length / porPaginaUsuarios));
+    const paginaSeguraUsuarios = Math.min(paginaUsuarios, totalPaginasUsuarios);
+    const inicioUsuarios = (paginaSeguraUsuarios - 1) * porPaginaUsuarios;
+    const filasUsuariosPagina = filasUsuariosVista.slice(inicioUsuarios, inicioUsuarios + porPaginaUsuarios);
     return (
       <div className="space-y-3">
         <TableTools rows={arregloUsuarios} filteredRows={filasUsuariosVista} filter={getFilter('usuarios')} setFilter={setTableFilter('usuarios')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Email' }, { key: 'rol', label: 'Rol' }, { key: 'organizacion_nombre', label: 'Liga' }, { key: 'estado', label: 'Estado' }]} categoryFields={['rol', 'estado']} filename="superadmin_directorio_usuarios" modulo="Superadmin" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
@@ -563,7 +573,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           {filasUsuariosVista.length === 0 ? (
             <tr><td colSpan={7} className="text-center p-8 text-brand-brown/50">No se encontraron usuarios.</td></tr>
           ) : (
-            filasUsuariosVista.map((u) => (
+            filasUsuariosPagina.map((u) => (
               <tr key={u.id} className={`transition-colors ${u.estado === 'Inactivo' ? 'opacity-60 bg-gray-50' : 'hover:bg-brand-cream/10'}`}>
                 <td className="p-4 font-bold">{u.nombre} {u.apellido}</td>
                 <td className="p-4">{u.cedula || 'N/R'}</td>
@@ -588,27 +598,27 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   </span>
                 </td>
                 <td className="p-4 flex gap-2 justify-center">
-                  <button onClick={() => setUserEditando(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded transition-colors" title="Editar">
+                  <button onClick={() => setUserEditando(u)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded-lg transition-colors" title="Editar">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                   </button>
-                  <button onClick={() => resetearPasswordAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Resetear Clave">
+                  <button onClick={() => resetearPasswordAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-gold hover:bg-brand-gold/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Resetear Clave">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                   </button>
-                  <button onClick={() => cambiarCorreoAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Cambiar Correo">
+                  <button onClick={() => cambiarCorreoAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-blue hover:bg-brand-blue/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Cambiar Correo">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l9 6 9-6M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                   </button>
                   {(u.correo_verificado === false || u.email_pendiente) && (
-                    <button onClick={() => reenviarVerificacionAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-brown hover:bg-brand-brown/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Reenviar Verificación">
+                    <button onClick={() => reenviarVerificacionAccion(u)} disabled={envioEnCurso(u.id)} className="p-1.5 text-brand-brown hover:bg-brand-brown/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Reenviar Verificación">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
                   )}
                   {u.estado !== 'Inactivo' && (
-                    <button onClick={() => iniciarEliminacionUsuario(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Desactivar Acceso">
+                    <button onClick={() => iniciarEliminacionUsuario(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Desactivar Acceso">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   )}
                   {u.estado === 'Inactivo' && (
-                    <button onClick={() => reactivarUsuario(u)} className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors" title="Reactivar Acceso">
+                    <button onClick={() => reactivarUsuario(u)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Reactivar Acceso">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
                   )}
@@ -619,6 +629,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         </tbody>
       </table>
         </div>
+        <PaginacionTabla pagina={paginaSeguraUsuarios} setPagina={setPaginaUsuarios} totalPaginas={totalPaginasUsuarios} desde={filasUsuariosVista.length === 0 ? 0 : inicioUsuarios + 1} hasta={Math.min(inicioUsuarios + porPaginaUsuarios, filasUsuariosVista.length)} total={filasUsuariosVista.length} />
       </div>
     );
   };
@@ -1058,7 +1069,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
                   <div className="bg-white border border-brand-gold/30 rounded-xl overflow-hidden shadow-sm">
                     <div className="bg-brand-cream/30 px-5 py-4 border-b border-brand-gold/30 flex justify-between items-center">
-                      <h3 className="font-bold text-brand-brown">Directorio de Ligas</h3>
+                      <EncabezadoTabla titulo="Directorio de Ligas" total={filasLigas.length} />
                       <div className="flex gap-2">
                         <button onClick={() => exportarReporteActual('excel')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded-lg font-bold text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">EXCEL</button>
                         <button onClick={() => exportarReporteActual('csv')} className="text-[0.7rem] bg-white border border-brand-gold/40 px-2 py-1 rounded-lg font-bold text-brand-brown hover:bg-brand-rust hover:text-white transition-colors">CSV</button>
@@ -1072,7 +1083,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                           <tr><th className="p-4">Nombre</th><th className="p-4">Administrador</th><th className="p-4">Estado</th><th className="p-4 text-center">Acciones</th></tr>
                         </thead>
                         <tbody className="divide-y divide-brand-gold/20 text-brand-brown">
-                          {filasLigas.map((l) => (
+                          {pagLigas.filasPagina.map((l) => (
                             <tr key={l.id} className="hover:bg-brand-cream/10 transition-colors">
                               <td className="p-4 font-bold">{l.nombre}</td>
                               <td className="p-4">{l.responsable_nombre}</td>
@@ -1091,6 +1102,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                         </tbody>
                       </table>
                     </div>
+                    <PaginacionTabla {...pagLigas} />
                   </div>
                 </>
               )}
@@ -1151,7 +1163,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
               <div className="bg-white border border-brand-gold/30 rounded-xl shadow-sm overflow-hidden">
                 <div className="bg-brand-cream/30 px-5 py-4 border-b border-brand-gold/30 flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
-                  <h3 className="font-bold text-brand-brown">Directorio de Usuarios</h3>
+                  <EncabezadoTabla titulo="Directorio de Usuarios" />
                   <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                     <div className="relative w-full sm:w-64">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1305,9 +1317,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                             <td className="p-4 text-brand-brown/80">{d.subido_por_nombre || 'N/D'}</td>
                             <td className="p-4 text-brand-brown/80">{formatearTamanoDocGlobal(d.tamano_bytes)}</td>
                             <td className="p-4 text-xs text-brand-brown/70">{d.creado_en ? d.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
-                            <td className="p-4 flex gap-2 justify-center opacity-60 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => d.url_firmada && window.open(d.url_firmada, '_blank', 'noopener')} disabled={!d.url_firmada} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="Descargar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
-                              <button onClick={() => eliminarDocumentoGlobal(d.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                            <td className="p-4 flex gap-2 justify-center">
+                              <BotonAccionTabla titulo="Descargar" onClick={() => d.url_firmada && window.open(d.url_firmada, '_blank', 'noopener')} deshabilitado={!d.url_firmada}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></BotonAccionTabla>
+                              <BotonAccionTabla titulo="Eliminar" tono="peligro" onClick={() => eliminarDocumentoGlobal(d.id)}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></BotonAccionTabla>
                             </td>
                           </tr>
                         ))
