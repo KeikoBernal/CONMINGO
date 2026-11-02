@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
+import EmptyState from './EmptyState';
+import { SkeletonTabla } from './SkeletonCarga';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 // LOTE 4C (N3): votacion del Jugador Mas Util (MVP) del torneo. Componente
@@ -9,6 +12,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // y cierra la votacion desde su panel.
 export default function VotacionMvp() {
   const [torneos, setTorneos] = useState([]);
+  const [cargandoTorneos, setCargandoTorneos] = useState(true);
   const [torneoId, setTorneoId] = useState('');
   const [estado, setEstado] = useState(null);
   const [candidatoId, setCandidatoId] = useState('');
@@ -29,6 +33,7 @@ export default function VotacionMvp() {
     (async () => {
       const { ok, data } = await fetchOperativo('/torneos-votacion');
       if (ok) setTorneos(data);
+      setCargandoTorneos(false);
     })();
   }, []);
 
@@ -71,7 +76,11 @@ export default function VotacionMvp() {
         </select>
       </div>
 
-      {cargando && <p className="text-sm text-brand-brown/60">Consultando la votación...</p>}
+      {!cargandoTorneos && torneos.length === 0 && (
+        <EmptyState icono="votacion" titulo="Sin torneos con votación" descripcion="Cuando el Administrador de la Liga abra la votación MVP de un torneo aparecerá aquí." />
+      )}
+
+      {cargando && <SkeletonTabla filas={4} columnas={4} compacto />}
       {mensaje && <p className="text-sm font-semibold text-brand-rust">{mensaje}</p>}
 
       {estado && estado.abierta && !estado.mi_voto && (
@@ -105,7 +114,7 @@ export default function VotacionMvp() {
         <div className="space-y-3">
           <p className="text-sm font-semibold text-brand-brown">Votación cerrada — {estado.total_votos} voto(s) en total.</p>
           {(!estado.resultados || estado.resultados.length === 0) ? (
-            <p className="text-sm text-brand-brown/60">Esta votación no recibió votos.</p>
+            <EmptyState icono="trofeo" titulo="Esta votación no recibió votos" descripcion="Nadie emitió su voto antes del cierre de la votación." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm border border-brand-gold/20 rounded-lg overflow-hidden min-w-[640px]">
