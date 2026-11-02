@@ -17,6 +17,7 @@ export default function Sidebar({
   menuAbierto,
   onCerrarMenu,
   claveColapso = 'sidebarColapsada',
+  onVerGuia,
 }) {
   const [colapsado, setColapsado] = useState(() => localStorage.getItem(claveColapso) === 'true');
 
@@ -113,6 +114,23 @@ export default function Sidebar({
           <CampanaNotificaciones colapsado={colapsado} />
           <ActivarNotificaciones colapsado={colapsado} />
         </div>
+
+        {/* B2: guia del panel, relanzable al pie del sidebar */}
+        {onVerGuia && (
+          <div className={`border-t border-brand-gold/20 shrink-0 ${colapsado ? 'md:px-2 md:py-3' : 'px-6 py-4'}`}>
+            <button
+              type="button"
+              onClick={onVerGuia}
+              title="Ver guia del panel"
+              className={`w-full flex items-center gap-3 ${colapsado ? 'md:justify-center' : ''} py-2 text-sm font-semibold text-brand-gold hover:text-brand-cream hover:bg-brand-cream/5 rounded-lg transition-colors`}
+            >
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+              </svg>
+              <span className={`transition-all ${colapsado ? 'md:hidden' : ''}`}>Ver guia del panel</span>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* OVERLAY MOVIL */}
