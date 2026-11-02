@@ -15,6 +15,7 @@ import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de nave
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
+import TarjetasMovil from '../TarjetasMovil'; // FASE A2 UX: tarjetas apiladas en pantallas chicas
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -492,7 +493,28 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   Nómina Oficial del Equipo
                 </h3>
                 <TableTools rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'posicion', label: 'Rol' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'posicion']} filename="nomina_filtrada_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
-                <div className="overflow-x-auto">
+                <div className="md:hidden">
+                  {cargando && filasNomina.length === 0 ? (
+                    <SkeletonTarjetas cantidad={6} />
+                  ) : filasNomina.length === 0 ? (
+                    <EmptyState icono="usuarios" titulo="Sin jugadores para mostrar" descripcion={jugadores.length === 0 ? 'Aún no hay jugadores inscritos en el equipo.' : 'Ningún jugador coincide con los filtros aplicados.'} />
+                  ) : (
+                    <TarjetasMovil
+                      filas={pagNomina.filasPagina}
+                      clave="id"
+                      campos={[
+                        { etiqueta: 'Dorsal', valor: (j) => '#' + (j.numero_dorsal || 'Sin dorsal') },
+                        { etiqueta: 'Jugador', valor: (j) => j.nombre + ' ' + j.apellido + (j.es_capitan ? ' (Capitán)' : '') },
+                        { etiqueta: 'Estado', valor: (j) => j.estado }
+                      ]}
+                      detalle={[
+                        { etiqueta: 'Cédula', valor: (j) => j.cedula },
+                        { etiqueta: 'Rol', valor: (j) => j.posicion || 'Atleta' }
+                      ]}
+                    />
+                  )}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
                   <table className="tabla-admin">
                     <thead>
                       <tr>
