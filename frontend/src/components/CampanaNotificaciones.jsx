@@ -75,6 +75,8 @@ export default function CampanaNotificaciones({ colapsado = false }) {
         type="button"
         onClick={alternar}
         title="Notificaciones"
+        aria-label="Notificaciones"
+        aria-expanded={abierto}
         className="w-full flex items-center justify-center gap-2 py-2 rounded-lg font-bold transition-colors text-sm bg-brand-cream/10 text-brand-cream border border-brand-gold/30 hover:bg-brand-rust"
       >
         <span className="relative inline-flex">
@@ -98,7 +100,7 @@ export default function CampanaNotificaciones({ colapsado = false }) {
               {noLeidas > 0 && (
                 <button type="button" onClick={marcarLeidas} className="text-[0.65rem] font-bold text-brand-blue hover:text-brand-rust">Marcar leidas</button>
               )}
-              <button type="button" onClick={() => setAbierto(false)} className="p-1 text-brand-brown hover:bg-brand-cream rounded" title="Cerrar">
+              <button type="button" onClick={() => setAbierto(false)} className="p-1 text-brand-brown hover:bg-brand-cream rounded" title="Cerrar" aria-label="Cerrar">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>

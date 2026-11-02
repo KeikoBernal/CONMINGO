@@ -37,6 +37,7 @@ export default function Sidebar({
           type="button"
           onClick={alternarColapso}
           title={colapsado ? 'Expandir menu lateral' : 'Contraer menu lateral'}
+          aria-label={colapsado ? 'Expandir menu lateral' : 'Contraer menu lateral'}
           className="hidden md:flex absolute top-6 -right-3 z-10 w-6 h-6 items-center justify-center rounded-full bg-brand-brown border border-brand-gold/50 text-brand-gold hover:text-brand-cream hover:border-brand-cream transition-colors shadow-md"
         >
           <svg className={`w-3.5 h-3.5 transition-transform duration-300 ${colapsado ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,6 +85,7 @@ export default function Sidebar({
                       key={item.id}
                       onClick={() => onPestana(item.id)}
                       title={item.label}
+                      aria-label={item.label}
                       className={`w-full ${colapsado ? 'md:px-0' : 'px-6'} py-3 text-sm font-medium transition-colors ${isActive ? `bg-brand-rust/20 text-brand-gold border-r-4 border-brand-gold ${colapsado ? 'md:border-r-0' : ''}` : 'text-brand-cream/70 hover:bg-brand-cream/5 hover:text-brand-cream'}`}
                     >
                       <div className={`flex items-center gap-3 w-full ${colapsado ? 'md:justify-center' : ''}`}>
@@ -122,6 +124,7 @@ export default function Sidebar({
               type="button"
               onClick={onVerGuia}
               title="Ver guia del panel"
+              aria-label="Ver guia del panel"
               className={`w-full flex items-center gap-3 ${colapsado ? 'md:justify-center' : ''} py-2 text-sm font-semibold text-brand-gold hover:text-brand-cream hover:bg-brand-cream/5 rounded-lg transition-colors`}
             >
               <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

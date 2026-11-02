@@ -22,6 +22,8 @@ export default function BotonModoSolar({ className = '' }) {
       type="button"
       onClick={alternar}
       title={activo ? 'Desactivar modo Luz Solar' : 'Activar modo Luz Solar: texto grande para leer a plena luz del dia'}
+      aria-label={activo ? 'Desactivar modo Luz Solar' : 'Activar modo Luz Solar'}
+      aria-pressed={activo}
       className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-colors shadow-sm border ${activo ? 'bg-brand-gold text-brand-brown border-brand-gold' : 'bg-white text-brand-brown border-brand-gold/40 hover:bg-brand-rust hover:text-white'} ${className}`}
     >
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

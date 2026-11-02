@@ -5,6 +5,8 @@
 //     new Promise((resolver) => setConfirmacion({ titulo, mensaje, tipo, resolver }));
 //   if (!(await pedirConfirmacion('Eliminar sede', '¿Eliminar esta sede?', 'peligro'))) return;
 // Resuelve true al confirmar y false al cancelar o pulsar fuera del dialogo.
+import { tecladoModal } from './Accesibilidad';
+
 export default function ConfirmDialog({ confirmacion, onCerrar }) {
   if (!confirmacion) return null;
 
@@ -16,7 +18,7 @@ export default function ConfirmDialog({ confirmacion, onCerrar }) {
   const esPeligro = confirmacion.tipo === 'peligro';
 
   return (
-    <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4" onClick={() => cerrarCon(false)}>
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label={confirmacion.titulo} onKeyDown={(evento) => tecladoModal(evento, () => cerrarCon(false))} onClick={() => cerrarCon(false)}>
       <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-brand-gold/30 p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start gap-3">
           <span className={'w-10 h-10 rounded-full flex items-center justify-center shrink-0 ' + (esPeligro ? 'bg-red-50 text-red-600' : 'bg-brand-cream text-brand-brown')}>
@@ -32,7 +34,7 @@ export default function ConfirmDialog({ confirmacion, onCerrar }) {
           </div>
         </div>
         <div className="flex flex-col-reverse sm:flex-row gap-3 mt-6">
-          <button type="button" onClick={() => cerrarCon(false)} className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm bg-brand-cream text-brand-brown border border-brand-gold/40 hover:bg-brand-gold hover:text-white transition-colors shadow-sm">
+          <button type="button" autoFocus onClick={() => cerrarCon(false)} className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm bg-brand-cream text-brand-brown border border-brand-gold/40 hover:bg-brand-gold hover:text-white transition-colors shadow-sm">
             {confirmacion.textoCancelar || 'Cancelar'}
           </button>
           <button type="button" onClick={() => cerrarCon(true)} className={'flex-1 px-4 py-2.5 rounded-lg font-bold text-sm text-white transition-colors shadow-sm ' + (esPeligro ? 'bg-red-600 hover:bg-red-700' : 'bg-brand-rust hover:bg-brand-brown')}>
