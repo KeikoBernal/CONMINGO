@@ -2,6 +2,11 @@
 // Componente de solo lectura y SIN dependencias externas: se dibuja con divs,
 // gradientes conicos y la paleta de marca. Recibe los agregados del endpoint
 // /admin-liga/estadisticas/graficos y no hace peticiones por si mismo.
+// FASE 3D UX: mientras el panel trae los agregados muestra un esqueleto de
+// tarjetas y, sin datos, estados vacios con icono del catalogo de NavIcon.
+import EmptyState from './EmptyState';
+import { SkeletonTarjetas } from './SkeletonCarga';
+
 const COLORES_TARJETA = {
   Amarilla: '#D9A03F',
   Azul: '#4A6B76',
@@ -18,7 +23,9 @@ const nombreMes = (mes) => {
 };
 
 export default function GraficasEstadisticas({ datos }) {
-  if (!datos) return null;
+  if (!datos) {
+    return <SkeletonTarjetas cantidad={3} clasesGrid="grid-cols-1 lg:grid-cols-3" clasesTarjeta="h-64" />;
+  }
 
   const porMes = Array.isArray(datos.partidos_por_mes) ? datos.partidos_por_mes : [];
   const tarjetas = Array.isArray(datos.tarjetas_por_color) ? datos.tarjetas_por_color : [];
@@ -54,7 +61,7 @@ export default function GraficasEstadisticas({ datos }) {
       <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
         <h3 className="text-sm font-bold text-brand-brown/70 uppercase tracking-wider mb-4">Partidos finalizados por mes</h3>
         {porMes.length === 0 ? (
-          <p className="text-sm text-brand-brown/50 py-8 text-center">Sin partidos finalizados registrados.</p>
+          <EmptyState icono="calendario" titulo="Sin partidos finalizados" descripcion="Todavía no hay partidos finalizados en la liga para graficar." />
         ) : (
           <div className="flex items-end justify-between gap-2 h-40">
             {porMes.map(f => (
@@ -72,7 +79,7 @@ export default function GraficasEstadisticas({ datos }) {
       <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
         <h3 className="text-sm font-bold text-brand-brown/70 uppercase tracking-wider mb-4">Tarjetas por color</h3>
         {totalTarjetas === 0 ? (
-          <p className="text-sm text-brand-brown/50 py-8 text-center">Sin tarjetas registradas.</p>
+          <EmptyState icono="sancion" titulo="Sin tarjetas registradas" descripcion="No se han emitido tarjetas en los partidos de la liga." />
         ) : (
           <div className="flex items-center gap-4">
             <div className="relative w-28 h-28 rounded-full shrink-0" style={{ background: gradiente }} title={totalTarjetas + ' tarjetas en total'}>
@@ -97,7 +104,7 @@ export default function GraficasEstadisticas({ datos }) {
       <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
         <h3 className="text-sm font-bold text-brand-brown/70 uppercase tracking-wider mb-4">Victorias por equipo (Top 8)</h3>
         {victorias.length === 0 ? (
-          <p className="text-sm text-brand-brown/50 py-8 text-center">Sin resultados registrados.</p>
+          <EmptyState icono="estadisticas" titulo="Sin resultados registrados" descripcion="Aún no hay victorias de equipos para graficar." />
         ) : (
           <div className="space-y-3">
             {victorias.map(v => (
