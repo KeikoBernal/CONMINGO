@@ -1300,7 +1300,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
       {/* MODALES REUTILIZABLES */}
       {modalCapitan.visible && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Reemplazo de Capitán Requerido">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Reemplazo de Capitán Requerido" onKeyDown={(evento) => tecladoModal(evento, () => setModalCapitan({ ...modalCapitan, visible: false }))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-red-600 mb-2 flex items-center gap-2">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -1354,7 +1354,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
       )}
 
       {modalReagendar.visible && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Reagendar Partido">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Reagendar Partido" onKeyDown={(evento) => tecladoModal(evento, () => setModalReagendar({ visible: false }))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-brand-brown mb-1">Reagendar Partido</h3>
             <p className="text-sm text-brand-brown/70 mb-4">{modalReagendar.partido.local_nombre} vs {modalReagendar.partido.visita_nombre}</p>
@@ -1373,7 +1373,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
       )}
 
       {modalEditarPartido.visible && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Editar Partido Programado">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Editar Partido Programado" onKeyDown={(evento) => tecladoModal(evento, () => setModalEditarPartido({ visible: false }))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-brand-brown mb-1">Editar Partido Programado</h3>
             <p className="text-sm text-brand-brown/70 mb-4">{modalEditarPartido.partido.local_nombre} vs {modalEditarPartido.partido.visita_nombre}</p>
