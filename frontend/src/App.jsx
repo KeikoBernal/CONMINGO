@@ -49,12 +49,14 @@ export default function App() {
 
     // FIX #12: el rol se consulta al backend (/api/mi-perfil) con el token de la sesión;
   // el navegador ya no lee la tabla usuarios directamente (independiente del RLS de Supabase).
-  const obtenerRolBD = async (userId) => {
+  const obtenerRolBD = async (tokenSesion) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return 'Usuario';
+      // FIX interbloqueo: el token entra por parametro; obtenerRolBD ya no llama a
+      // supabase.auth.getSession (esa llamada dentro del callback de
+      // onAuthStateChange trababa el candado de la sesion de supabase-js).
+      if (!tokenSesion) return 'Usuario';
       const res = await fetch(`${API_URL}/mi-perfil`, {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
+        headers: { 'Authorization': `Bearer ${tokenSesion}` }
       });
       if (!res.ok) return 'Usuario';
       const datosPerfil = await res.json();
@@ -68,7 +70,7 @@ export default function App() {
     const verificarSesionExistente = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user && !enProcesoLoginRef.current) {
-        const rolBD = await obtenerRolBD(session.user.id);
+        const rolBD = await obtenerRolBD(session.access_token);
         setRolUsuario(rolBD);
         setUsuario(session.user);
         setVista('dashboard');
@@ -79,13 +81,21 @@ export default function App() {
     verificarSesionExistente();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      // FIX interbloqueo de supabase-js (bug documentado): cualquier llamada
+      // async a supabase.auth dentro de este callback traba el candado de la
+      // sesion y todos los getSession/getUser posteriores cuelgan en silencio
+      // (botones de correo congelados sin peticion ni log). El callback ya
+      // recibe session: se usa su token y el trabajo se difiere con setTimeout,
+      // el patron que recomienda la documentacion de Supabase.
+      (event, session) => {
         if (enProcesoLoginRef.current) return;
         if (event === 'SIGNED_IN' && session?.user) {
-          const rolBD = await obtenerRolBD(session.user.id);
-          setRolUsuario(rolBD);
-          setUsuario(session.user);
-          setVista('dashboard');
+          setTimeout(async () => {
+            const rolBD = await obtenerRolBD(session.access_token);
+            setRolUsuario(rolBD);
+            setUsuario(session.user);
+            setVista('dashboard');
+          }, 0);
         } else if (event === 'SIGNED_OUT') {
           setUsuario(null);
           setRolUsuario('');
@@ -220,7 +230,7 @@ export default function App() {
         access_token: sesionLogin.access_token,
         refresh_token: sesionLogin.refresh_token,
       });
-      const rolBD = await obtenerRolBD(sesionLogin.user.id);
+      const rolBD = await obtenerRolBD(sesionLogin.access_token);
       enProcesoLoginRef.current = false;
       setIsSubmitting(false);
       setRolUsuario(rolBD);
@@ -255,7 +265,7 @@ export default function App() {
             access_token: sesionOtp.access_token,
             refresh_token: sesionOtp.refresh_token,
           });
-          const rolBD = await obtenerRolBD(sesionOtp.user.id);
+          const rolBD = await obtenerRolBD(sesionOtp.access_token);
           setRolUsuario(rolBD);
           setUsuario(sesionOtp.user);
           setVista('dashboard');
