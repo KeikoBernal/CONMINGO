@@ -29,6 +29,26 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // Se normaliza quitando el sufijo: el socket siempre apunta a la raiz del servidor.
 const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000').replace(/\/api\/?$/, '');
 
+
+// UX (menus por ciclo real): barra de sub-pestanas reutilizable dentro de las
+// vistas contenedoras (Equipos, Disciplina, Resultados, Configuracion).
+// FIX (pedido de Keiko): vive a nivel de modulo; definida dentro del componente
+// se remontaba en cada render y su animate-fade-in se repitia (parpadeo).
+const BarraSubPestanas = ({ opciones, valor, onChange }) => (
+  <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm animate-fade-in">
+    <div className="flex flex-wrap gap-1 bg-brand-cream/30 p-2 border-b border-brand-gold/20">
+      {opciones.map(sub => (
+        <button
+          key={sub.id}
+          onClick={() => onChange(sub.id)}
+          className={`min-h-10 rounded-lg border px-4 py-2 text-sm font-bold transition-colors ${valor === sub.id ? 'border-brand-gold/30 bg-white text-brand-rust shadow-sm' : 'border-transparent text-brand-brown/70 hover:border-brand-gold/20 hover:bg-white/70 hover:text-brand-brown'}`}
+        >
+          {sub.label}
+        </button>
+      ))}
+    </div>
+  </div>
+);
 export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   // UX (menus por ciclo real): las pestanas individuales se consolidan en contenedores
   // con sub-pestanas. Se migra el valor guardado para no romper la sesion abierta.
@@ -1173,23 +1193,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
     bitacora: 'Bitacora de Actividad',
   };
 
-  // UX (menus por ciclo real): barra de sub-pestanas reutilizable dentro de las
-  // vistas contenedoras (Equipos, Disciplina, Resultados, Configuracion).
-  const BarraSubPestanas = ({ opciones, valor, onChange }) => (
-    <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm animate-fade-in">
-      <div className="flex flex-wrap gap-1 bg-brand-cream/30 p-2 border-b border-brand-gold/20">
-        {opciones.map(sub => (
-          <button
-            key={sub.id}
-            onClick={() => onChange(sub.id)}
-            className={`min-h-10 rounded-lg border px-4 py-2 text-sm font-bold transition-colors ${valor === sub.id ? 'border-brand-gold/30 bg-white text-brand-rust shadow-sm' : 'border-transparent text-brand-brown/70 hover:border-brand-gold/20 hover:bg-white/70 hover:text-brand-brown'}`}
-          >
-            {sub.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+
 
   // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
   const ICONOS_PESTANA = { equipos: 'equipos', sedes: 'sedes', credenciales: 'credencial', reglas: 'reglas', torneos: 'torneo', estadisticas: 'estadisticas', historial: 'reloj', bitacora: 'bitacora', documentos: 'documentos', sanciones: 'sancion', protestas: 'protesta', pagos: 'pagos', disciplina: 'sancion', resultados: 'estadisticas', configuracion: 'configuracion' };
@@ -1537,6 +1541,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   { id: 'nomina', label: 'Equipos y Nóminas' },
                   { id: 'pagos', label: 'Pagos de Inscripción' },
                 ]} valor={subEquipos} onChange={setSubEquipos} />
+                {subEquipos === 'nomina' && (<>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
                     <NavIcon nombre="equipos" />
@@ -1720,6 +1725,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     </div>
                   )}
                 </div>
+                </>)}
               </div>
             )}
 
