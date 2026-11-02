@@ -369,7 +369,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
 
       {/* MODAL DE CAMBIO DE CONTRASEÑA */}
       {debeCambiarPass && (
-        <div className="fixed inset-0 bg-black/90 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/90 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Actualización Obligatoria">
           <div className="bg-white p-8 rounded-xl w-full max-w-sm shadow-2xl">
             <h3 className="text-xl font-bold text-brand-brown mb-4 flex items-center gap-2">
               <svg className="w-6 h-6 text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8V7z" /></svg>
@@ -377,7 +377,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
             </h3>
             <p className="text-sm text-brand-brown/70 mb-4">Por razones de seguridad, debes actualizar tu contraseña temporal antes de gestionar tu equipo.</p>
             <form onSubmit={cambiarClaveObligatoria} className="space-y-4">
-              <input type="password" placeholder="Nueva Contraseña (mín 6 chars)" className="w-full p-3 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={nuevaClave} onChange={e => setNuevaClave(e.target.value)} required minLength={6} />
+              <input type="password" autoFocus placeholder="Nueva Contraseña (mín 6 chars)" className="w-full p-3 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={nuevaClave} onChange={e => setNuevaClave(e.target.value)} required minLength={6} />
               
               {/* MODIFICACIÓN: Botón con estado deshabilitado */}
               <button type="submit" disabled={isSubmittingPass} className={`w-full py-3 rounded text-white font-bold transition-colors ${isSubmittingPass ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-rust hover:bg-brand-brown'}`}>
@@ -518,12 +518,12 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   <table className="tabla-admin">
                     <thead>
                       <tr>
-                        <th className="text-center">Dorsal</th>
-                        <th className="text-center">Foto</th>
-                        <th>Jugador</th>
-                        <th>Cédula</th>
-                        <th>Rol</th>
-                        <th className="text-center">Estado</th>
+                        <th scope="col" className="text-center">Dorsal</th>
+                        <th scope="col" className="text-center">Foto</th>
+                        <th scope="col">Jugador</th>
+                        <th scope="col">Cédula</th>
+                        <th scope="col">Rol</th>
+                        <th scope="col" className="text-center">Estado</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -537,7 +537,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                             <td className="text-center font-bold text-lg text-brand-brown">#{j.numero_dorsal}</td>
                             <td className="text-center">
                               {j.foto_url ? (
-                                <img src={j.foto_url} alt={`Foto`} className="w-10 h-10 rounded-full object-cover border border-brand-gold mx-auto" />
+                                <img src={j.foto_url} alt={`Foto de ${j.nombre} ${j.apellido}`} className="w-10 h-10 rounded-full object-cover border border-brand-gold mx-auto" />
                               ) : (
                                 <div className="w-10 h-10 rounded-full bg-brand-cream/50 flex items-center justify-center mx-auto text-brand-brown"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg></div>
                               )}
@@ -703,13 +703,13 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   <table className="tabla-admin">
                     <thead>
                       <tr>
-                        <th>Jugador</th>
-                        <th className="text-center">% Arrime<br/><span className="text-xs font-normal text-brand-cream/70">[AB, AL, K]</span></th>
-                        <th className="text-center">% Boche<br/><span className="text-xs font-normal text-brand-cream/70">[BB, BL, B]</span></th>
-                        <th className="text-center bg-brand-brown/80 text-white">Tasa Error<br/><span className="text-xs font-normal text-white/70">[O, X, N]</span></th>
-                        <th className="text-center">Pts/Juego</th>
-                        <th className="text-center bg-brand-rust text-white">Clutch %<br/><span className="text-xs font-normal text-white/70">Cierres</span></th>
-                        <th className="text-center">Perfil Sugerido</th>
+                        <th scope="col">Jugador</th>
+                        <th scope="col" className="text-center">% Arrime<br/><span className="text-xs font-normal text-brand-cream/70">[AB, AL, K]</span></th>
+                        <th scope="col" className="text-center">% Boche<br/><span className="text-xs font-normal text-brand-cream/70">[BB, BL, B]</span></th>
+                        <th scope="col" className="text-center bg-brand-brown/80 text-white">Tasa Error<br/><span className="text-xs font-normal text-white/70">[O, X, N]</span></th>
+                        <th scope="col" className="text-center">Pts/Juego</th>
+                        <th scope="col" className="text-center bg-brand-rust text-white">Clutch %<br/><span className="text-xs font-normal text-white/70">Cierres</span></th>
+                        <th scope="col" className="text-center">Perfil Sugerido</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -755,12 +755,12 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   <table className="tabla-admin">
                     <thead>
                       <tr>
-                        <th>Documento</th>
-                        <th>Tipo</th>
-                        <th>Torneo</th>
-                        <th className="text-center">Tamaño</th>
-                        <th>Fecha</th>
-                        <th className="text-center w-28">Descarga</th>
+                        <th scope="col">Documento</th>
+                        <th scope="col">Tipo</th>
+                        <th scope="col">Torneo</th>
+                        <th scope="col" className="text-center">Tamaño</th>
+                        <th scope="col">Fecha</th>
+                        <th scope="col" className="text-center w-28">Descarga</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -803,12 +803,12 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   <table className="tabla-admin">
                     <thead>
                       <tr>
-                        <th>Torneo</th>
-                        <th>Inscrito</th>
-                        <th className="text-center">Monto</th>
-                        <th>Método</th>
-                        <th>Referencia</th>
-                        <th>Fecha</th>
+                        <th scope="col">Torneo</th>
+                        <th scope="col">Inscrito</th>
+                        <th scope="col" className="text-center">Monto</th>
+                        <th scope="col">Método</th>
+                        <th scope="col">Referencia</th>
+                        <th scope="col">Fecha</th>
                       </tr>
                     </thead>
                     <tbody>
