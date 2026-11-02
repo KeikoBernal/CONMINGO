@@ -4,7 +4,7 @@ import SistemaMensajeria from './SistemaMensajeria';
 import PlanillaUniversal from './PlanillaUniversal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
 import ProtestasDelegado from '../ProtestasDelegado';
@@ -305,6 +305,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const filasPagosEquipo = filtrarTabla('pagos', pagosEquipo, ['metodo', 'moneda'], []);
   const sedesDelegado = Object.fromEntries(filasPartidos.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
+  // FASE 2 UX: paginacion compartida de nomina, scouting y pagos del equipo
+  const pagNomina = usePaginacion(filasNomina);
+  const pagScouting = usePaginacion(filasScouting);
+  const pagPagosEquipo = usePaginacion(filasPagosEquipo);
+
   // LOTE 3B: formato legible del tamaño de los documentos de la liga
   const formatearTamanoDoc = (bytes) => {
     const valor = parseInt(bytes, 10);
@@ -441,7 +446,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
                       {filasNomina.length === 0 ? (
                         <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
                       ) : (
-                        filasNomina.map(j => (
+                        pagNomina.filasPagina.map(j => (
                           <tr key={j.id} className={j.estado === 'Inactivo' ? 'bg-gray-50 opacity-60' : ''}>
                             <td className="text-center font-bold text-lg text-brand-brown">#{j.numero_dorsal}</td>
                             <td className="text-center">
@@ -474,6 +479,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
                     </tbody>
                   </table>
                 </div>
+                <PaginacionTabla {...pagNomina} />
               </div>
             </div>
           )}
@@ -622,7 +628,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
                       {filasScouting.length === 0 ? (
                         <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
                       ) : (
-                        filasScouting.map((j, idx) => (
+                        pagScouting.filasPagina.map((j, idx) => (
                           <tr key={idx}>
                             <td className="font-bold text-brand-brown">#{j.dorsal} {j.apellido}</td>
                             <td className="text-center font-bold text-brand-blue">{j.efectividad_arrime || 0}%</td>
@@ -641,6 +647,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
                     </tbody>
                   </table>
                 </div>
+                <PaginacionTabla {...pagScouting} />
               </div>
             </div>
           )}
@@ -678,7 +685,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
                             <td className="text-center text-brand-brown/80">{formatearTamanoDoc(d.tamano_bytes)}</td>
                             <td className="text-brand-brown/80">{d.creado_en ? d.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
                             <td className="text-center">
-                              <button onClick={() => d.url_firmada && window.open(d.url_firmada, '_blank', 'noopener')} disabled={!d.url_firmada} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="Descargar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
+                              <BotonAccionTabla titulo="Descargar" onClick={() => d.url_firmada && window.open(d.url_firmada, '_blank', 'noopener')} deshabilitado={!d.url_firmada}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></BotonAccionTabla>
                             </td>
                           </tr>
                         ))
@@ -716,7 +723,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
                       {filasPagosEquipo.length === 0 ? (
                         <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay pagos registrados para tu equipo.</td></tr>
                       ) : (
-                        filasPagosEquipo.map(p => (
+                        pagPagosEquipo.filasPagina.map(p => (
                           <tr key={p.id}>
                             <td className="font-bold">{p.torneo_nombre || 'N/D'}</td>
                             <td className="text-brand-brown/80">{p.jugador_nombre ? p.jugador_nombre + ' (jugador)' : (p.equipo_nombre || '') + ' (equipo)'}</td>
@@ -730,6 +737,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
                     </tbody>
                   </table>
                 </div>
+                <PaginacionTabla {...pagPagosEquipo} />
               </div>
             </div>
           )}

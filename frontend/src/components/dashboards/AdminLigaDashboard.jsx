@@ -8,7 +8,7 @@ import SistemaMensajeria from './SistemaMensajeria';
 import { useToasts, ToastContainer } from '../Toast';
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import CalendarioPartidos from '../CalendarioPartidos';
-import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
+import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CampoTexto from '../CampoTexto';
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
@@ -144,9 +144,6 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   // Formularios
   const [formSede, setFormSede] = useState({ nombre: '', direccion: '' });
   const [formEquipo, setFormEquipo] = useState({ nombre: '', categoria: 'Adulto 22+', tipo_genero: 'Mixto', logo_url: '' });
-  const [busquedaSedes, setBusquedaSedes] = useState('');
-  const [busquedaEquipos, setBusquedaEquipos] = useState('');
-  const [busquedaCredenciales, setBusquedaCredenciales] = useState('');
 
   // LOTE 3B: repositorio de documentos de la liga
   const [documentos, setDocumentos] = useState([]);
@@ -1244,6 +1241,16 @@ const bitacoraConTexto = bitacora.map(evento => ({
   }));
   const filasBitacora = filteredRows('bitacora', bitacoraConTexto, ['accion', 'tabla', 'usuario_rol', 'usuario'], ['fecha_hora']);
 
+  // FASE 2 UX: paginacion compartida de los listados largos
+  const pagSedes = usePaginacion(filasSedes);
+  const pagNomina = usePaginacion(filasNomina);
+  const pagCredenciales = usePaginacion(filasCredenciales);
+  const pagDocumentos = usePaginacion(filasDocumentos);
+  const pagPagos = usePaginacion(filasPagos);
+  const pagHistorial = usePaginacion(filasHistorial);
+  const pagBitacora = usePaginacion(filasBitacora);
+  const pagSuspendidos = usePaginacion(filasSuspendidos);
+
   // Filtrado de delegados que ya están asignados a un equipo
   const delegadosOcupados = equipos.map(eq => String(eq.delegado_id_usuario)).filter(id => id !== 'null' && id !== 'undefined' && id !== '');
 
@@ -1454,13 +1461,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 </div>
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <h3 className="text-lg font-bold text-brand-brown">Listado de Sedes</h3>
-                    <div className="relative w-full sm:w-64">
-                      <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                      <input type="text" placeholder="Buscar sede..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaSedes} onChange={e => setBusquedaSedes(e.target.value)} />
-                    </div>
-                  </div>
+                  <EncabezadoTabla titulo="Listado de Sedes" total={filasSedes.length} />
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
                       <div className="overflow-x-auto">
                         <table className="tabla-admin">
@@ -1472,19 +1473,20 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </tr>
                       </thead>
                       <tbody>
-                        {filasSedes.filter(s => s.nombre.toLowerCase().includes(busquedaSedes.toLowerCase())).map(s => (
+                        {pagSedes.filasPagina.map(s => (
                           <tr key={s.id} className="group">
                             <td className="font-bold">{s.nombre}</td>
                             <td className="text-brand-brown/80">{s.direccion || 'Sin dirección'}</td>
-                            <td className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => { setSedeEditando(s); setFormSede({ nombre: s.nombre, direccion: s.direccion || '' }); }} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors" title="Editar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                              <button onClick={() => eliminarSede(s.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                            <td className="flex gap-2 justify-center">
+                              <BotonAccionTabla titulo="Editar" onClick={() => { setSedeEditando(s); setFormSede({ nombre: s.nombre, direccion: s.direccion || '' }); }}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></BotonAccionTabla>
+                              <BotonAccionTabla titulo="Eliminar" tono="peligro" onClick={() => eliminarSede(s.id)}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></BotonAccionTabla>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+                  <PaginacionTabla {...pagSedes} />
                 </div>
               </div>
             )}
@@ -1587,17 +1589,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 </div>
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <h3 className="text-lg font-bold text-brand-brown">Listado de Equipos</h3>
-                    <div className="relative w-full sm:w-64">
-                      <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                      <input type="text" placeholder="Buscar equipo..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaEquipos} onChange={e => setBusquedaEquipos(e.target.value)} />
-                    </div>
-                  </div>
+                  <EncabezadoTabla titulo="Listado de Equipos" total={filasEquipos.length} />
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
                   
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {filasEquipos.filter(e => e.nombre.toLowerCase().includes(busquedaEquipos.toLowerCase())).map(e => (
+                    {filasEquipos.map(e => (
                       <div key={e.id} className={`p-5 rounded-xl border transition-all ${equipoSeleccionado?.id === e.id ? 'border-brand-rust bg-brand-rust/5 shadow-md ring-1 ring-brand-rust' : 'border-brand-gold/30 bg-white hover:border-brand-blue hover:shadow-sm'}`}>
                         <div className="flex justify-between items-start mb-3">
                           <h4 className="font-bold text-brand-brown text-lg">{e.nombre}</h4>
@@ -1700,7 +1696,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 No hay jugadores registrados en esta nómina.
                               </td>
                             </tr>
-                          ) : filasNomina.map(j => (
+                          ) : pagNomina.filasPagina.map(j => (
                             <tr key={j.id} className={j.estado !== 'Activo' ? 'opacity-60 bg-gray-50' : ''}>
                               <td className="text-center font-bold text-brand-rust text-lg">#{j.numero_dorsal}</td>
                               <td>
@@ -1749,6 +1745,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </tbody>
                       </table>
                     </div>
+                    <PaginacionTabla {...pagNomina} />
                     </div>
                   )}
                 </div>
@@ -1801,13 +1798,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   </div>
 
                   <div className="lg:w-2/3">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-                      <h3 className="text-lg font-bold text-brand-brown">Usuarios Operativos en la Liga</h3>
-                      <div className="relative w-full sm:w-64">
-                        <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                        <input type="text" placeholder="Buscar credencial..." className="w-full pl-10 pr-3 py-2 bg-white border border-brand-gold/40 rounded-lg text-sm text-brand-brown outline-none transition focus:border-brand-rust focus:ring-2 focus:ring-brand-gold/20 shadow-sm" value={busquedaCredenciales} onChange={e => setBusquedaCredenciales(e.target.value)} />
-                      </div>
-                    </div>
+                    <EncabezadoTabla titulo="Usuarios Operativos en la Liga" total={filasCredenciales.length} />
 
                     <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }, { key: 'equipo_filtro', label: 'Equipo' }]} categoryFields={["rol", "equipo_filtro"]} filename="credenciales_filtradas" />
                     <div className="overflow-x-auto border border-brand-gold/20 rounded-lg">
@@ -1821,7 +1812,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-brand-gold/20">
-                          {filasCredenciales.filter(u => `${u.nombre} ${u.apellido} ${u.cedula} ${u.email} ${(u.equipo_filtro || []).join(' ')}`.toLowerCase().includes(busquedaCredenciales.toLowerCase())).map(u => (
+                          {pagCredenciales.filasPagina.map(u => (
                             <tr key={u.id} className="hover:bg-brand-cream/10">
                               <td className="p-3 font-bold text-brand-brown">{u.nombre} {u.apellido}</td>
                               <td className="p-3"><span className="px-2 py-1 bg-brand-blue/10 text-brand-blue rounded text-xs font-bold uppercase">{u.rol}</span></td>
@@ -1848,6 +1839,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </tbody>
                       </table>
                     </div>
+                    <PaginacionTabla {...pagCredenciales} />
                   </div>
 
                 </div>
@@ -2143,7 +2135,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         {filasDocumentos.length === 0 ? (
                           <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">Aún no hay documentos registrados en la liga.</td></tr>
                         ) : (
-                          filasDocumentos.map(d => (
+                          pagDocumentos.filasPagina.map(d => (
                             <tr key={d.id} className="group">
                               <td className="font-bold">{d.titulo}{d.es_global && <span className="ml-2 bg-brand-blue/10 text-brand-blue px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase border border-brand-blue/20">Global</span>}</td>
                               <td><span className="bg-brand-cream text-brand-brown px-2 py-1 rounded-full text-xs font-bold border border-brand-gold/30">{d.tipo}</span></td>
@@ -2151,10 +2143,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               <td className="text-center text-brand-brown/80">{formatearTamano(d.tamano_bytes)}</td>
                               <td className="text-brand-brown/80">{d.subido_por_nombre || 'N/D'}</td>
                               <td className="text-brand-brown/80">{d.creado_en ? d.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
-                              <td className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => descargarDocumento(d)} disabled={!d.url_firmada} className="p-2 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="Descargar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
+                              <td className="flex gap-2 justify-center">
+                                <BotonAccionTabla titulo="Descargar" onClick={() => descargarDocumento(d)} deshabilitado={!d.url_firmada}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></BotonAccionTabla>
                                 {!d.es_global && (
-                                  <button onClick={() => eliminarDocumento(d.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                                  <BotonAccionTabla titulo="Eliminar" tono="peligro" onClick={() => eliminarDocumento(d.id)}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></BotonAccionTabla>
                                 )}
                               </td>
                             </tr>
@@ -2163,6 +2155,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </tbody>
                     </table>
                   </div>
+                  <PaginacionTabla {...pagDocumentos} />
                 </div>
               </div>
             )}
@@ -2231,7 +2224,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         {filasPagos.length === 0 ? (
                           <tr><td colSpan={8} className="text-center p-6 text-brand-brown/50">Aún no hay pagos de inscripción registrados.</td></tr>
                         ) : (
-                          filasPagos.map(p => (
+                          pagPagos.filasPagina.map(p => (
                             <tr key={p.id} className="group">
                               <td className="font-bold">{p.torneo_nombre || 'N/D'}</td>
                               <td className="text-brand-brown/80">{p.inscrito}</td>
@@ -2240,8 +2233,8 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               <td className="text-brand-brown/80">{p.referencia || '—'}</td>
                               <td className="text-brand-brown/80">{p.registrado_por_nombre || 'N/D'}</td>
                               <td className="text-brand-brown/80">{p.creado_en ? p.creado_en.slice(0, 10).split('-').reverse().join('/') : ''}</td>
-                              <td className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => eliminarPago(p.id)} className="p-2 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors" title="Eliminar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                              <td className="flex gap-2 justify-center">
+                                <BotonAccionTabla titulo="Eliminar" tono="peligro" onClick={() => eliminarPago(p.id)}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></BotonAccionTabla>
                               </td>
                             </tr>
                           ))
@@ -2249,6 +2242,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </tbody>
                     </table>
                   </div>
+                  <PaginacionTabla {...pagPagos} />
                 </div>
               </div>
             )}
@@ -2276,7 +2270,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <tbody>
                         {partidos.filter(p => p.estado === 'Finalizado').length === 0 ? (
                           <tr><td colSpan={5} className="text-center p-6 text-brand-brown/50">No hay historial disponible.</td></tr>
-                        ) : filasHistorial.map(p => (
+                        ) : pagHistorial.filasPagina.map(p => (
                           <tr key={p.id}>
                             <td className="text-brand-brown/80">{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
                             <td className="font-semibold">{p.torneo_nombre}</td>
@@ -2295,6 +2289,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </tbody>
                     </table>
                   </div>
+                  <PaginacionTabla {...pagHistorial} />
                 </div>
               </div>
             )}
@@ -2414,10 +2409,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <table className="tabla-admin min-w-[760px] whitespace-nowrap">
                       <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Rol</th><th>Qué hizo</th><th>Recurso consultado</th><th>IP</th></tr></thead>
                       <tbody>
-                        {filasBitacora.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay eventos que coincidan con los filtros.</td></tr> : filasBitacora.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
+                        {filasBitacora.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay eventos que coincidan con los filtros.</td></tr> : pagBitacora.filasPagina.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
                       </tbody>
                     </table>
                   </div>
+                  <PaginacionTabla {...pagBitacora} />
                 </div>
               </div>
             )}
@@ -2465,7 +2461,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 <tr><th className="p-3">Fecha Original</th><th className="p-3">Torneo</th><th className="p-3">Encuentro</th><th className="p-3 text-center">Acciones</th></tr>
                               </thead>
                               <tbody className="divide-y divide-red-50">
-                                {filasSuspendidos.map(p => (
+                                {pagSuspendidos.filasPagina.map(p => (
                                   <tr key={p.id}>
                                     <td className="p-3 text-brand-brown/80">{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
                                     <td className="p-3 font-semibold text-brand-brown">{p.torneo_nombre}</td>
@@ -2478,6 +2474,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               </tbody>
                             </table>
                           </div>
+                          <PaginacionTabla {...pagSuspendidos} />
                         </div>
                       )}
 
@@ -2491,7 +2488,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         <div key={t.id} className="border border-brand-gold/30 rounded-xl overflow-hidden shadow-sm">
                           <div className="bg-brand-brown p-4 flex justify-between items-center text-white">
                             <h4 className="font-bold text-lg">{t.nombre} <span className="text-brand-gold text-sm font-normal ml-2">({t.fecha_inicio} al {t.fecha_fin})</span></h4>
-                            <button onClick={() => setTorneoEditando(t)} className="p-2 hover:bg-white/10 rounded transition-colors"><svg className="w-5 h-5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+                            <button onClick={() => setTorneoEditando(t)} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><svg className="w-5 h-5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
                           </div>
                           <div className="p-4 bg-white">
                             {t.partidos && t.partidos.length > 0 ? (
