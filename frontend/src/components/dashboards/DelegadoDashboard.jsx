@@ -9,6 +9,7 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
 import ProtestasDelegado from '../ProtestasDelegado';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -19,6 +20,9 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   });
   
   const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // FASE 1 UX: notificaciones toast en vez de alert nativo
+  const { toasts, mostrarToast, cerrarToast } = useToasts();
   const [mensaje, setMensaje] = useState('');
   
   // Estado para la animación de la bola criolla en el menú lateral
@@ -172,7 +176,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     const claveSaneada = nuevaClave.trim();
     
     if (claveSaneada.length < 6) {
-      return alert('La contraseña no puede contener puros espacios en blanco y debe tener al menos 6 caracteres válidos.');
+      return mostrarToast('La contraseña no puede contener puros espacios en blanco y debe tener al menos 6 caracteres válidos.', 'error');
     }
     
     setIsSubmittingPass(true);
@@ -186,11 +190,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     setIsSubmittingPass(false); // Liberar bloqueo
     
     if (res.ok) {
-      alert('Contraseña actualizada correctamente.');
+      mostrarToast('Contraseña actualizada correctamente.', 'exito');
       setDebeCambiarPass(false);
     } else {
       const data = await res.json();
-      alert(data.error || 'Error al cambiar contraseña');
+      mostrarToast(data.error || 'Error al cambiar contraseña', 'error');
     }
   };
 
@@ -204,8 +208,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   };
 
   const exportarScouting = (formato) => {
-    if (!miEquipo || !estadisticas) return alert('Datos no disponibles.');
-    if (!estadisticas.individual || estadisticas.individual.length === 0) return alert('No hay datos de jugadores registrados para generar el reporte de scouting.');
+    if (!miEquipo || !estadisticas) return mostrarToast('Datos no disponibles.', 'error');
+    if (!estadisticas.individual || estadisticas.individual.length === 0) return mostrarToast('No hay datos de jugadores registrados para generar el reporte de scouting.', 'error');
     
     const nombreArchivo = `Scouting_${miEquipo.nombre.replace(/\s+/g, '_')}`;
     const grupal = estadisticas.grupal || {};
@@ -328,6 +332,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       
       <SistemaMensajeria usuario={usuario} token={token} />
+      <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
 
       {/* MODAL DE CAMBIO DE CONTRASEÑA */}
       {debeCambiarPass && (
