@@ -10,6 +10,9 @@ import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
+import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
+import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
+import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -24,6 +27,12 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   // PESTAÑAS DEL PANEL LATERAL: 'hoy' | 'proximos' | 'historial'
   const [pestana, setPestana] = useState(localStorage.getItem('arbitroPestana') || 'hoy');
   const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // FASE 1 UX: toasts y dialogo de confirmacion en vez de alert/confirm nativos
+  const { toasts, mostrarToast, cerrarToast } = useToasts();
+  const [confirmacion, setConfirmacion] = useState(null);
+  const pedirConfirmacion = (titulo, mensaje, tipo) =>
+    new Promise((resolver) => setConfirmacion({ titulo, mensaje, tipo, resolver }));
 
   const [partidos, setPartidos] = useState([]);
   const [partidoActivo, setPartidoActivo] = useState(null);
@@ -137,7 +146,7 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
       socketRef.current.on('connect_error', () => {
         if (avisoSocketDadoRef.current) return;
         avisoSocketDadoRef.current = true;
-        alert('Conexion en tiempo real no disponible. El sistema reintentara automaticamente.');
+        mostrarToast('Conexion en tiempo real no disponible. El sistema reintentara automaticamente.', 'info');
       });
     })();
 
@@ -185,7 +194,7 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
     });
 
     socketRef.current.on('partido_finalizado_auto', (data) => {
-      alert(`¡META DE PUNTOS ALCANZADA! El sistema ha cerrado el acta de forma automática.\nHora final registrada: ${data.hora_final}`);
+      mostrarToast(`¡META DE PUNTOS ALCANZADA! El sistema cerro el acta automaticamente. Hora final: ${data.hora_final}`, 'exito');
       setPartidoActivo(prev => prev ? ({ ...prev, estado: 'Finalizado', hora_final: data.hora_final }) : null);
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
       localStorage.removeItem('partidoActivoId');
@@ -215,13 +224,13 @@ const guardarSorteo = async () => {
     // INSERCIÓN: Bloqueo y saneamiento
     if (isSubmitting) return;
     const textoSaneado = sorteoTexto.trim();
-    if (!textoSaneado) return alert('El acta de sorteo no puede estar vacía.');
+    if (!textoSaneado) return mostrarToast('El acta de sorteo no puede estar vacía.', 'error');
     
     setIsSubmitting(true);
     const res = await fetchConToken(`/partidos/${modalSorteo}/sorteo`, { method: 'PUT', body: JSON.stringify({ sorteo: textoSaneado }) });
     setIsSubmitting(false);
     
-    if (res.ok) { alert('Sorteo guardado exitosamente.'); setModalSorteo(null); setSorteoTexto(''); }
+    if (res.ok) { mostrarToast('Sorteo guardado exitosamente.', 'exito'); setModalSorteo(null); setSorteoTexto(''); }
   };
 
     // LOTE 6D: registra la firma dibujada. El arbitro firma su propio slot y
@@ -236,12 +245,12 @@ const guardarSorteo = async () => {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setFirmasActa(data.firmas || data);
-        alert('Firma registrada en el acta.');
+        mostrarToast('Firma registrada en el acta.', 'exito');
       } else {
-        alert(data.error || 'No se pudo registrar la firma.');
+        mostrarToast(data.error || 'No se pudo registrar la firma.', 'error');
       }
     } catch (err) {
-      alert('Error de conexión al registrar la firma.');
+      mostrarToast('Error de conexión al registrar la firma.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -249,8 +258,7 @@ const guardarSorteo = async () => {
 
 const suspenderPartido = async () => {
     if(!partidoActivo || isSubmitting) return; // INSERCIÓN: Prevención de doble click
-    const confirmacion = window.confirm("¿Estás seguro de suspender este partido? Se guardarán los resultados actuales y desaparecerá de tu panel y del anotador hasta ser reagendado.");
-    if (!confirmacion) return;
+    if (!(await pedirConfirmacion('Suspender partido', '¿Estás seguro de suspender este partido? Se guardarán los resultados actuales y desaparecerá de tu panel y del anotador hasta ser reagendado.', 'peligro'))) return;
 
     setIsSubmitting(true); // INSERCIÓN: Bloqueo
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/suspender`, { method: 'PUT' });
@@ -272,11 +280,11 @@ const suspenderPartido = async () => {
         });
       }
 
-      alert('Partido suspendido con éxito. Los resultados han quedado guardados y el administrador ha sido notificado.');
+      mostrarToast('Partido suspendido con éxito. Los resultados han quedado guardados y el administrador ha sido notificado.', 'exito');
       localStorage.removeItem('partidoActivoId');
       setPartidoActivo(null); 
       cargarDatosOficial(); 
-    } else { alert('Error de conexión al intentar suspender el partido.'); }
+    } else { mostrarToast('Error de conexión al intentar suspender el partido.', 'error'); }
   };
 
   const abrirIncidencias = async () => {
@@ -292,7 +300,7 @@ const suspenderPartido = async () => {
       }
     } catch (err) {
       setIncidencias([]);
-      alert('Error de conexión al cargar las incidencias.');
+      mostrarToast('Error de conexión al cargar las incidencias.', 'error');
     } finally {
       setCargandoIncidencias(false);
     }
@@ -300,7 +308,7 @@ const suspenderPartido = async () => {
 
   const registrarIncidencia = async (e) => {
     e.preventDefault();
-    if (formIncidencia.descripcion.trim().length < 5) return alert('La descripción debe tener al menos 5 caracteres.');
+    if (formIncidencia.descripcion.trim().length < 5) return mostrarToast('La descripción debe tener al menos 5 caracteres.', 'error');
     setIsSubmitting(true);
     try {
       const res = await fetchConToken(`/partidos/${partidoActivo.id}/incidencias`, { method: 'POST', body: JSON.stringify({ tipo: formIncidencia.tipo, descripcion: formIncidencia.descripcion.trim(), jugador_id: formIncidencia.jugador_id || null }) });
@@ -312,23 +320,23 @@ const suspenderPartido = async () => {
           const data2 = await res2.json();
           setIncidencias(Array.isArray(data2) ? data2 : (data2.incidencias || []));
         }
-        alert(data.mensaje || 'Incidencia registrada correctamente.');
+        mostrarToast(data.mensaje || 'Incidencia registrada correctamente.', 'exito');
       } else {
-        alert(data.error || 'No se pudo registrar la incidencia.');
+        mostrarToast(data.error || 'No se pudo registrar la incidencia.', 'error');
       }
     } catch (err) {
-      alert('Error de conexión al registrar la incidencia.');
+      mostrarToast('Error de conexión al registrar la incidencia.', 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const emitirTarjeta = (color) => {
-    if (!jugadorSancionId) return alert('Selecciona un jugador.');
+  const emitirTarjeta = async (color) => {
+    if (!jugadorSancionId) return mostrarToast('Selecciona un jugador.', 'error');
     const j = [...jugadoresLocal, ...jugadoresVisita].find(x => x.id === parseInt(jugadorSancionId));
-    if (!window.confirm(`¿Amonestar con tarjeta ${color.toUpperCase()} a ${j.nombre} ${j.apellido}?`)) return;
+    if (!(await pedirConfirmacion(`Tarjeta ${color}`, `¿Amonestar con tarjeta ${color.toUpperCase()} a ${j.nombre} ${j.apellido}?`, color === 'Roja' ? 'peligro' : undefined))) return;
     socketRef.current?.emit('tarjeta_emitida', { partido_id: partidoActivo.id, jugador_id: j.id, color });
-    setJugadorSancionId(''); alert(`Tarjeta ${color} registrada en acta.`);
+    setJugadorSancionId(''); mostrarToast(`Tarjeta ${color} registrada en acta.`, 'exito');
   };
 
   const solicitarRevision = (jugadorId, manoIndex, jugadaObj) => {
@@ -381,6 +389,8 @@ const suspenderPartido = async () => {
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
+      <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
+      <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
       
       {/* MODAL SORTEO */}
       {modalSorteo && (
@@ -546,9 +556,11 @@ const suspenderPartido = async () => {
                   </h3>
                   <TableTools rows={partidosHoyBase} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="arbitro_partidos_hoy" modulo="Árbitro oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {partidosHoy.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay partidos agendados para el día de hoy.</p>
-                    </div>
+                    <EmptyState
+                      titulo="Sin partidos hoy"
+                      descripcion="No hay partidos agendados para el día de hoy. Revisa el calendario o vuelve mas tarde."
+                      icono="calendario"
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {partidosHoy.map(p => (

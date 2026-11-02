@@ -11,6 +11,9 @@ import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
+import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
+import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
+import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -25,6 +28,12 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   // PESTAÑAS DEL PANEL LATERAL: 'hoy' | 'proximos' | 'historial'
   const [pestana, setPestana] = useState(localStorage.getItem('anotadorPestana') || 'hoy');
   const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // FASE 1 UX: toasts y dialogo de confirmacion en vez de alert/confirm nativos
+  const { toasts, mostrarToast, cerrarToast } = useToasts();
+  const [confirmacion, setConfirmacion] = useState(null);
+  const pedirConfirmacion = (titulo, mensaje, tipo) =>
+    new Promise((resolver) => setConfirmacion({ titulo, mensaje, tipo, resolver }));
 
   const [partidos, setPartidos] = useState([]);
   const [partidoActivo, setPartidoActivo] = useState(null);
@@ -153,7 +162,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       socketRef.current.on('connect_error', () => {
         if (avisoSocketDadoRef.current) return;
         avisoSocketDadoRef.current = true;
-        alert('Conexion en tiempo real no disponible. El sistema reintentara automaticamente; tu planilla local sigue protegida.');
+        mostrarToast('Conexion en tiempo real no disponible. El sistema reintentara automaticamente; tu planilla local sigue protegida.', 'info');
       });
     })();
 
@@ -209,7 +218,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       
       if (data.estadoPartido) {
         if (data.estadoPartido === 'Suspendido') {
-          alert('El árbitro ha suspendido el partido. Los resultados hasta este momento se han guardado automáticamente. Serás redirigido al menú principal.');
+          mostrarToast('El árbitro ha suspendido el partido. Los resultados hasta este momento se han guardado automáticamente. Serás redirigido al menú principal.', 'info');
           localStorage.removeItem('partidoActivoId');
           setPartidoActivo(null);
         } else {
@@ -219,7 +228,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     });
 
     socketRef.current.on('partido_finalizado_auto', (data) => {
-      alert(`¡META ALCANZADA! El partido ha finalizado automáticamente porque se alcanzó el límite de tantos configurado.\nMarcador Final registrado: ${data.marcador_local} - ${data.marcador_visita}`);
+      mostrarToast(`¡META ALCANZADA! El partido finalizo automaticamente al alcanzar el limite de tantos. Marcador final: ${data.marcador_local} - ${data.marcador_visita}`, 'exito');
       setPartidoActivo(prev => prev ? ({ ...prev, estado: 'Finalizado', hora_final: data.hora_final }) : null);
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
       localStorage.removeItem(`backup_partido_${data.partido_id}`); 
@@ -227,10 +236,10 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     });
 
     socketRef.current.on('error_validacion_jugada', (msg) => {
-      alert(`ERROR DE VALIDACIÓN:\n\n${msg}`);
+      mostrarToast(`ERROR DE VALIDACIÓN: ${msg}`, 'error');
     });
 
-    socketRef.current.on('alerta_revision', (msg) => { alert(`SOLICITUD DEL ÁRBITRO:\n\n${msg}`); });
+    socketRef.current.on('alerta_revision', (msg) => { mostrarToast(`SOLICITUD DEL ÁRBITRO: ${msg}`, 'info'); });
 
     socketRef.current.on('firma_acta', () => {
       cargarFirmasActa(partido.id); // LOTE 6D: el otro oficial registro una firma en su dispositivo
@@ -247,7 +256,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     const localData = localStorage.getItem(`backup_partido_${partido.id}`);
     if (localData && partido.estado !== 'Finalizado' && partido.estado !== 'Suspendido') {
       const parsed = JSON.parse(localData);
-      if (window.confirm('Se detectaron datos locales sin sincronizar para este partido. ¿Deseas restaurar la planilla desde tu navegador? (Ideal si perdiste conexión recientemente)')) {
+      if (await pedirConfirmacion('Restaurar planilla local', 'Se detectaron datos locales sin sincronizar para este partido. ¿Deseas restaurar la planilla desde tu navegador? (Ideal si perdiste conexión recientemente)')) {
         setEfectividadJugadores(parsed.efectividadJugadores || {}); setManualStats(parsed.manualStats || {});
         setPuntosPorManoLocal(parsed.puntosPorManoLocal || Array(20).fill('')); setPuntosPorManoVisita(parsed.puntosPorManoVisita || Array(20).fill(''));
         socketRef.current.emit('sincronizar_planilla_completa', { partido_id: partido.id, efectividad: parsed.efectividadJugadores, manualStats: parsed.manualStats, tantosLocal: parsed.puntosPorManoLocal, tantosVisita: parsed.puntosPorManoVisita });
@@ -324,12 +333,12 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setFirmasActa(data.firmas || data);
-        alert('Firma registrada en el acta.');
+        mostrarToast('Firma registrada en el acta.', 'exito');
       } else {
-        alert(data.error || 'No se pudo registrar la firma.');
+        mostrarToast(data.error || 'No se pudo registrar la firma.', 'error');
       }
     } catch (err) {
-      alert('Error de conexión al registrar la firma.');
+      mostrarToast('Error de conexión al registrar la firma.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -337,7 +346,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   const finalizarPartido = async () => {
     if (isSubmitting) return;
-    if (!window.confirm('¿Cerrar acta y registrar hora final?')) return;
+    if (!(await pedirConfirmacion('Finalizar acta', '¿Cerrar acta y registrar hora final?'))) return;
     
     setIsSubmitting(true);
     // LOTE 4C (N3): se persisten las manos del acta (jugadas y tantos) antes
@@ -350,7 +359,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     setIsSubmitting(false);
     if (!res.ok && Array.isArray(dataFinal.firmas_faltantes) && dataFinal.firmas_faltantes.length > 0) {
       cargarFirmasActa(partidoActivo.id);
-      alert('Faltan firmas del acta para finalizar: ' + dataFinal.firmas_faltantes.join(', ') + '. Recoge las firmas pendientes en este dispositivo o en el del árbitro y vuelve a intentar.');
+      mostrarToast('Faltan firmas del acta para finalizar: ' + dataFinal.firmas_faltantes.join(', ') + '. Recoge las firmas pendientes en este dispositivo o en el del árbitro y vuelve a intentar.', 'error');
       return;
     }
     if (res.ok) {
@@ -361,7 +370,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       localStorage.removeItem(`backup_partido_${partidoActivo.id}`); 
       localStorage.removeItem('partidoActivoId');
       if (manosPersistidas.fallidas > 0) {
-        alert(`${manosPersistidas.fallidas} mano(s) no pudieron guardarse en el acta (${manosPersistidas.guardadas} guardadas). Comunícalo al AdminLiga para completar el registro.`);
+        mostrarToast(`${manosPersistidas.fallidas} mano(s) no pudieron guardarse en el acta (${manosPersistidas.guardadas} guardadas). Comunícalo al AdminLiga para completar el registro.`, 'error');
       }
     }
   };
@@ -396,7 +405,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const registrarTantosMano = (puntos) => {
     const ptsValidados = parseInt(puntos);
     if (isNaN(ptsValidados) || ptsValidados < 0 || ptsValidados > 6) {
-      return alert('Error: Los tantos deben ser un valor entero entre 0 y 6.');
+      return mostrarToast('Error: Los tantos deben ser un valor entero entre 0 y 6.', 'error');
     }
 
     let nuevoLocal = [...puntosPorManoLocal], nuevoVisita = [...puntosPorManoVisita];
@@ -453,6 +462,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
+      <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
+      <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
       
       {/* MODAL SIMULADOR VISUAL DE CANCHA (LOTE S) */}
       {modalCancha && partidoActivo && (
@@ -605,9 +616,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                   </h3>
                   <TableTools rows={partidosHoyBase} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="anotador_partidos_hoy" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {partidosHoy.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay partidos agendados para el día de hoy.</p>
-                    </div>
+                    <EmptyState
+                      titulo="Sin partidos hoy"
+                      descripcion="No hay partidos agendados para el día de hoy. Revisa el calendario o vuelve mas tarde."
+                      icono="calendario"
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {partidosHoy.map(p => (

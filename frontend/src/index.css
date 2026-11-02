@@ -168,3 +168,22 @@ body.modo-luz-solar button {
 .anim-marcador-pop {
   animation: marcador-pop 0.5s ease-out;
 }
+
+/* ==========================================
+   FASE 1 UX: foco visible de marca y areas de
+   toque comodos en pantallas tactiles.
+   ========================================== */
+:where(a, button, select, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-brand-rust);
+  outline-offset: 2px;
+}
+
+/* En dispositivos de puntero grueso (dedos) los controles ganan una altura
+   minima de 44 px. Los controles compactos (iconos decorativos pequenos)
+   quedan eximidos con la clase sin-toque. */
+@media (pointer: coarse) {
+  :where(button, select, input, textarea):not(.sin-toque) {
+    min-height: 2.75rem;
+  }
+}
+

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import SistemaMensajeria from './SistemaMensajeria';
+import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -13,6 +14,11 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [pestana, setPestana] = useState(localStorage.getItem('superadminPestana') || 'metricas');
   const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // FASE 1 UX: confirmacion con dialogo de marca en vez del confirm nativo
+  const [confirmacion, setConfirmacion] = useState(null);
+  const pedirConfirmacion = (titulo, mensaje, tipo) =>
+    new Promise((resolver) => setConfirmacion({ titulo, mensaje, tipo, resolver }));
   const [mensaje, setMensaje] = useState(null);
 
   const [metricas, setMetricas] = useState(null);
@@ -417,7 +423,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const resetearPasswordAccion = async (user) => {
     const primerNombre = user.nombre ? user.nombre.trim().split(' ')[0] : 'User';
     const cincoDigitos = user.cedula ? user.cedula.trim().substring(0, 5) : '00000';
-    if (!window.confirm(`¿Restablecer clave temporal a: ${primerNombre}${cincoDigitos}!?`)) return;
+    if (!(await pedirConfirmacion('Restablecer clave', `¿Restablecer clave temporal a: ${primerNombre}${cincoDigitos}!?`))) return;
     // LOTE 6J (revision): bloqueo por persona, no global. Otras personas siguen operativas.
     if (envioEnCurso(user.id)) return;
     bloquearEnvio(user.id);
@@ -496,7 +502,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   };
 
   const reactivarUsuario = async (u) => {
-    if (!window.confirm(`¿Reactivar el acceso de ${u.nombre} ${u.apellido} (${u.email})?`)) return;
+    if (!(await pedirConfirmacion('Reactivar acceso', `¿Reactivar el acceso de ${u.nombre} ${u.apellido} (${u.email})?`))) return;
     const res = await fetchConToken(`/usuarios/${u.id}/reactivar`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -713,7 +719,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   };
 
   const eliminarDocumentoGlobal = async (id) => {
-    if (!window.confirm('¿Eliminar este documento global? Dejará de estar disponible para todas las ligas.')) return;
+    if (!(await pedirConfirmacion('Eliminar documento global', '¿Eliminar este documento global? Dejará de estar disponible para todas las ligas.', 'peligro'))) return;
     const res = await fetchConToken('/documentos/' + id, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -748,6 +754,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
+      <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
 
       {/* MODAL CAMBIO DE CORREO (LOTE 6G) */}
       {modalCorreo && (

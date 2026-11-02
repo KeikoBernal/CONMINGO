@@ -6,6 +6,7 @@ import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import SistemaMensajeria from './SistemaMensajeria';
 import { useToasts, ToastContainer } from '../Toast';
+import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import CalendarioPartidos from '../CalendarioPartidos';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter } from './HerramientasTabla';
 import CampoTexto from '../CampoTexto';
@@ -48,6 +49,11 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   // LOTE K: notificaciones tipo toast (reemplazan los alert nativos)
   const { toasts, mostrarToast, cerrarToast } = useToasts();
+
+  // FASE 1 UX: confirmacion con dialogo de marca en vez del confirm nativo
+  const [confirmacion, setConfirmacion] = useState(null);
+  const pedirConfirmacion = (titulo, mensaje, tipo) =>
+    new Promise((resolver) => setConfirmacion({ titulo, mensaje, tipo, resolver }));
   const [menuAbierto, setMenuAbierto] = useState(false);
 
 // Estado para saber qué botón específico se está transformando en bola
@@ -374,7 +380,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   };
 
   const eliminarSede = async (id) => {
-    if (!window.confirm('¿Eliminar esta sede?')) return;
+    if (!(await pedirConfirmacion('Eliminar sede', '¿Eliminar esta sede?', 'peligro'))) return;
     const res = await fetchConToken(`/sedes/${id}`, { method: 'DELETE' }); if (res.ok) cargarDatos();
   };
 
@@ -455,7 +461,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
       setModalCapitan({ visible: true, viejoId: id, equipoId: equipoSeleccionado.id, candidatos: otrosActivos, nuevoCapitanId: otrosActivos[0].id });
       return;
     }
-    if (!window.confirm(`¿Cambiar estado a ${nuevoEstado}?`)) return;
+    if (!(await pedirConfirmacion('Cambiar estado', `¿Cambiar estado a ${nuevoEstado}?`))) return;
     const res = await fetchConToken(`/jugadores/${id}/estado`, { method: 'PUT', body: JSON.stringify({ estado: nuevoEstado }) });
     if (res.ok) seleccionarEquipoModal(equipoSeleccionado);
   };
@@ -689,7 +695,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   };
 
   const resetearPasswordOperativo = async (userId, cedula, nombre) => {
-    if (!window.confirm(`¿Restablecer contraseña para ${nombre}?`)) return;
+    if (!(await pedirConfirmacion('Restablecer contraseña', `¿Restablecer contraseña para ${nombre}?`))) return;
     // LOTE 6J (revision): bloqueo por persona, no global. Otras personas siguen operativas.
     if (envioEnCurso(userId)) return;
     bloquearEnvio(userId);
@@ -786,7 +792,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   };
 
   const levantarSancion = async (id) => {
-    if (!window.confirm('¿Levantar esta sanción y reactivar al jugador?')) return;
+    if (!(await pedirConfirmacion('Levantar sanción', '¿Levantar esta sanción y reactivar al jugador?'))) return;
     const res = await fetchConToken(`/sanciones/${id}/levantar`, { method: 'PUT' });
     const data = await res.json();
     if (res.ok) { mostrarToast(data.mensaje || 'Sanción levantada.', 'exito'); cargarDatos(); } else mostrarToast(data.error || 'No se pudo levantar la sanción.', 'error');
@@ -1038,7 +1044,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
   };
 
   const eliminarEquipo = async (id, nombre) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente el equipo "${nombre}"?`)) return;
+    if (!(await pedirConfirmacion('Eliminar equipo', `¿Estás seguro de que deseas eliminar permanentemente el equipo "${nombre}"?`, 'peligro'))) return;
     const res = await fetchConToken(`/equipos/${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (res.ok) {
@@ -1099,7 +1105,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
   };
 
   const eliminarDocumento = async (id) => {
-    if (!window.confirm('¿Eliminar este documento? El archivo se borrará del repositorio de la liga.')) return;
+    if (!(await pedirConfirmacion('Eliminar documento', '¿Eliminar este documento? El archivo se borrará del repositorio de la liga.', 'peligro'))) return;
     const res = await fetchConToken('/documentos/' + id, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) { mostrarToast('Documento eliminado.', 'exito'); cargarDatos(); }
@@ -1151,7 +1157,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
   };
 
   const eliminarPago = async (id) => {
-    if (!window.confirm('¿Eliminar este pago registrado?')) return;
+    if (!(await pedirConfirmacion('Eliminar pago', '¿Eliminar este pago registrado?', 'peligro'))) return;
     const res = await fetchConToken('/pagos/' + id, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) { mostrarToast('Pago eliminado.', 'exito'); cargarDatos(); }
@@ -1245,6 +1251,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
+      <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
 
       {/* MODALES REUTILIZABLES */}
       {modalCapitan.visible && (
@@ -1834,7 +1841,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 {(u.correo_verificado === false || u.email_pendiente) && (
                                   <button onClick={() => reenviarVerificacionCredencial(u)} disabled={envioEnCurso(u.id)} className="px-3 py-1.5 bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{envioEnCurso(u.id) ? 'Enviando... ' + segundosCorreo + ' s' : 'Reenviar'}</button>
                                 )}
-                                <button onClick={async () => { if (!window.confirm(`¿Remover acceso para ${u.nombre}?`)) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
+                                <button onClick={async () => { if (!(await pedirConfirmacion('Remover acceso', `¿Remover acceso para ${u.nombre}?`, 'peligro'))) return; const res = await fetchConToken(`/remover-credencial/${u.id}`, { method: 'DELETE' }); const data = await res.json().catch(() => ({})); if (res.ok) mostrarToast(data.mensaje || 'Operacion completada.', 'exito'); else mostrarToast(data.error || 'El servidor no respondio correctamente. Revisa el log de Render.', 'error'); cargarDatos(); }} className="px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-600 hover:text-white rounded text-xs font-bold transition-colors">Remover</button>
                               </td>
                             </tr>
                           ))}

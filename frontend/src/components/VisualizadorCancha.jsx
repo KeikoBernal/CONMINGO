@@ -126,7 +126,7 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                   type="button"
                   key={'local-' + i}
                   onClick={() => setBolaSeleccionada({ equipo: 'Local', indice: i + 1 })}
-                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-blue border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Local', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
+                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-blue sin-toque border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Local', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
                   title={'Bola ' + (i + 1) + ' de ' + nombreLocal + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
@@ -136,7 +136,7 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                   type="button"
                   key={'visita-' + i}
                   onClick={() => setBolaSeleccionada({ equipo: 'Visita', indice: i + 1 })}
-                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-rust border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Visita', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
+                  className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-rust sin-toque border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Visita', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
                   title={'Bola ' + (i + 1) + ' de ' + nombreVisita + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
