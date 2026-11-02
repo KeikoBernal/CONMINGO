@@ -13,11 +13,12 @@ import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
+import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 export default function SuperadminDashboard({ usuario, cerrarSesion }) {
-  const [pestana, setPestana] = useState(localStorage.getItem('superadminPestana') || 'metricas');
+  const [pestana, setPestana] = useState('inicio'); // FASE B1 UX: el panel abre siempre en la pestana Inicio
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [tourActivo, setTourActivo] = useState(() => tourPendiente('superadmin'));
   const cerrarTour = () => {
@@ -159,7 +160,13 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     setMensaje(null);
     setCargandoPestana(true);
     try {
-      if (pestana === 'metricas') {
+      if (pestana === 'inicio') {
+        // FASE B1 UX: datos del resumen global de la pestana Inicio.
+        const resLigasInicio = await fetchConToken('/ligas');
+        if (resLigasInicio.ok) setLigas(await resLigasInicio.json());
+        const resMetricasInicio = await fetchConToken('/metricas');
+        if (resMetricasInicio.ok) setMetricas(await resMetricasInicio.json());
+      } else if (pestana === 'metricas') {
         const resLigas = await fetchConToken('/ligas');
         if (resLigas.ok) setLigas(await resLigas.json());
         const res = await fetchConToken('/metricas');
@@ -765,6 +772,7 @@ const ejecutarEliminacionBase = async (e) => {
   };
 
   const TITULOS_PESTANA = {
+    inicio: 'Inicio',
     metricas: 'Métricas Globales',
     calendario: 'Calendario de Partidos',
     ligas: 'Ligas',
@@ -774,7 +782,14 @@ const ejecutarEliminacionBase = async (e) => {
   };
 
   // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
-  const ICONOS_PESTANA = { metricas: 'estadisticas', ligas: 'ligas', usuarios: 'usuarios', bitacora: 'acta', calendario: 'calendario', documentos: 'documentos' };
+  const ICONOS_PESTANA = { inicio: 'inicio', metricas: 'estadisticas', ligas: 'ligas', usuarios: 'usuarios', bitacora: 'acta', calendario: 'calendario', documentos: 'documentos' };
+  // FASE B1 UX: resumen global de la pestana Inicio.
+  const totalLigasInicio = metricas?.total_ligas ?? 0;
+  const ligasActivasInicio = metricas?.ligas_activas ?? 0;
+  const usuariosInicio = metricas?.total_usuarios ?? 0;
+  const partidosVivoInicio = metricas?.partidos_activos || [];
+  const equiposInicio = metricas?.total_equipos ?? 0;
+  const jugadoresInicio = metricas?.total_jugadores ?? 0;
 
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
@@ -847,6 +862,9 @@ const ejecutarEliminacionBase = async (e) => {
         titulo="Superadmin"
         subtitulo="Control Global"
         grupos={[
+          { etiqueta: 'Panel', items: [
+            { id: 'inicio', label: 'Inicio' },
+          ]},
           { etiqueta: 'Operación', items: [
             { id: 'metricas', label: 'Métricas Globales' },
             { id: 'calendario', label: 'Calendario de Partidos' },
@@ -896,6 +914,47 @@ const ejecutarEliminacionBase = async (e) => {
             <div className={`p-4 mb-6 rounded-lg font-medium text-sm flex items-center gap-2 animate-fade-in ${mensaje.tipo === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : mensaje.tipo === 'info' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
               {mensaje.tipo === 'error' && <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>}
               {mensaje.texto}
+            </div>
+          )}
+
+          {/* FASE B1 UX: PESTANA INICIO */}
+          {pestana === 'inicio' && (
+            <div className="space-y-6 animate-fade-in">
+              <h3 className="text-lg font-bold text-brand-rust border-b-2 border-brand-rust/30 pb-2 flex items-center gap-2">
+                <NavIcon nombre="inicio" className="w-5 h-5" />
+                Resumen Global del Sistema
+              </h3>
+              {cargandoPestana && !metricas ? (
+                <SkeletonTarjetas cantidad={2} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+              ) : partidosVivoInicio.length > 0 ? (
+                <div className="bg-white rounded-lg border-l-4 border-green-500 border-y border-r border-y-brand-gold/20 border-r-brand-gold/20 p-5 shadow-sm space-y-2">
+                  <div className="text-xs font-bold uppercase tracking-wide text-green-700 mb-2">En juego ahora ({partidosVivoInicio.length})</div>
+                  {partidosVivoInicio.map(p => (
+                    <div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-bold text-brand-brown">{p.liga_nombre || 'General / Suelto'} <span className="text-brand-brown/50 font-medium">- {formatearFecha(p.fecha_hora)}</span></div>
+                      <button onClick={() => setPestana('metricas')} className="bg-brand-blue text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors shadow-sm">Ver Métricas Globales</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState titulo="Sin partidos en juego" descripcion="Ninguna liga tiene un partido en vivo en este momento." icono="reloj" />
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <TarjetaResumen icono="ligas" titulo="Ligas" valor={totalLigasInicio} texto={'Activas: ' + ligasActivasInicio} onClick={() => setPestana('ligas')} textoAccion="Ir a Ligas" />
+                <TarjetaResumen icono="usuarios" titulo="Usuarios" valor={usuariosInicio} texto="Cuentas registradas en el sistema." onClick={() => setPestana('usuarios')} textoAccion="Ir a Usuarios" />
+                <TarjetaResumen icono="estadisticas" titulo="Partidos en vivo" valor={partidosVivoInicio.length} texto="Encuentros transcurriendo ahora." onClick={() => setPestana('metricas')} textoAccion="Ver Métricas" />
+                <TarjetaResumen icono="equipos" titulo="Equipos y jugadores" valor={equiposInicio} texto={jugadoresInicio + ' jugadores inscritos.'} onClick={() => setPestana('metricas')} textoAccion="Ver Métricas" />
+              </div>
+              <div className="bg-white border border-brand-gold/30 rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-bold text-brand-brown text-sm">Respaldo de la base de datos</h4>
+                  <p className="text-xs text-brand-brown/70">Descarga un volcado completo (SQL o JSON) del estado actual del sistema.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => exportarRespaldoBD('sql')} disabled={generandoRespaldo} className="bg-brand-brown text-brand-cream px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-brown/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'Descargar SQL'}</button>
+                  <button onClick={() => exportarRespaldoBD('json')} disabled={generandoRespaldo} className="bg-brand-blue text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'Descargar JSON'}</button>
+                </div>
+              </div>
             </div>
           )}
 

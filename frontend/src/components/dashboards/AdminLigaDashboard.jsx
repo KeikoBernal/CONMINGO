@@ -17,6 +17,7 @@ import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
+import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import FotoJugador from '../FotoJugador';
 import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
@@ -66,7 +67,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     return { pestana: guardada || 'equipos', sub: null };
   };
   const migracionPestana = migrarPestanaGuardada();
-  const [pestana, setPestana] = useState(migracionPestana.pestana);
+  const [pestana, setPestana] = useState('inicio'); // FASE B1 UX: el panel abre siempre en la pestana Inicio
   const [subEquipos, setSubEquipos] = useState(migracionPestana.pestana === 'equipos' && migracionPestana.sub === 'pagos' ? 'pagos' : 'nomina');
   const [subDisciplina, setSubDisciplina] = useState(migracionPestana.pestana === 'disciplina' ? migracionPestana.sub : 'sanciones');
   const [subResultados, setSubResultados] = useState(migracionPestana.pestana === 'resultados' ? migracionPestana.sub : 'estadisticas');
@@ -318,7 +319,14 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     setMensaje('');
     setCargando(true);
     try {
-      if (pestana === 'equipos') {
+      if (pestana === 'inicio') {
+        // FASE B1 UX: datos del resumen de la pestana Inicio.
+        const resPartInicio = await fetchConToken('/partidos-finalizados'); if (resPartInicio.ok) setPartidos(await resPartInicio.json());
+        const resEqInicio = await fetchConToken('/equipos'); if (resEqInicio.ok) setEquipos(await resEqInicio.json());
+        const resTorInicio = await fetchConToken('/torneos'); if (resTorInicio.ok) setTorneosList(await resTorInicio.json());
+        const resPagosInicio = await fetchConToken('/pagos'); if (resPagosInicio.ok) setPagos((await resPagosInicio.json()).pagos || []);
+        const resSancInicio = await fetchConToken('/sanciones'); if (resSancInicio.ok) setSanciones(await resSancInicio.json());
+      } else if (pestana === 'equipos') {
         const res = await fetchConToken('/equipos'); if (res.ok) setEquipos(await res.json());
         const resOp = await fetchConToken('/usuarios-operativos'); if (resOp.ok) setUsuariosOperativos(await resOp.json());
         const resPagos = await fetchConToken('/pagos'); if (resPagos.ok) setPagos((await resPagos.json()).pagos || []);
@@ -1217,6 +1225,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
   };
 
   const TITULOS_PESTANA = {
+    inicio: 'Inicio',
     torneos: 'Torneos',
     equipos: 'Equipos, Nominas y Pagos',
     disciplina: 'Disciplina',
@@ -1228,7 +1237,12 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
 
 
   // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
-  const ICONOS_PESTANA = { equipos: 'equipos', sedes: 'sedes', credenciales: 'credencial', reglas: 'reglas', torneos: 'torneo', estadisticas: 'estadisticas', historial: 'reloj', bitacora: 'bitacora', documentos: 'documentos', sanciones: 'sancion', protestas: 'protesta', pagos: 'pagos', disciplina: 'sancion', resultados: 'estadisticas', configuracion: 'configuracion' };
+  const ICONOS_PESTANA = { inicio: 'inicio', equipos: 'equipos', sedes: 'sedes', credenciales: 'credencial', reglas: 'reglas', torneos: 'torneo', estadisticas: 'estadisticas', historial: 'reloj', bitacora: 'bitacora', documentos: 'documentos', sanciones: 'sancion', protestas: 'protesta', pagos: 'pagos', disciplina: 'sancion', resultados: 'estadisticas', configuracion: 'configuracion' };
+  // FASE B1 UX: resumen de la pestana Inicio (partidos del dia, sanciones activas, pagos y equipos).
+  const hoyFechaAdmin = new Date().toLocaleDateString('es-VE');
+  const partidosHoyAdmin = partidos.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFechaAdmin && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
+  const partidosEnCursoAdmin = partidos.filter(p => p.estado === 'En Curso');
+  const sancionesActivas = sanciones.filter(s => s.estado === 'Activa');
 
   const filasSedes = filteredRows('sedes', sedes, ['nombre'], []);
   const filasDocumentos = filteredRows('documentos', documentos, ['tipo'], []);
@@ -1396,6 +1410,9 @@ const bitacoraConTexto = bitacora.map(evento => ({
         titulo={orgData.nombre}
         subtitulo="Admin. de Liga"
         grupos={[
+          { etiqueta: 'Panel', items: [
+            { id: 'inicio', label: 'Inicio' },
+          ]},
           { etiqueta: 'Operación', items: [
             { id: 'torneos', label: 'Torneos' },
             { id: 'equipos', label: 'Equipos, Nóminas y Pagos' },
@@ -1438,6 +1455,49 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded shadow-sm flex items-center gap-3 animate-fade-in">
                 <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
                 <p className="text-sm font-medium text-green-800">{mensaje}</p>
+              </div>
+            )}
+
+{/* FASE B1 UX: PESTANA INICIO */}
+            {pestana === 'inicio' && (
+              <div className="space-y-6 animate-fade-in">
+                <h3 className="text-lg font-bold text-brand-rust border-b-2 border-brand-rust/30 pb-2 flex items-center gap-2">
+                  <NavIcon nombre="inicio" className="w-5 h-5" />
+                  Resumen de la Liga
+                </h3>
+                {cargando && partidos.length === 0 ? (
+                  <SkeletonTarjetas cantidad={2} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                ) : partidosEnCursoAdmin.length > 0 ? (
+                  <div className="bg-white rounded-lg border-l-4 border-green-500 border-y border-r border-y-brand-gold/20 border-r-brand-gold/20 p-5 shadow-sm space-y-2">
+                    <div className="text-xs font-bold uppercase tracking-wide text-green-700 mb-2">En juego ahora ({partidosEnCursoAdmin.length})</div>
+                    {partidosEnCursoAdmin.map(p => (
+                      <div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-lg font-black text-brand-brown leading-tight">{p.local_nombre} <span className="text-brand-rust mx-1 text-sm">vs</span> {p.visita_nombre}</div>
+                        <button onClick={() => window.open('/?vista=puntajes&partido_id=' + (p.uuid_publico || p.id), '_blank')} className="bg-brand-blue text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors shadow-sm">Ver marcador en vivo</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : partidosHoyAdmin.length > 0 ? (
+                  <div className="bg-white rounded-lg border-l-4 border-brand-blue border-y border-r border-y-brand-gold/20 border-r-brand-gold/20 p-5 shadow-sm">
+                    <div className="text-xs font-bold uppercase tracking-wide text-brand-brown/60 mb-2">Partidos de hoy ({partidosHoyAdmin.length})</div>
+                    <div className="space-y-2">
+                      {partidosHoyAdmin.slice(0, 3).map(p => (
+                        <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-brand-brown/80 font-medium">
+                          <span>{p.local_nombre} vs {p.visita_nombre}</span>
+                          <span>{new Date(p.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })} - {p.sede_nombre}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <EmptyState titulo="Sin partidos hoy" descripcion="No hay encuentros programados para el dia de hoy en la liga." icono="calendario" />
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <TarjetaResumen icono="calendario" titulo="Partidos de hoy" valor={partidosHoyAdmin.length} texto="Encuentros programados para hoy." onClick={() => setPestana('torneos')} textoAccion="Ir a Torneos" />
+                  <TarjetaResumen icono="sancion" titulo="Sanciones activas" valor={sancionesActivas.length} texto="Sanciones disciplinarias vigentes." onClick={() => setPestana('disciplina')} textoAccion="Ir a Disciplina" />
+                  <TarjetaResumen icono="pagos" titulo="Pagos registrados" valor={pagos.length} texto="Pagos de inscripcion de la liga." onClick={() => { setPestana('equipos'); setSubEquipos('pagos'); }} textoAccion="Ir a Pagos" />
+                  <TarjetaResumen icono="equipos" titulo="Equipos inscritos" valor={equipos.length} texto="Equipos activos de la liga." onClick={() => { setPestana('equipos'); setSubEquipos('nomina'); }} textoAccion="Ir a Equipos" />
+                </div>
               </div>
             )}
 
