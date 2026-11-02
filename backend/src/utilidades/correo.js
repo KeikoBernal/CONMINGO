@@ -1,6 +1,9 @@
 // LOTE 6G: utilidad de correo saliente (SMTP propio) y tokens de verificacion.
 // Agnostica del proveedor: todo se lee de variables de entorno:
 //   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, URL_FRONTEND
+// Ruta adicional (incidente Render 2/11/2026): con GMAIL_SCRIPT_URL y
+// GMAIL_SCRIPT_SECRETO los envios van por Google Apps Script por HTTPS (puerto
+// 443, que Render no bloquea) en vez de por SMTP.
 // Sin SMTP_HOST la utilidad entra en modo degradado: ningun correo se envia
 // y los endpoints que la usan deciden como fallar (por ejemplo, mostrar la
 // clave temporal al administrador, como hacia el sistema antes de este lote).
@@ -20,6 +23,58 @@ console.log('[correo] SMTP al arrancar:', SMTP_CONFIGURADO ? 'configurado' : 'SI
   contrasena: process.env.SMTP_PASS ? 'definida' : '(falta)',
   remitente: process.env.SMTP_FROM || '(falta, se usara SMTP_USER)'
 });
+
+// ============================================================================
+// INCIDENTE RENDER 2/11/2026: puente de envio por Google Apps Script (HTTPS).
+// ============================================================================
+// El plan gratuito de Render bloquea el SMTP saliente (puertos 25, 465 y 587)
+// descartando los paquetes en silencio, y los proveedores transaccionales
+// gratuitos exigen verificacion telefonica que no llega a Venezuela (Brevo y
+// Elastic Email la pidieron). Este puente llama por HTTPS (puerto 443, que
+// Render no bloquea) a una pequena aplicacion web de Google Apps Script
+// desplegada con la misma cuenta de Gmail de la liga (el archivo esta en
+// backend/scripts/EnviarCorreoCONMINGO.gs): sin consola de Google Cloud, sin
+// pantallas OAuth ni tokens de refresco. Requiere 2 variables en Render:
+//   GMAIL_SCRIPT_URL (la URL /exec de la aplicacion web desplegada),
+//   GMAIL_SCRIPT_SECRETO (la frase secreta compartida con el script)
+// Cuota de Gmail de consumo: 100 correos/dia. Es un puente, no un lock-in: el
+// dia que exista un proveedor SMTP viable (por ejemplo Resend con dominio
+// propio verificado), basta borrar las variables GMAIL_* y la utilidad vuelve
+// al camino SMTP sin cambiar codigo.
+const GMAIL_SCRIPT_URL = process.env.GMAIL_SCRIPT_URL;
+const GMAIL_SCRIPT_SECRETO = process.env.GMAIL_SCRIPT_SECRETO;
+const GMAIL_CONFIGURADO = !!(GMAIL_SCRIPT_URL && GMAIL_SCRIPT_SECRETO);
+
+console.log('[correo] Ruta de envio activa:', GMAIL_CONFIGURADO
+  ? 'Gmail por Apps Script (HTTPS, variables GMAIL_* presentes)'
+  : 'SMTP (sin variables GMAIL_*, el puente de Apps Script esta apagado)');
+
+// Llama a la aplicacion web del Apps Script con el mensaje ya compuesto.
+const enviarPorGmailApi = async ({ para, asunto, html, texto }) => {
+  const inicio = Date.now();
+  try {
+    const res = await fetch(GMAIL_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secreto: GMAIL_SCRIPT_SECRETO,
+        para,
+        asunto,
+        html,
+        texto: texto || html.replace(/<[^>]+>/g, ' ')
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok !== true) {
+      throw new Error('HTTP ' + res.status + ': ' + (data.error || 'sin detalle del script'));
+    }
+    const ms = Date.now() - inicio;
+    console.log('[correo] Enviado a ' + para + ' en ' + ms + ' ms (via Gmail/Script)');
+    return { ok: true, ms };
+  } catch (error) {
+    return { ok: false, ms: Date.now() - inicio, error: 'Gmail Script: ' + (error?.message || String(error)) };
+  }
+};
 
 let transporte = null;
 let ipActual = null; // IPv4 que usa el transporte vigente (null si conecta por nombre)
@@ -190,6 +245,14 @@ const intentarEnviar = async ({ para, asunto, html, texto }) => {
 };
 
 const enviarCorreo = async ({ para, asunto, html, texto }) => {
+  // Puente Gmail API (incidente Render/SMTP): si las variables GMAIL_* estan,
+  // se envia por HTTPS y el SMTP bloqueado ni siquiera se toca.
+  if (GMAIL_CONFIGURADO) {
+    const r = await enviarPorGmailApi({ para, asunto, html, texto });
+    if (r.ok) return { enviado: true };
+    console.error('[correo] No se pudo enviar (Apps Script):', { para, asunto, error: r.error });
+    return { enviado: false, motivo: 'error_envio', error: r.error };
+  }
   if (!SMTP_CONFIGURADO) return { enviado: false, motivo: 'smtp_no_configurado' };
   await obtenerTransporte(); // resuelve las IPv4 disponibles si es la primera vez
   const intentosMax = ipsSmtp.length > 1 ? Math.min(ipsSmtp.length, 3) : 1;
