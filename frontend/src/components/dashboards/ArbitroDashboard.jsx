@@ -11,7 +11,7 @@ import ConfirmarProtestas from '../ConfirmarProtestas';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
-import { SkeletonTabla } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
@@ -63,6 +63,8 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const [incidencias, setIncidencias] = useState([]);
   const [cargandoIncidencias, setCargandoIncidencias] = useState(false);
   const [formIncidencia, setFormIncidencia] = useState({ tipo: 'Protesta', jugador_id: '', descripcion: '' });
+  const [cargando, setCargando] = useState(false); // FASE 3C UX: esqueletos mientras llegan los partidos del oficial
+  const [cargandoPartido, setCargandoPartido] = useState(false); // FASE 3C UX: candado del boton Control
 
   const [token, setToken] = useState(null);
   const [ligas, setLigas] = useState([]);
@@ -115,6 +117,8 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   }, []);
 
   const cargarDatosOficial = async () => {
+    setCargando(true); // FASE 3C UX: esqueleto de carga mientras llegan los partidos
+    try {
     const res = await fetchConToken('/mis-partidos');
     if (res.ok) {
       const partidosData = await res.json();
@@ -136,6 +140,9 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
       const dataLigas = await resLigas.json();
       setLigas(dataLigas);
       if (dataLigas.length > 0 && !ligaFiltro) setLigaFiltro(dataLigas[0].id);
+    }
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -198,7 +205,14 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+  // FASE 3C UX: candado del boton Control; un doble toque duplicaria los listeners del socket
   const seleccionarPartido = async (partido) => {
+    if (cargandoPartido) return;
+    setCargandoPartido(true);
+    try { await seleccionarPartidoBase(partido); } finally { setCargandoPartido(false); }
+  };
+
+  const seleccionarPartidoBase = async (partido) => {
     setAnotadorConectado(false); // LOTE T: no heredar la presencia del partido anterior; el servidor envia la foto actual al unirse
     setPartidoActivo(partido);
     localStorage.setItem('partidoActivoId', partido.id);
@@ -560,7 +574,9 @@ const suspenderPartido = async () => {
                     Encuentros Programados para Hoy
                   </h3>
                   <TableTools rows={partidosHoyBase} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="arbitro_partidos_hoy" modulo="Árbitro oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
-                  {partidosHoy.length === 0 ? (
+                  {cargando && partidosHoy.length === 0 ? (
+                    <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosHoy.length === 0 ? (
                     <EmptyState
                       titulo="Sin partidos hoy"
                       descripcion="No hay partidos agendados para el día de hoy. Revisa el calendario o vuelve mas tarde."
@@ -586,8 +602,8 @@ const suspenderPartido = async () => {
 
                           <div className="flex gap-2">
                             <button onClick={() => setModalSorteo(p.id)} className="flex-1 bg-brand-cream text-brand-brown py-2 rounded-lg text-sm font-bold border border-brand-gold/30 hover:bg-brand-gold hover:text-white hover:border-brand-gold transition-colors flex justify-center items-center gap-1 shadow-sm">Sorteo</button>
-                            <button onClick={() => seleccionarPartido(p)} className="flex-1 bg-brand-blue text-white py-2 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors flex justify-center items-center gap-1 shadow-sm">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> Control
+                            <button onClick={() => seleccionarPartido(p)} disabled={cargandoPartido} className="flex-1 bg-brand-blue text-white py-2 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors flex justify-center items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> {cargandoPartido ? 'Abriendo...' : 'Control'}
                             </button>
                           </div>
                         </div>
@@ -605,10 +621,14 @@ const suspenderPartido = async () => {
                     Próximos Partidos Agendados
                   </h3>
                   <TableTools rows={partidosAgendadosBase} filteredRows={partidosAgendados} filter={getFilter('proximos')} setFilter={setTableFilter('proximos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} dateFields={['fecha_hora']} filename="arbitro_proximos_partidos" modulo="Árbitro oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
-                  {partidosAgendados.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay próximos partidos en el calendario.</p>
-                    </div>
+                  {cargando && partidosAgendados.length === 0 ? (
+                    <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosAgendados.length === 0 ? (
+                    <EmptyState
+                      titulo="Sin próximos partidos"
+                      descripcion="No hay partidos agendados después de hoy en el calendario de tus ligas."
+                      icono="reloj"
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {partidosAgendados.map(p => (
@@ -632,10 +652,14 @@ const suspenderPartido = async () => {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     Calendario de Partidos
                   </h3>
-                  {partidosFiltrados.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay partidos para mostrar en el calendario.</p>
-                    </div>
+                  {cargando && partidosFiltrados.length === 0 ? (
+                    <SkeletonTarjetas cantidad={6} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosFiltrados.length === 0 ? (
+                    <EmptyState
+                      titulo="Calendario vacío"
+                      descripcion="No hay partidos para mostrar en el calendario."
+                      icono="calendario"
+                    />
                   ) : (
                     <CalendarioPartidos partidos={partidosFiltrados} sedesPorPartido={sedesCalendario} />
                   )}
@@ -666,10 +690,14 @@ const suspenderPartido = async () => {
                     Historial Reciente y Archivo
                   </h3>
                   <TableTools rows={partidosFinalizadosBase} filteredRows={partidosFinalizados} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado']} dateFields={['fecha_hora']} filename="arbitro_historial_partidos" modulo="Árbitro oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
-                  {partidosFinalizados.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay registros en el historial.</p>
-                    </div>
+                  {cargando && partidosFinalizados.length === 0 ? (
+                    <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosFinalizados.length === 0 ? (
+                    <EmptyState
+                      titulo="Historial vacío"
+                      descripcion="Aún no hay partidos finalizados ni suspendidos en tus ligas."
+                      icono="documento"
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {partidosFinalizados.map(p => (

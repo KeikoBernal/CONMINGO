@@ -1,5 +1,7 @@
 // FASE 2 UX: esqueletos de carga con el estilo de la marca.
 // SkeletonLinea para bloques sueltos y SkeletonTabla para listados en carga.
+// FASE 3C: grid de tarjetas en carga para vistas que no son tablas
+// (torneos, equipos, partidos de hoy).
 
 export function SkeletonLinea({ className = 'h-10' }) {
   return <div className={'animate-pulse bg-brand-cream border border-brand-gold/30 rounded-lg ' + className} />;
@@ -17,6 +19,16 @@ export function SkeletonTabla({ filas = 6, columnas = 5, compacto = false }) {
             <div key={subindice} className={compacto ? 'h-5 animate-pulse bg-brand-cream border border-brand-gold/30 rounded-lg' : 'h-9 animate-pulse bg-brand-cream border border-brand-gold/30 rounded-lg'} />
           ))}
         </div>
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonTarjetas({ cantidad = 6, clasesGrid = 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', clasesTarjeta = 'h-40' }) {
+  return (
+    <div className={'grid gap-4 ' + clasesGrid} role="status" aria-label="Cargando datos">
+      {Array.from({ length: cantidad }).map((_, indice) => (
+        <SkeletonLinea key={indice} className={clasesTarjeta} />
       ))}
     </div>
   );

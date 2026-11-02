@@ -10,7 +10,8 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
-import { SkeletonTabla } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -193,7 +194,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   }, [formUser.organizacion_id, formUser.rol, token]);
 
-  const exportarRespaldoBD = async (formato) => {
+  const exportarRespaldoBD = async (formato) => { if (generandoRespaldo) return; setGenerandoRespaldo(true); try { await exportarRespaldoBDBase(formato); } finally { setGenerandoRespaldo(false); } };
+const exportarRespaldoBDBase = async (formato) => {
     setMensaje({ texto: 'Generando volcado de base de datos...', tipo: 'info' });
     try {
       const res = await fetchConToken('/respaldo-completo');
@@ -324,6 +326,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [paginaUsuarios, setPaginaUsuarios] = useState(1);
   // FASE 2 UX: esqueleto de carga mientras llega la respuesta de la pestana activa
   const [cargandoPestana, setCargandoPestana] = useState(true);
+
+  // FASE 3C
+  const [guardandoModal, setGuardandoModal] = useState(false);
+  const [generandoRespaldo, setGenerandoRespaldo] = useState(false);
   const sedesGlobales = Object.fromEntries(partidosGlobales.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   const guardarLiga = async (e) => {
@@ -523,7 +529,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  const ejecutarEliminacion = async (e) => {
+  const ejecutarEliminacion = async (e) => { if (guardandoModal) return; setGuardandoModal(true); try { await ejecutarEliminacionBase(e); } finally { setGuardandoModal(false); } };
+const ejecutarEliminacionBase = async (e) => {
     e.preventDefault();
     if (!itemEliminar || !claveConfirmacion) return;
     const res = await fetchConToken(itemEliminar.tipo === 'liga' ? `/ligas/${itemEliminar.id}` : `/usuarios/${itemEliminar.id}`, { method: 'DELETE', body: JSON.stringify({ password: claveConfirmacion }) });
@@ -579,7 +586,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           {cargandoPestana && filasUsuariosVista.length === 0 ? (
             <tr><td colSpan={7} className="p-5"><SkeletonTabla filas={6} columnas={7} /></td></tr>
           ) : filasUsuariosVista.length === 0 ? (
-            <tr><td colSpan={7} className="text-center p-8 text-brand-brown/50">No se encontraron usuarios.</td></tr>
+            <tr><td colSpan={7} className="p-0 border-0"><EmptyState icono="usuarios" titulo="Sin usuarios para mostrar" descripcion={isBuscando ? 'Ningún usuario coincide con la búsqueda.' : 'Crea el primer usuario desde el formulario de esta vista.'} /></td></tr>
           ) : (
             filasUsuariosPagina.map((u) => (
               <tr key={u.id} className={`transition-colors ${u.estado === 'Inactivo' ? 'opacity-60 bg-gray-50' : 'hover:bg-brand-cream/10'}`}>
@@ -648,7 +655,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       const ligasConGente = [{ id: 'null', nombre: 'Usuarios Generales / Sin Liga' }, ...ligas];
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {ligasConGente.map(l => (
+          {cargandoPestana && ligas.length === 0 ? (
+            <div className="col-span-full"><SkeletonTarjetas cantidad={6} clasesGrid="grid-cols-1 sm:grid-cols-2 md:grid-cols-3" /></div>
+          ) : ligasConGente.map(l => (
             <div key={l.id} onClick={() => { setUsuLigaSel(l.id === 'null' ? null : l.id); setVistaUsuarios('roles'); }} className="bg-white border border-brand-gold/30 p-6 rounded-xl cursor-pointer text-center hover:shadow-md hover:border-brand-gold transition-all">
               <h4 className="text-brand-blue font-bold mb-2">{l.nombre}</h4>
               <p className="text-xs text-brand-brown/60 flex justify-center items-center gap-1">Clic para ver roles <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></p>
@@ -666,7 +675,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg> Volver a Ligas
           </button>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {rolesEnLiga.length === 0 ? <p className="text-brand-brown/50 text-sm p-4 col-span-full text-center border border-brand-gold/20 rounded-lg">No hay usuarios en esta liga.</p> : rolesEnLiga.map(r => (
+            {cargandoPestana && usuariosList.length === 0 ? (<div className="col-span-full"><SkeletonTarjetas cantidad={4} clasesGrid="grid-cols-1 sm:grid-cols-2 md:grid-cols-4" /></div>) : rolesEnLiga.length === 0 ? (<div className="col-span-full"><EmptyState icono="usuarios" titulo="No hay usuarios en esta liga" descripcion="Crea usuarios de esta organización desde el formulario de arriba." /></div>) : rolesEnLiga.map(r => (
               <div key={r} onClick={() => { setUsuRolSel(r); setVistaUsuarios('tabla'); }} className="bg-brand-cream/30 border border-brand-gold/30 p-6 rounded-xl cursor-pointer text-center hover:bg-brand-cream/60 transition-colors">
                 <h4 className="text-brand-brown font-bold capitalize mb-1">{r}s</h4>
                 <span className="bg-brand-gold/20 text-brand-gold text-xs font-bold px-2 py-0.5 rounded-full">{usuariosDeLaLiga.filter(u => u.rol === r).length} personas</span>
@@ -818,7 +827,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
               />
               <div className="flex gap-3 mt-2">
                 <button type="button" onClick={() => { setItemEliminar(null); setClaveConfirmacion(''); }} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-bold hover:bg-red-700 transition-colors shadow-sm">Eliminar Definitivamente</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-bold hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Eliminando...' : 'Eliminar Definitivamente'}</button>
               </div>
             </form>
           </div>
@@ -867,8 +876,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
               Respaldo BD:
             </span>
-            <button onClick={() => exportarRespaldoBD('sql')} className="px-3 py-1.5 bg-brand-brown text-brand-cream rounded-lg hover:bg-brand-brown/80 transition-colors text-xs font-bold">SQL</button>
-            <button onClick={() => exportarRespaldoBD('json')} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold">JSON</button>
+            <button onClick={() => exportarRespaldoBD('sql')} disabled={generandoRespaldo} className="px-3 py-1.5 bg-brand-brown text-brand-cream rounded-lg hover:bg-brand-brown/80 transition-colors text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'SQL'}</button>
+            <button onClick={() => exportarRespaldoBD('json')} disabled={generandoRespaldo} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'JSON'}</button>
           </div>}
         />
 
@@ -917,8 +926,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                 </div>
                 <TableTools rows={metricas.partidos_activos} filteredRows={filasPartidosVivo} filter={getFilter('partidosVivo')} setFilter={setTableFilter('partidosVivo')} columns={[{ key: 'id', label: 'ID' }, { key: 'liga_nombre', label: 'Liga' }, { key: 'fecha_hora', label: 'Fecha y Hora' }]} categoryFields={['liga_nombre']} dateFields={['fecha_hora']} filename="superadmin_partidos_en_vivo" modulo="Superadmin" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto hide-scrollbar">
-                  {filasPartidosVivo.length === 0 ? (
-                    <p className="p-6 text-center text-sm text-brand-brown/50 italic">No hay partidos en vivo.</p>
+                  {cargandoPestana && filasPartidosVivo.length === 0 ? (
+                    <div className="p-6"><SkeletonTabla filas={3} columnas={3} /></div>
+                  ) : filasPartidosVivo.length === 0 ? (
+                    <div className="p-6"><EmptyState icono="reloj" titulo="No hay partidos en vivo" descripcion="Cuando una liga comience un partido aparecerá aquí." /></div>
                   ) : (
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead className="bg-red-50/50 text-red-700/70 uppercase text-[0.7rem] font-bold">
@@ -960,8 +971,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                 </div>
                 <TableTools rows={partidosAgendadosFiltrados()} filteredRows={filasAgendados} filter={getFilter('partidosAgendados')} setFilter={setTableFilter('partidosAgendados')} columns={[{ key: 'id', label: 'ID' }, { key: 'liga_nombre', label: 'Liga' }, { key: 'fecha_hora', label: 'Fecha y Hora' }]} filename="superadmin_partidos_agendados" modulo="Superadmin" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto hide-scrollbar">
-                  {filasAgendados.length === 0 ? (
-                    <p className="p-6 text-center text-sm text-brand-brown/50 italic">No hay partidos agendados bajo estos filtros.</p>
+                  {cargandoPestana && filasAgendados.length === 0 ? (
+                    <div className="p-6"><SkeletonTabla filas={3} columnas={3} /></div>
+                  ) : filasAgendados.length === 0 ? (
+                    <div className="p-6"><EmptyState icono="calendario" titulo="No hay partidos agendados" descripcion="Ningún partido coincide con los filtros aplicados." /></div>
                   ) : (
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-[0.7rem] font-bold">
@@ -995,8 +1008,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                   <span className="text-xs font-bold text-brand-brown/60">{partidosGlobales.length} partidos en el sistema</span>
                 </div>
                 <div className="p-4">
-                  {partidosGlobales.length === 0 ? (
-                    <p className="p-6 text-center text-sm text-brand-brown/50 italic">No hay partidos registrados.</p>
+                  {cargandoPestana && partidosGlobales.length === 0 ? (
+                    <SkeletonTarjetas cantidad={4} clasesGrid="grid-cols-1 md:grid-cols-2 xl:grid-cols-3" />
+                  ) : partidosGlobales.length === 0 ? (
+                    <EmptyState icono="calendario" titulo="Aún no hay partidos registrados" descripcion="Cuando las ligas agenden partidos aparecerán en este calendario." />
                   ) : (
                     <CalendarioPartidos partidos={partidosGlobales} sedesPorPartido={sedesGlobales} />
                   )}
@@ -1076,6 +1091,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                         <tbody className="divide-y divide-brand-gold/20 text-brand-brown">
                           {cargandoPestana && filasLigas.length === 0 ? (
                             <tr><td colSpan={4} className="p-5"><SkeletonTabla filas={5} columnas={4} /></td></tr>
+                          ) : filasLigas.length === 0 ? (
+                            <tr><td colSpan={4} className="p-0 border-0"><EmptyState icono="ligas" titulo="Aún no hay organizaciones" descripcion="Registra la primera liga desde el formulario de arriba." /></td></tr>
                           ) : pagLigas.filasPagina.map((l) => (
                             <tr key={l.id} className="hover:bg-brand-cream/10 transition-colors">
                               <td className="p-4 font-bold">{l.nombre}</td>
@@ -1211,8 +1228,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                     <tr><th className="p-4 border-b border-brand-gold/30">Fecha</th><th className="p-4 border-b border-brand-gold/30">Usuario</th><th className="p-4 border-b border-brand-gold/30">Rol</th><th className="p-4 border-b border-brand-gold/30">Acción</th><th className="p-4 border-b border-brand-gold/30">Tabla</th><th className="p-4 border-b border-brand-gold/30">Liga</th></tr>
                   </thead>
                   <tbody className="divide-y divide-brand-gold/10 text-brand-brown font-medium">
-                    {bitacora.length === 0 ? (
-                      <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay registros de auditoría para estos filtros.</td></tr>
+                    {cargandoPestana && bitacora.length === 0 ? (
+                      <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={6} columnas={6} compacto /></td></tr>
+                    ) : bitacora.length === 0 ? (
+                      <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="acta" titulo="Sin registros de auditoría" descripcion={busquedaBitacora || filtroRol || filtroFechaDesde || filtroFechaHasta ? 'Ningún evento coincide con los filtros aplicados.' : 'La actividad del sistema aparecerá registrada aquí.'} /></td></tr>
                     ) : (
                       bitacora.map(b => (
                         <tr key={b.id} className="hover:bg-brand-cream/5 transition-colors">
@@ -1300,8 +1319,10 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-brand-gold/10 text-brand-brown font-medium">
-                      {documentosGlobales.length === 0 ? (
-                        <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">Aún no hay documentos globales compartidos.</td></tr>
+                      {cargandoPestana && documentosGlobales.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={4} columnas={6} compacto /></td></tr>
+                      ) : documentosGlobales.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="documentos" titulo="Aún no hay documentos globales" descripcion="Comparte el primer reglamento o comunicado para todas las ligas." /></td></tr>
                       ) : (
                         documentosGlobales.map(d => (
                           <tr key={d.id} className="group hover:bg-brand-cream/5 transition-colors">

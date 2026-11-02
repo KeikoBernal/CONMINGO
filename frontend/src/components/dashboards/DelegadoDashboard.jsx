@@ -12,6 +12,8 @@ import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grup
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
+import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -44,6 +46,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const [debeCambiarPass, setDebeCambiarPass] = useState(false);
   const [nuevaClave, setNuevaClave] = useState('');
   const [isSubmittingPass, setIsSubmittingPass] = useState(false);
+
+  // FASE 3C
+  const [cargando, setCargando] = useState(false);
+  const [cargandoPlanilla, setCargandoPlanilla] = useState(false);
+  const [exportandoPlanilla, setExportandoPlanilla] = useState(false);
 
   const [token, setToken] = useState(null);
 
@@ -113,6 +120,7 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
 
   const cargarDatos = async () => {
     setMensaje('');
+    setCargando(true);
     try {
       if (pestana === 'equipo' || pestana === 'estadisticas') {
         const resEq = await fetchConToken('/mi-equipo');
@@ -121,6 +129,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
           setMiEquipo(data.equipo);
           setJugadores(data.jugadores || []);
           if (data.estadisticas) setEstadisticas(data.estadisticas);
+        }
+        if (pestana === 'equipo') {
+          const resPart = await fetchConToken('/mis-partidos');
+          if (resPart.ok) setPartidos(await resPart.json());
         }
       } 
       else if (pestana === 'calendario') {
@@ -141,10 +153,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
       }
     } catch (e) {
       setMensaje('Error conectando con el servidor.');
-    }
+    } finally { setCargando(false); }
   };
 
-  const cargarPlanillaPartido = async (partidoId) => {
+  const cargarPlanillaPartido = async (partidoId) => { if (cargandoPlanilla) return; setCargandoPlanilla(true); try { await cargarPlanillaPartidoBase(partidoId); } finally { setCargandoPlanilla(false); } };
+const cargarPlanillaPartidoBase = async (partidoId) => {
     setMensaje('');
     const res = await fetchConToken(`/partidos/${partidoId}/planilla`);
     if (res.ok) {
@@ -169,6 +182,12 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     setPartidoPlanillaId(null);
     localStorage.removeItem('delegado_partido_planilla_id');
     setDatosPlanillaPartido(null);
+  };
+
+  // FASE 3C UX: abre la planilla del encuentro destacado en el bloque Hoy
+  const abrirPartidoHoy = async (partidoId) => {
+    await cargarPlanillaPartido(partidoId);
+    setPestana('calendario');
   };
 
   const cambiarClaveObligatoria = async (e) => {
@@ -251,7 +270,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  const exportarPlanilla = async (partidoId, formato) => {
+  const exportarPlanilla = async (partidoId, formato) => { if (exportandoPlanilla) return; setExportandoPlanilla(true); try { await exportarPlanillaBase(partidoId, formato); } finally { setExportandoPlanilla(false); } };
+const exportarPlanillaBase = async (partidoId, formato) => {
     try {
       setMensaje(`Generando archivo ${formato.toUpperCase()} de la planilla...`);
       
@@ -306,6 +326,14 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const filasScouting = filtrarTabla('scouting', estadisticas.individual || [], ['perfil_tactico']);
   const filasPagosEquipo = filtrarTabla('pagos', pagosEquipo, ['metodo', 'moneda'], []);
   const sedesDelegado = Object.fromEntries(filasPartidos.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
+
+  // FASE 3C UX: bloque Hoy del panel. Destaca el encuentro en juego o el proximo
+  // partido del equipo; en movil es lo primero que el delegado necesita ver.
+  const hoyFechaDelegado = new Date().toLocaleDateString('es-VE');
+  const partidosDeHoy = partidos.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFechaDelegado && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
+  const partidoEnVivo = partidosDeHoy.find(p => p.estado === 'En Curso') || null;
+  const partidoDeHoy = partidoEnVivo || partidosDeHoy[0] || null;
+  const proximoPartido = !partidoDeHoy ? partidos.filter(p => p.estado !== 'Finalizado' && p.estado !== 'Suspendido' && new Date(p.fecha_hora) > new Date()).sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora))[0] || null : null;
 
   // FASE 2 UX: paginacion compartida de nomina, scouting y pagos del equipo
   const pagNomina = usePaginacion(filasNomina);
@@ -405,6 +433,51 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
           {/* VISTA 1: MI EQUIPO */}
           {pestana === 'equipo' && (
             <div className="space-y-6 animate-fade-in">
+              {/* FASE 3C UX: bloque Hoy - el encuentro del dia siempre visible al abrir el panel */}
+              {cargando && partidos.length === 0 ? (
+                <SkeletonTarjetas cantidad={1} clasesGrid="grid-cols-1" />
+              ) : partidoDeHoy ? (
+                <div className={`p-5 rounded-xl shadow-sm border ${partidoEnVivo ? 'bg-brand-brown text-white border-brand-gold/40' : 'bg-white border-brand-gold/20'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full ${partidoEnVivo ? 'bg-brand-gold text-brand-brown' : 'bg-brand-blue/10 text-brand-blue'}`}>
+                      {partidoEnVivo ? 'En juego ahora' : 'Tu equipo juega hoy'}
+                    </span>
+                    <span className={`text-xs font-semibold ${partidoEnVivo ? 'text-brand-cream/70' : 'text-brand-brown/60'}`}>
+                      {partidoDeHoy.fase} - {partidoDeHoy.estado}
+                    </span>
+                  </div>
+                  <h4 className="text-xl font-black mb-2">{partidoDeHoy.local_nombre} <span className="text-brand-rust font-normal mx-1 text-sm">vs</span> {partidoDeHoy.visita_nombre}</h4>
+                  <div className={`flex flex-wrap items-center gap-4 text-sm font-medium ${partidoEnVivo ? 'text-brand-cream/80' : 'text-brand-brown/70'}`}>
+                    <span className="flex items-center gap-1">
+                      <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      {new Date(partidoDeHoy.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      {partidoDeHoy.sede_nombre}
+                    </span>
+                  </div>
+                  <button onClick={() => abrirPartidoHoy(partidoDeHoy.id)} className="mt-4 w-full sm:w-auto px-4 py-2.5 bg-brand-gold text-brand-brown rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">
+                    {partidoEnVivo ? 'Ver Marcador en Vivo' : 'Abrir Planilla del Encuentro'}
+                  </button>
+                </div>
+              ) : proximoPartido ? (
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-brand-gold/20">
+                  <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-brand-gold/20 text-brand-brown">Próximo encuentro</span>
+                  <h4 className="text-lg font-black text-brand-brown mt-3 mb-2">{proximoPartido.local_nombre} <span className="text-brand-rust font-normal mx-1 text-sm">vs</span> {proximoPartido.visita_nombre}</h4>
+                  <p className="text-sm text-brand-brown/70 font-medium flex items-center gap-1">
+                    <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    {new Date(proximoPartido.fecha_hora).toLocaleString('es-VE', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  <p className="text-sm text-brand-brown/70 font-medium flex items-center gap-1 mt-1">
+                    <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    {proximoPartido.sede_nombre}
+                  </p>
+                </div>
+              ) : (
+                <EmptyState icono="calendario" titulo="Sin encuentros agendados" descripcion="Cuando la liga agende el próximo partido de tu equipo lo verás aquí." />
+              )}
+
               <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                 <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
                   <NavIcon nombre="usuarios" />
@@ -424,8 +497,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filasNomina.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
+                      {cargando && filasNomina.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={6} columnas={6} /></td></tr>
+                      ) : filasNomina.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="usuarios" titulo="Sin jugadores para mostrar" descripcion={jugadores.length === 0 ? 'Aún no hay jugadores inscritos en el equipo.' : 'Ningún jugador coincide con los filtros aplicados.'} /></td></tr>
                       ) : (
                         pagNomina.filasPagina.map(j => (
                           <tr key={j.id} className={j.estado === 'Inactivo' ? 'bg-gray-50 opacity-60' : ''}>
@@ -477,10 +552,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                     </button>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-brand-brown mr-2">Descargar Planilla:</span>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'pdf')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">PDF</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">Excel</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'csv')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">CSV</button>
-                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'json')} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">JSON</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'pdf')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">PDF</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'excel')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Excel</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'csv')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">CSV</button>
+                      <button onClick={() => exportarPlanilla(datosPlanillaPartido.id, 'json')} disabled={exportandoPlanilla} className="bg-white border border-brand-gold/40 text-brand-brown px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">JSON</button>
                     </div>
                   </div>
                   <PlanillaUniversal
@@ -517,8 +592,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                     <CalendarioPartidos partidos={filasPartidos} sedesPorPartido={sedesDelegado} />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filasPartidos.length === 0 ? (
-                      <div className="col-span-full text-center py-8 text-brand-brown/50">No hay partidos que coincidan con los filtros aplicados.</div>
+                    {cargando && filasPartidos.length === 0 ? (
+                      <div className="col-span-full"><SkeletonTarjetas cantidad={6} clasesGrid="grid-cols-1 md:grid-cols-2 lg:grid-cols-3" /></div>
+                    ) : filasPartidos.length === 0 ? (
+                      <div className="col-span-full"><EmptyState icono="calendario" titulo="Sin partidos para mostrar" descripcion={partidos.length === 0 ? 'Aún no hay encuentros agendados para tu equipo.' : 'Ningún partido coincide con los filtros aplicados.'} /></div>
                     ) : (
                       filasPartidos.map(p => (
                         <div key={p.id} className={`flex flex-col justify-between p-5 rounded-xl border ${p.estado === 'Finalizado' ? 'border-brand-rust bg-brand-rust/5 shadow-sm ring-1 ring-brand-rust' : 'border-brand-gold/30 bg-white hover:border-brand-blue hover:shadow-sm'} transition-all`}>
@@ -533,14 +610,14 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                           </div>
                           
                           <div className="mt-auto space-y-2">
-                            <button onClick={() => cargarPlanillaPartido(p.id)} className="w-full py-2 bg-brand-blue text-white rounded font-bold hover:bg-brand-brown transition-colors text-sm flex items-center justify-center gap-2">
+                            <button onClick={() => cargarPlanillaPartido(p.id)} disabled={cargandoPlanilla} className="w-full py-2 bg-brand-blue text-white rounded-lg font-bold hover:bg-brand-brown transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                              Ver Planilla Detallada
+                              {cargandoPlanilla ? 'Abriendo...' : 'Ver Planilla Detallada'}
                             </button>
                             <div className="flex gap-2">
-                              <button onClick={() => exportarPlanilla(p.id, 'pdf')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">PDF</button>
-                              <button onClick={() => exportarPlanilla(p.id, 'excel')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
-                              <button onClick={() => exportarPlanilla(p.id, 'csv')} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors">CSV</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'pdf')} disabled={exportandoPlanilla} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">PDF</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'excel')} disabled={exportandoPlanilla} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Excel</button>
+                              <button onClick={() => exportarPlanilla(p.id, 'csv')} disabled={exportandoPlanilla} className="flex-1 bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">CSV</button>
                             </div>
                           </div>
                         </div>
@@ -606,8 +683,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filasScouting.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">No hay jugadores que coincidan con los filtros aplicados.</td></tr>
+                      {cargando && filasScouting.length === 0 ? (
+                        <tr><td colSpan={7} className="p-0 border-0"><SkeletonTabla filas={6} columnas={7} /></td></tr>
+                      ) : filasScouting.length === 0 ? (
+                        <tr><td colSpan={7} className="p-0 border-0"><EmptyState icono="estadisticas" titulo="Sin datos de scouting" descripcion={(estadisticas.individual || []).length === 0 ? 'Juega partidos para generar métricas de tus jugadores.' : 'Ningún jugador coincide con los filtros aplicados.'} /></td></tr>
                       ) : (
                         pagScouting.filasPagina.map((j, idx) => (
                           <tr key={idx}>
@@ -655,8 +734,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {documentosLiga.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">La liga aún no ha publicado documentos.</td></tr>
+                      {cargando && documentosLiga.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={4} columnas={6} /></td></tr>
+                      ) : documentosLiga.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="documentos" titulo="Sin documentos publicados" descripcion="La liga aún no ha publicado documentos para tus equipos." /></td></tr>
                       ) : (
                         documentosLiga.map(d => (
                           <tr key={d.id}>
@@ -701,8 +782,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filasPagosEquipo.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center p-6 text-brand-brown/50">No hay pagos registrados para tu equipo.</td></tr>
+                      {cargando && pagosEquipo.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={4} columnas={6} /></td></tr>
+                      ) : filasPagosEquipo.length === 0 ? (
+                        <tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="pagos" titulo="Sin pagos registrados" descripcion="Cuando la liga registre pagos de tu equipo aparecerán aquí." /></td></tr>
                       ) : (
                         pagPagosEquipo.filasPagina.map(p => (
                           <tr key={p.id}>
