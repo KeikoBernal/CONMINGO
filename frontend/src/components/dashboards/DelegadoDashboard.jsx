@@ -130,6 +130,10 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
           setJugadores(data.jugadores || []);
           if (data.estadisticas) setEstadisticas(data.estadisticas);
         }
+        if (pestana === 'equipo') {
+          const resPart = await fetchConToken('/mis-partidos');
+          if (resPart.ok) setPartidos(await resPart.json());
+        }
       } 
       else if (pestana === 'calendario') {
         const resPart = await fetchConToken('/mis-partidos');
@@ -178,6 +182,12 @@ const cargarPlanillaPartidoBase = async (partidoId) => {
     setPartidoPlanillaId(null);
     localStorage.removeItem('delegado_partido_planilla_id');
     setDatosPlanillaPartido(null);
+  };
+
+  // FASE 3C UX: abre la planilla del encuentro destacado en el bloque Hoy
+  const abrirPartidoHoy = async (partidoId) => {
+    await cargarPlanillaPartido(partidoId);
+    setPestana('calendario');
   };
 
   const cambiarClaveObligatoria = async (e) => {
@@ -317,6 +327,14 @@ const exportarPlanillaBase = async (partidoId, formato) => {
   const filasPagosEquipo = filtrarTabla('pagos', pagosEquipo, ['metodo', 'moneda'], []);
   const sedesDelegado = Object.fromEntries(filasPartidos.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
+  // FASE 3C UX: bloque Hoy del panel. Destaca el encuentro en juego o el proximo
+  // partido del equipo; en movil es lo primero que el delegado necesita ver.
+  const hoyFechaDelegado = new Date().toLocaleDateString('es-VE');
+  const partidosDeHoy = partidos.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFechaDelegado && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
+  const partidoEnVivo = partidosDeHoy.find(p => p.estado === 'En Curso') || null;
+  const partidoDeHoy = partidoEnVivo || partidosDeHoy[0] || null;
+  const proximoPartido = !partidoDeHoy ? partidos.filter(p => p.estado !== 'Finalizado' && p.estado !== 'Suspendido' && new Date(p.fecha_hora) > new Date()).sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora))[0] || null : null;
+
   // FASE 2 UX: paginacion compartida de nomina, scouting y pagos del equipo
   const pagNomina = usePaginacion(filasNomina);
   const pagScouting = usePaginacion(filasScouting);
@@ -415,6 +433,51 @@ const exportarPlanillaBase = async (partidoId, formato) => {
           {/* VISTA 1: MI EQUIPO */}
           {pestana === 'equipo' && (
             <div className="space-y-6 animate-fade-in">
+              {/* FASE 3C UX: bloque Hoy - el encuentro del dia siempre visible al abrir el panel */}
+              {cargando && partidos.length === 0 ? (
+                <SkeletonTarjetas cantidad={1} clasesGrid="grid-cols-1" />
+              ) : partidoDeHoy ? (
+                <div className={`p-5 rounded-xl shadow-sm border ${partidoEnVivo ? 'bg-brand-brown text-white border-brand-gold/40' : 'bg-white border-brand-gold/20'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full ${partidoEnVivo ? 'bg-brand-gold text-brand-brown' : 'bg-brand-blue/10 text-brand-blue'}`}>
+                      {partidoEnVivo ? 'En juego ahora' : 'Tu equipo juega hoy'}
+                    </span>
+                    <span className={`text-xs font-semibold ${partidoEnVivo ? 'text-brand-cream/70' : 'text-brand-brown/60'}`}>
+                      {partidoDeHoy.fase} - {partidoDeHoy.estado}
+                    </span>
+                  </div>
+                  <h4 className="text-xl font-black mb-2">{partidoDeHoy.local_nombre} <span className="text-brand-rust font-normal mx-1 text-sm">vs</span> {partidoDeHoy.visita_nombre}</h4>
+                  <div className={`flex flex-wrap items-center gap-4 text-sm font-medium ${partidoEnVivo ? 'text-brand-cream/80' : 'text-brand-brown/70'}`}>
+                    <span className="flex items-center gap-1">
+                      <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      {new Date(partidoDeHoy.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      {partidoDeHoy.sede_nombre}
+                    </span>
+                  </div>
+                  <button onClick={() => abrirPartidoHoy(partidoDeHoy.id)} className="mt-4 w-full sm:w-auto px-4 py-2.5 bg-brand-gold text-brand-brown rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">
+                    {partidoEnVivo ? 'Ver Marcador en Vivo' : 'Abrir Planilla del Encuentro'}
+                  </button>
+                </div>
+              ) : proximoPartido ? (
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-brand-gold/20">
+                  <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-brand-gold/20 text-brand-brown">Próximo encuentro</span>
+                  <h4 className="text-lg font-black text-brand-brown mt-3 mb-2">{proximoPartido.local_nombre} <span className="text-brand-rust font-normal mx-1 text-sm">vs</span> {proximoPartido.visita_nombre}</h4>
+                  <p className="text-sm text-brand-brown/70 font-medium flex items-center gap-1">
+                    <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    {new Date(proximoPartido.fecha_hora).toLocaleString('es-VE', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  <p className="text-sm text-brand-brown/70 font-medium flex items-center gap-1 mt-1">
+                    <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    {proximoPartido.sede_nombre}
+                  </p>
+                </div>
+              ) : (
+                <EmptyState icono="calendario" titulo="Sin encuentros agendados" descripcion="Cuando la liga agende el próximo partido de tu equipo lo verás aquí." />
+              )}
+
               <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                 <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
                   <NavIcon nombre="usuarios" />
