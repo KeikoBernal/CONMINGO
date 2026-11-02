@@ -1,5 +1,8 @@
 import { useState, useEffect, Fragment } from 'react';
 
+import EmptyState from './EmptyState';
+import { SkeletonTabla } from './SkeletonCarga';
+
 const ESTADOS_PROTESTA = {
   'Pendiente': 'bg-amber-100 text-amber-800 border border-amber-200',
   'Pendiente Confirmacion': 'bg-blue-100 text-blue-800 border border-blue-200',
@@ -15,17 +18,21 @@ const formatearFecha = (iso) => {
 
 export default function ProtestasAdmin({ fetchConToken }) {
   const [protestas, setProtestas] = useState([]);
+  const [cargando, setCargando] = useState(true);
   const [resolviendoId, setResolviendoId] = useState(null);
   const [form, setForm] = useState({ resolucion: 'Procedente', medida: '', nota: '', marcador_local: '', marcador_visita: '' });
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
 
   const cargar = async () => {
+    setCargando(true);
     try {
       const r = await fetchConToken('/protestas');
       if (r.ok) setProtestas((await r.json()).protestas || []);
     } catch {
       setMensaje({ tipo: 'error', texto: 'No se pudieron cargar las protestas.' });
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -75,8 +82,10 @@ export default function ProtestasAdmin({ fetchConToken }) {
           {mensaje.texto}
         </div>
       )}
-      {protestas.length === 0 ? (
-        <p className="mt-3 text-sm text-brand-brown/60">No hay protestas presentadas.</p>
+      {cargando && protestas.length === 0 ? (
+        <div className="mt-4"><SkeletonTabla filas={5} columnas={7} /></div>
+      ) : protestas.length === 0 ? (
+        <div className="mt-4"><EmptyState icono="protesta" titulo="Sin protestas presentadas" descripcion="Cuando un delegado presente una protesta de un partido de la liga aparecerá aquí para su revisión." /></div>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">

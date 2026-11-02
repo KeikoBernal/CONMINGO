@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 
+import EmptyState from './EmptyState';
+import { SkeletonTabla } from './SkeletonCarga';
+
 const ESTADOS_PROTESTA = {
   'Pendiente': 'bg-amber-100 text-amber-800 border border-amber-200',
   'Pendiente Confirmacion': 'bg-blue-100 text-blue-800 border border-blue-200',
@@ -16,11 +19,13 @@ const formatearFecha = (iso) => {
 export default function ProtestasDelegado({ fetchConToken }) {
   const [partidos, setPartidos] = useState([]);
   const [protestas, setProtestas] = useState([]);
+  const [cargando, setCargando] = useState(true);
   const [form, setForm] = useState({ partido_id: '', motivo: '', descripcion: '' });
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
 
   const cargar = async () => {
+    setCargando(true);
     try {
       const [rP, rR] = await Promise.all([
         fetchConToken('/partidos-protestables'),
@@ -30,6 +35,8 @@ export default function ProtestasDelegado({ fetchConToken }) {
       if (rR.ok) setProtestas((await rR.json()).protestas || []);
     } catch {
       setMensaje({ tipo: 'error', texto: 'No se pudo cargar la información de protestas.' });
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -127,8 +134,10 @@ export default function ProtestasDelegado({ fetchConToken }) {
 
       <div className="rounded-xl border border-brand-gold/20 bg-white p-6 shadow-sm">
         <h3 className="text-lg font-bold text-brand-brown">Mis protestas</h3>
-        {protestas.length === 0 ? (
-          <p className="mt-3 text-sm text-brand-brown/60">No has presentado protestas.</p>
+        {cargando && protestas.length === 0 ? (
+          <div className="mt-4"><SkeletonTabla filas={4} columnas={6} /></div>
+        ) : protestas.length === 0 ? (
+          <div className="mt-4"><EmptyState icono="protesta" titulo="Sin protestas presentadas" descripcion="Cuando presentes una protesta de un partido de tus equipos la seguirás aquí hasta su resolución." /></div>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
