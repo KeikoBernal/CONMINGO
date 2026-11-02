@@ -16,6 +16,7 @@ import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
+import ModoCancha from '../ModoCancha'; // FASE 3 UX: modo cancha para anotar a pie de cancha
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -69,6 +70,21 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const avisoSocketDadoRef = useRef(false); // LOTE T: aviso de caida del tiempo real mostrado una sola vez
   const [firmasActa, setFirmasActa] = useState({ exigibles: [], firmas: [], faltantes: [] }); // LOTE 6D: estado de las firmas del acta
   const [modalFirma, setModalFirma] = useState(null); // LOTE 6D: rol de la firma que se esta dibujando
+
+  // FASE 3 UX: vista del partido activo. En pantallas chicas el modo cancha es la
+  // vista natural (a pie de cancha, botones grandes); en escritorio, la planilla.
+  // La eleccion manual queda recordada para la proxima sesion.
+  const [modoCancha, setModoCancha] = useState(() => {
+    const preferencia = localStorage.getItem('anotadorModoVista');
+    if (preferencia === 'cancha' || preferencia === 'planilla') return preferencia === 'cancha';
+    return window.innerWidth < 1024;
+  });
+  const cambiarModoVista = (aCancha) => {
+    setModoCancha(aCancha);
+    localStorage.setItem('anotadorModoVista', aCancha ? 'cancha' : 'planilla');
+  };
+  // FASE 3 UX: estado del socket siempre visible (antes solo un toast unico al caer)
+  const [socketConectado, setSocketConectado] = useState(false);
 
   const [token, setToken] = useState(null);
 
@@ -151,6 +167,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       // moria en silencio hasta refrescar la pagina. Al reconectar: re-entrar a la sala,
       // re-anunciar presencia y, si hay datos locales, resincronizar la planilla en el servidor.
       socketRef.current.on('connect', () => {
+        setSocketConectado(true);
         avisoSocketDadoRef.current = false; // LOTE 6B: la reconexion (p. ej. tras un deploy de Render) fue exitosa; el proximo corte de conexion vuelve a avisar
         const activo = partidoActivoRef.current;
         if (!activo) return;
@@ -164,8 +181,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       socketRef.current.on('connect_error', () => {
         if (avisoSocketDadoRef.current) return;
         avisoSocketDadoRef.current = true;
+        setSocketConectado(false);
         mostrarToast('Conexion en tiempo real no disponible. El sistema reintentara automaticamente; tu planilla local sigue protegida.', 'info');
       });
+
+      socketRef.current.on('disconnect', () => setSocketConectado(false));
     })();
 
     return () => {
@@ -388,11 +408,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     socketRef.current?.emit('sync_cronometro', { partido_id: partidoActivo.id, tiempoTurno: 0, cronometroTurnoActivo: false, tiempoGlobal, cronometroGlobalActivo });
   };
 
-  const registrarLanzamiento = (valor) => {
+  // FASE 3 UX: nucleo compartido entre el modal de la planilla y el modo cancha.
+  const registrarLanzamientoEn = (jId, mIdx, valor) => {
     // LOTE T: actualizacion optimista local. Antes la celda dependia al 100% del eco del socket,
     // por lo que si el servidor se reiniciaba o el eco se perdia, el puntaje por mano se movia
     // pero la tabla de lanzamientos quedaba vacia. El eco del servidor llega despues y coincide.
-    const { jId, mIdx } = modalRegistro;
     setEfectividadJugadores(prev => {
       const nuevo = { ...prev };
       if (!nuevo[jId]) nuevo[jId] = {};
@@ -401,23 +421,33 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       return nuevo;
     });
     socketRef.current?.emit('proponer_jugada', { partido_id: partidoActivo.id, jugador_id: jId, mano_index: mIdx, valor });
+  };
+
+  const registrarLanzamiento = (valor) => {
+    const { jId, mIdx } = modalRegistro;
+    registrarLanzamientoEn(jId, mIdx, valor);
     setModalRegistro(null);
   };
 
-  const registrarTantosMano = (puntos) => {
+  // FASE 3 UX: nucleo compartido entre el modal de la planilla y el modo cancha.
+  const asignarTantosMano = (esLocal, manoIdx, puntos) => {
     const ptsValidados = parseInt(puntos);
     if (isNaN(ptsValidados) || ptsValidados < 0 || ptsValidados > 6) {
       return mostrarToast('Error: Los tantos deben ser un valor entero entre 0 y 6.', 'error');
     }
 
     let nuevoLocal = [...puntosPorManoLocal], nuevoVisita = [...puntosPorManoVisita];
-    const idx = parseInt(modalTantos.manoIdx); // INSERCIÓN: Casteo de index
+    const idx = parseInt(manoIdx)
     
-    if (modalTantos.esLocal) { nuevoLocal[idx] = ptsValidados; nuevoVisita[idx] = 0; } 
+    if (esLocal) { nuevoLocal[idx] = ptsValidados; nuevoVisita[idx] = 0; } 
     else { nuevoVisita[idx] = ptsValidados; nuevoLocal[idx] = 0; }
     
     setPuntosPorManoLocal(nuevoLocal); setPuntosPorManoVisita(nuevoVisita);
     socketRef.current?.emit('tantos_asignados', { partido_id: parseInt(partidoActivo.id), tantosLocal: nuevoLocal, tantosVisita: nuevoVisita });
+  };
+
+  const registrarTantosMano = (puntos) => {
+    asignarTantosMano(modalTantos.esLocal, parseInt(modalTantos.manoIdx), puntos);
     setModalTantos(null);
   };
 
@@ -723,6 +753,29 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               )}
 
             </div>
+          ) : modoCancha ? (
+            <ModoCancha
+              partido={partidoActivo}
+              jugadoresLocal={jugadoresLocal}
+              jugadoresVisita={jugadoresVisita}
+              efectividadJugadores={efectividadJugadores}
+              puntosPorManoLocal={puntosPorManoLocal}
+              puntosPorManoVisita={puntosPorManoVisita}
+              tiempoTurno={tiempoTurno}
+              tiempoGlobal={tiempoGlobal}
+              cronometroTurnoActivo={cronometroTurnoActivo}
+              arbitroConectado={arbitroConectado}
+              socketConectado={socketConectado}
+              formatoT={formatoT}
+              onToggleTurno={toggleTurno}
+              onResetTurno={resetTurno}
+              onRegistrarJugada={registrarLanzamientoEn}
+              onAsignarTantos={asignarTantosMano}
+              isSubmitting={isSubmitting}
+              onIniciar={handleIniciarPartido}
+              onFinalizar={finalizarPartido}
+              onVerPlanilla={() => cambiarModoVista(false)}
+            />
           ) : (
             // VISTA DEL PARTIDO ACTIVO (Planilla y Panel de Cancha)
             <div className="flex flex-col lg:flex-row gap-6 animate-fade-in items-start">
@@ -740,6 +793,10 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     Volver al Panel
                   </button>              
                   <div className="flex flex-wrap items-center gap-3">
+                    <button onClick={() => cambiarModoVista(true)} className="bg-brand-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm flex items-center gap-2 text-sm">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                      Modo Cancha
+                    </button>
                     {partidoActivo.estado === 'Finalizado' && (
                       <button onClick={() => window.open(`/?vista=puntajes&partido_id=${partidoActivo.id}`, '_blank')} className="bg-brand-gold text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-sm flex items-center gap-2 text-sm">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
