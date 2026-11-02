@@ -14,7 +14,8 @@ import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
-import { SkeletonTabla } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 import FotoJugador from '../FotoJugador';
 import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
@@ -104,6 +105,15 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [debeCambiarPass, setDebeCambiarPass] = useState(false);
   const [nuevaClave, setNuevaClave] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // FASE 3C
+  const [cargando, setCargando] = useState(false);
+  const [guardandoSede, setGuardandoSede] = useState(false);
+  const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
+  const [guardandoEquipo, setGuardandoEquipo] = useState(false);
+  const [guardandoJugada, setGuardandoJugada] = useState(false);
+  const [guardandoTorneo, setGuardandoTorneo] = useState(false);
+  const [guardandoModal, setGuardandoModal] = useState(false);
 
   // LOTE 3D (N5): generacion de carnets de jugador en PDF
   const [generandoCarnets, setGenerandoCarnets] = useState(false);
@@ -300,6 +310,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 
   const cargarDatos = async () => {
     setMensaje('');
+    setCargando(true);
     try {
       if (pestana === 'equipos') {
         const res = await fetchConToken('/equipos'); if (res.ok) setEquipos(await res.json());
@@ -342,6 +353,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
         const res = await fetchConToken('/bitacora'); if (res.ok) setBitacora(await res.json());
       }
     } catch (e) { setMensaje('Error cargando datos del servidor.'); }
+    finally { setCargando(false); }
   };
 
     useEffect(() => {
@@ -389,11 +401,16 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const seleccionarEquipoModal = async (equipo) => {
     setEquipoSeleccionado(equipo); setJugadorEditandoId(null);
     setFormJugador({ cedula: '', nombre: '', apellido: '', fecha_nacimiento: '', correo: '', telefono: '', numero_dorsal: '', foto_url: '', es_capitan: false });
-    const res = await fetchConToken(`/equipos/${equipo.id}/jugadores`);
-    if (res.ok) setJugadores(await res.json());
+    setJugadores([]);
+    setCargando(true);
+    try {
+      const res = await fetchConToken(`/equipos/${equipo.id}/jugadores`);
+      if (res.ok) setJugadores(await res.json());
+    } finally { setCargando(false); }
   };
 
-  const guardarSede = async (e) => {
+  const guardarSede = async (e) => { if (guardandoSede) return; setGuardandoSede(true); try { await guardarSedeBase(e); } finally { setGuardandoSede(false); } };
+const guardarSedeBase = async (e) => {
     e.preventDefault();
     const res = await fetchConToken(sedeEditando ? `/sedes/${sedeEditando.id}` : '/sedes', { method: sedeEditando ? 'PUT' : 'POST', body: JSON.stringify(formSede) });
     if (res.ok) { setMensaje(sedeEditando ? 'Sede actualizada.' : 'Sede registrada.'); setFormSede({ nombre: '', direccion: '' }); setSedeEditando(null); cargarDatos(); }
@@ -404,7 +421,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     const res = await fetchConToken(`/sedes/${id}`, { method: 'DELETE' }); if (res.ok) cargarDatos();
   };
 
-  const guardarEquipo = async (e) => {
+  const guardarEquipo = async (e) => { if (guardandoEquipo) return; setGuardandoEquipo(true); try { await guardarEquipoBase(e); } finally { setGuardandoEquipo(false); } };
+const guardarEquipoBase = async (e) => {
     e.preventDefault();
     const res = await fetchConToken('/equipos', { method: 'POST', body: JSON.stringify(formEquipo) });
     if (res.ok) { setMensaje('Equipo registrado.'); setFormEquipo({ nombre: '', categoria: 'Adulto 22+', tipo_genero: 'Mixto', logo_url: '' }); cargarDatos(); }
@@ -432,7 +450,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   
   };
 
-  const guardarPlantillaReglas = async (e) => {
+  const guardarPlantillaReglas = async (e) => { if (guardandoPlantilla) return; setGuardandoPlantilla(true); try { await guardarPlantillaReglasBase(e); } finally { setGuardandoPlantilla(false); } };
+const guardarPlantillaReglasBase = async (e) => {
     e.preventDefault();
     const res = await fetchConToken('/plantillas-reglas', {
       method: 'POST', body: JSON.stringify({ nombre: formReglas.nombre, descripcion: formReglas.descripcion, reglas: { puntos_victoria: parseInt(formReglas.puntos_victoria), puntos_empate: parseInt(formReglas.puntos_empate), puntos_derrota: parseInt(formReglas.puntos_derrota), limite_jugadores: parseInt(formReglas.limite_jugadores), meta_puntos: parseInt(formReglas.meta_puntos), tiempo_minutos: parseInt(formReglas.tiempo_minutos), tarjetas_suspension: parseInt(formReglas.tarjetas_suspension), esferas_por_equipo: parseInt(formReglas.esferas_por_equipo), politica_clasificacion: formReglas.politica_clasificacion, registrar_boche_rastrero: formReglas.registrar_boche_rastrero === true }})
@@ -454,7 +473,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     return true;
   };
 
-  const guardarPartidoSuelto = async (e) => {
+  const guardarPartidoSuelto = async (e) => { if (guardandoModal) return; setGuardandoModal(true); try { await guardarPartidoSueltoBase(e); } finally { setGuardandoModal(false); } };
+const guardarPartidoSueltoBase = async (e) => {
     e.preventDefault();
     if (formPartidoSuelto.equipo_local_id === formPartidoSuelto.equipo_visita_id) return mostrarToast('El equipo local y visitante no pueden ser el mismo.', 'error');
     if (formPartidoSuelto.fecha_hora && formPartidoSuelto.fecha_hora < ahoraIsoLocal) return mostrarToast('La fecha y hora del encuentro no puede estar en el pasado.', 'error');
@@ -486,7 +506,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     if (res.ok) seleccionarEquipoModal(equipoSeleccionado);
   };
 
-  const confirmarReemplazoCapitan = async (e) => {
+  const confirmarReemplazoCapitan = async (e) => { if (guardandoModal) return; setGuardandoModal(true); try { await confirmarReemplazoCapitanBase(e); } finally { setGuardandoModal(false); } };
+const confirmarReemplazoCapitanBase = async (e) => {
     e.preventDefault();
     const res = await fetchConToken(`/jugadores/${modalCapitan.viejoId}/estado`, { 
       method: 'PUT', 
@@ -538,7 +559,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  const confirmarTransferencia = async (e) => {
+  const confirmarTransferencia = async (e) => { if (guardandoModal) return; setGuardandoModal(true); try { await confirmarTransferenciaBase(e); } finally { setGuardandoModal(false); } };
+const confirmarTransferenciaBase = async (e) => {
     e.preventDefault();
     const m = modalTransferencia;
     if (!m || !m.jugador) return;
@@ -683,7 +705,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     }
   };
 
-  const guardarTorneoCompleto = async (e) => {
+  const guardarTorneoCompleto = async (e) => { if (guardandoTorneo) return; setGuardandoTorneo(true); try { await guardarTorneoCompletoBase(e); } finally { setGuardandoTorneo(false); } };
+const guardarTorneoCompletoBase = async (e) => {
     e.preventDefault();
     if (formTorneo.fecha_fin && formTorneo.fecha_fin < formTorneo.fecha_inicio) return mostrarToast('La fecha de cierre no puede ser anterior a la fecha de inicio.', 'error');
     const res = await fetchConToken('/torneos', { method: 'POST', body: JSON.stringify({ ...formTorneo, categorias_permitidas: [`${formTorneo.categoria} - ${formTorneo.tipo_genero}`], partidos_iniciales: partidosIniciales }) });
@@ -839,7 +862,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   };
 
   // LOTE 4C (N3): registro o correccion de jugadas despues del partido
-  const registrarJugadasAdmin = async (e) => {
+  const registrarJugadasAdmin = async (e) => { if (guardandoJugada) return; setGuardandoJugada(true); try { await registrarJugadasAdminBase(e); } finally { setGuardandoJugada(false); } };
+const registrarJugadasAdminBase = async (e) => {
     e.preventDefault();
     if (!formJugadasAdmin.partido_id) return mostrarToast('Selecciona el partido.', 'error');
     if (!formJugadasAdmin.equipo_id || !formJugadasAdmin.jugador_id) return mostrarToast('Selecciona el equipo y el jugador.', 'error');
@@ -848,7 +872,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
     if (res.ok) mostrarToast(data.mensaje || 'Jugada registrada.', 'exito'); else mostrarToast(data.error || 'No se pudo registrar la jugada.', 'error');
   };
 
-const confirmarReagendar = async (e) => {
+const confirmarReagendar = async (e) => { if (guardandoModal) return; setGuardandoModal(true); try { await confirmarReagendarBase(e); } finally { setGuardandoModal(false); } };
+const confirmarReagendarBase = async (e) => {
     e.preventDefault();
     if (modalReagendar.nuevaFecha && modalReagendar.nuevaFecha < ahoraIsoLocal) return mostrarToast('La nueva fecha y hora no puede estar en el pasado.', 'error');
     try {
@@ -871,7 +896,8 @@ const confirmarReagendar = async (e) => {
     }
   };
 
-  const confirmarEditarPartido = async (e) => {
+  const confirmarEditarPartido = async (e) => { if (guardandoModal) return; setGuardandoModal(true); try { await confirmarEditarPartidoBase(e); } finally { setGuardandoModal(false); } };
+const confirmarEditarPartidoBase = async (e) => {
     e.preventDefault();
     if (modalEditarPartido.fecha_hora && modalEditarPartido.fecha_hora < ahoraIsoLocal) return mostrarToast('La nueva fecha y hora no puede estar en el pasado.', 'error');
     const res = await fetchConToken(`/partidos/${modalEditarPartido.partido.id}/editar-oficiales`, { 
@@ -1263,7 +1289,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 {modalCapitan.candidatos.map(c => <option key={c.id} value={c.id}>{c.nombre} {c.apellido} (Dorsal #{c.numero_dorsal})</option>)}
               </select>
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors">Asignar y Continuar</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Asignar y Continuar{guardandoModal ? 'Guardando...' : 'Asignar y Continuar'}</button>
                 <button type="button" onClick={() => setModalCapitan({...modalCapitan, visible: false})} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -1296,7 +1322,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 <textarea rows="2" className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalTransferencia.motivo} onChange={e => setModalTransferencia({...modalTransferencia, motivo: e.target.value})}></textarea>
               </div>
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors">Transferir</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Transferir{guardandoModal ? 'Guardando...' : 'Transferir'}</button>
                 <button type="button" onClick={() => setModalTransferencia(null)} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -1315,7 +1341,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 <input type="datetime-local" min={ahoraIsoLocal} className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalReagendar.nuevaFecha} onChange={e => setModalReagendar({...modalReagendar, nuevaFecha: e.target.value})} required />
               </div>
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors">Confirmar Fecha</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Confirmar Fecha{guardandoModal ? 'Guardando...' : 'Confirmar Fecha'}</button>
                 <button type="button" onClick={() => setModalReagendar({ visible: false, partido: null, nuevaFecha: '' })} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -1334,7 +1360,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <select className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.arbitro_id} onChange={e => setModalEditarPartido({...modalEditarPartido, arbitro_id: e.target.value})}><option value="">-- Árbitro --</option>{recursosTorneo.arbitros.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
               <select className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.anotador_id} onChange={e => setModalEditarPartido({...modalEditarPartido, anotador_id: e.target.value})}><option value="">-- Anotador --</option>{recursosTorneo.anotadores.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
               <div className="flex gap-3 pt-2">
-                <button type="submit" className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors">Guardar</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Guardar{guardandoModal ? 'Guardando...' : 'Guardar'}</button>
                 <button type="button" onClick={() => setModalEditarPartido({ visible: false })} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -1429,7 +1455,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <CampoTexto etiqueta="Nombre de la Sede" valor={formSede.nombre} onChange={e => setFormSede({...formSede, nombre: e.target.value})} requerido />
                     <CampoTexto etiqueta="Dirección / Ubicación" valor={formSede.direccion} onChange={e => setFormSede({...formSede, direccion: e.target.value})} />
                     <div className="md:col-span-2 flex gap-3">
-                      <button type="submit" className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">{sedeEditando ? 'Actualizar Sede' : 'Guardar Sede'}</button>
+                      <button type="submit" disabled={guardandoSede} className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{guardandoSede ? 'Guardando...' : (sedeEditando ? 'Actualizar Sede' : 'Guardar Sede')}</button>
                       {sedeEditando && <button type="button" onClick={() => { setSedeEditando(null); setFormSede({ nombre: '', direccion: '' }); }} className="bg-gray-200 text-brand-brown px-6 py-3 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>}
                     </div>
                   </form>
@@ -1448,7 +1474,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </tr>
                       </thead>
                       <tbody>
-                        {pagSedes.filasPagina.map(s => (
+                        {cargando && sedes.length === 0 ? (
+                          <tr><td colSpan={3} className="p-0 border-0"><SkeletonTabla filas={4} columnas={3} /></td></tr>
+                        ) : filasSedes.length === 0 ? (
+                          <tr><td colSpan={3} className="p-0 border-0"><EmptyState icono="sedes" titulo="Aún no hay sedes registradas" descripcion="Agrega la primera sede donde se juegan los partidos de la liga." /></td></tr>
+                        ) : pagSedes.filasPagina.map(s => (
                           <tr key={s.id} className="group">
                             <td className="font-bold">{s.nombre}</td>
                             <td className="text-brand-brown/80">{s.direccion || 'Sin dirección'}</td>
@@ -1506,7 +1536,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     </div>
 
                     <div className="md:col-span-2 lg:col-span-4 mt-2">
-                      <button type="submit" className="bg-brand-blue text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">Guardar Plantilla de Reglas</button>
+                      <button type="submit" disabled={guardandoPlantilla} className="bg-brand-blue text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{guardandoPlantilla ? 'Guardando...' : 'Guardar Plantilla de Reglas'}</button>
                     </div>
                   </form>
                 </div>
@@ -1515,8 +1545,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   <h3 className="text-lg font-bold text-brand-brown mb-4">Plantillas Registradas</h3>
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={plantillasReglas} filteredRows={filasReglas} filter={getFilter('reglas')} setFilter={setTableFilter('reglas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'descripcion', label: 'Descripción' }, { key: 'creado_en', label: 'Creado' }]} dateFields={["creado_en"]} filename="plantillas_reglas_filtradas" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {plantillasReglas.length === 0 ? (
-                      <div className="col-span-full text-center py-8 text-brand-brown/50">No hay plantillas registradas.</div>
+                    {cargando && plantillasReglas.length === 0 ? (
+                      <div className="col-span-full"><SkeletonTarjetas cantidad={4} clasesGrid="grid-cols-1 md:grid-cols-2" /></div>
+                    ) : plantillasReglas.length === 0 ? (
+                      <div className="col-span-full"><EmptyState icono="reglas" titulo="Aún no hay plantillas de reglas" descripcion="Guarda la primera plantilla para poder crear torneos." /></div>
                     ) : filasReglas.map(pr => (
                       <div key={pr.id} className="p-4 border border-brand-gold/30 rounded-lg hover:border-brand-blue transition-colors bg-brand-cream/10">
                         <h4 className="font-bold text-brand-brown mb-1">{pr.nombre}</h4>
@@ -1560,7 +1592,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <option value="Femenino">Femenino</option>
                       <option value="Masculino">Masculino</option>
                     </select>
-                    <button type="submit" className="w-full min-w-0 bg-brand-rust text-white px-4 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md whitespace-normal sm:col-span-2 lg:col-span-1">Guardar Equipo</button>
+                    <button type="submit" disabled={guardandoEquipo} className="w-full min-w-0 bg-brand-rust text-white px-4 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md whitespace-normal sm:col-span-2 lg:col-span-1 disabled:opacity-50 disabled:cursor-not-allowed">{guardandoEquipo ? 'Guardando...' : 'Guardar Equipo'}</button>
                   </form>
                 </div>
 
@@ -1569,7 +1601,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
                   
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {filasEquipos.map(e => (
+                    {cargando && filasEquipos.length === 0 ? (
+                      <div className="col-span-full"><SkeletonTarjetas cantidad={6} clasesGrid="grid-cols-1 md:grid-cols-2 lg:grid-cols-3" /></div>
+                    ) : filasEquipos.length === 0 ? (
+                      <div className="col-span-full"><EmptyState icono="equipos" titulo="Aún no hay equipos inscritos" descripcion="Registra el primer equipo de la liga para armar su nómina." /></div>
+                    ) : filasEquipos.map(e => (
                       <div key={e.id} className={`p-5 rounded-xl border transition-all ${equipoSeleccionado?.id === e.id ? 'border-brand-rust bg-brand-rust/5 shadow-md ring-1 ring-brand-rust' : 'border-brand-gold/30 bg-white hover:border-brand-blue hover:shadow-sm'}`}>
                         <div className="flex justify-between items-start mb-3">
                           <h4 className="font-bold text-brand-brown text-lg">{e.nombre}</h4>
@@ -1666,12 +1702,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </tr>
                         </thead>
                         <tbody>
-                          {jugadores.length === 0 ? (
-                            <tr>
-                              <td colSpan="6" className="text-center p-4 text-brand-brown/60">
-                                No hay jugadores registrados en esta nómina.
-                              </td>
-                            </tr>
+                          {cargando && jugadores.length === 0 ? (
+                            <tr><td colSpan="6" className="p-0 border-0"><SkeletonTabla filas={5} columnas={6} compacto /></td></tr>
+                          ) : jugadores.length === 0 ? (
+                            <tr><td colSpan="6" className="p-0 border-0"><EmptyState icono="usuarios" titulo="Ningún jugador inscrito" descripcion="Registra la nómina del equipo desde el formulario de esta vista." /></td></tr>
                           ) : pagNomina.filasPagina.map(j => (
                             <tr key={j.id} className={j.estado !== 'Activo' ? 'opacity-60 bg-gray-50' : ''}>
                               <td className="text-center font-bold text-brand-rust text-lg">#{j.numero_dorsal}</td>
@@ -1789,7 +1823,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-brand-gold/20">
-                          {pagCredenciales.filasPagina.map(u => (
+                          {cargando && usuariosOperativos.length === 0 ? (
+                            <tr><td colSpan={4} className="p-0 border-0"><SkeletonTabla filas={4} columnas={4} /></td></tr>
+                          ) : filasCredenciales.length === 0 ? (
+                            <tr><td colSpan={4} className="p-0 border-0"><EmptyState icono="credencial" titulo="Sin credenciales en la liga" descripcion={usuariosOperativos.length === 0 ? 'Genera la primera credencial de árbitro, anotador o delegado.' : 'Ninguna credencial coincide con el filtro aplicado.'} /></td></tr>
+                          ) : pagCredenciales.filasPagina.map(u => (
                             <tr key={u.id} className="hover:bg-brand-cream/10">
                               <td className="p-3 font-bold text-brand-brown">{u.nombre} {u.apellido}</td>
                               <td className="p-3"><span className="px-2 py-1 bg-brand-blue/10 text-brand-blue rounded text-xs font-bold uppercase">{u.rol}</span></td>
@@ -2013,7 +2051,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       </select>
                     </div>
                     <div className="md:col-span-3 lg:col-span-6">
-                      <button type="submit" className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md">Registrar Jugada</button>
+                      <button type="submit" disabled={guardandoJugada} className="bg-brand-rust text-white px-6 py-3 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{guardandoJugada ? 'Registrando...' : 'Registrar Jugada'}</button>
                     </div>
                   </form>
                 </div>
@@ -2109,8 +2147,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </tr>
                       </thead>
                       <tbody>
-                        {filasDocumentos.length === 0 ? (
-                          <tr><td colSpan={7} className="text-center p-6 text-brand-brown/50">Aún no hay documentos registrados en la liga.</td></tr>
+                        {cargando && documentos.length === 0 ? (
+                          <tr><td colSpan={7} className="p-0 border-0"><SkeletonTabla filas={4} columnas={7} /></td></tr>
+                        ) : filasDocumentos.length === 0 ? (
+                          <tr><td colSpan={7} className="p-0 border-0"><EmptyState icono="documentos" titulo="Aún no hay documentos" descripcion="Comparte el primer documento de la liga con sus equipos." /></td></tr>
                         ) : (
                           pagDocumentos.filasPagina.map(d => (
                             <tr key={d.id} className="group">
@@ -2198,8 +2238,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </tr>
                       </thead>
                       <tbody>
-                        {filasPagos.length === 0 ? (
-                          <tr><td colSpan={8} className="text-center p-6 text-brand-brown/50">Aún no hay pagos de inscripción registrados.</td></tr>
+                        {cargando && pagos.length === 0 ? (
+                          <tr><td colSpan={8} className="p-0 border-0"><SkeletonTabla filas={4} columnas={8} /></td></tr>
+                        ) : filasPagos.length === 0 ? (
+                          <tr><td colSpan={8} className="p-0 border-0"><EmptyState icono="pagos" titulo="Aún no hay pagos de inscripción" descripcion="Registra el primer pago desde el formulario de esta vista." /></td></tr>
                         ) : (
                           pagPagos.filasPagina.map(p => (
                             <tr key={p.id} className="group">
@@ -2245,8 +2287,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </tr>
                       </thead>
                       <tbody>
-                        {partidos.filter(p => p.estado === 'Finalizado').length === 0 ? (
-                          <tr><td colSpan={5} className="text-center p-6 text-brand-brown/50">No hay historial disponible.</td></tr>
+                        {cargando && partidos.length === 0 ? (
+                          <tr><td colSpan={5} className="p-0 border-0"><SkeletonTabla filas={5} columnas={5} /></td></tr>
+                        ) : partidos.filter(p => p.estado === 'Finalizado').length === 0 ? (
+                          <tr><td colSpan={5} className="p-0 border-0"><EmptyState icono="reloj" titulo="Sin partidos finalizados todavía" descripcion="Cuando cierres actas de partidos aparecerán aquí." /></td></tr>
                         ) : pagHistorial.filasPagina.map(p => (
                           <tr key={p.id}>
                             <td className="text-brand-brown/80">{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
@@ -2340,8 +2384,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         <tr><th>Jugador</th><th>Equipo</th><th>Tipo</th><th>Motivo</th><th>Alcance</th><th>Cumplimiento</th><th>Progreso</th><th>Estado</th><th></th></tr>
                       </thead>
                       <tbody>
-                        {sanciones.length === 0 ? (
-                          <tr><td colSpan="9" className="text-center p-6 text-brand-brown/50">No hay sanciones registradas.</td></tr>
+                        {cargando && sanciones.length === 0 ? (
+                          <tr><td colSpan="9" className="p-0 border-0"><SkeletonTabla filas={4} columnas={9} compacto /></td></tr>
+                        ) : sanciones.length === 0 ? (
+                          <tr><td colSpan="9" className="p-0 border-0"><EmptyState icono="sancion" titulo="Sin sanciones registradas" descripcion="Las sanciones que registres aparecerán aquí con su cumplimiento." /></td></tr>
                         ) : sanciones.map(s => (
                           <tr key={s.id}>
                             <td className="font-bold">{s.jugador_nombre} {s.jugador_apellido} <span className="text-brand-brown/50">#{s.numero_dorsal}</span></td>
@@ -2386,7 +2432,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <table className="tabla-admin min-w-[760px] whitespace-nowrap">
                       <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Rol</th><th>Qué hizo</th><th>Recurso consultado</th><th>IP</th></tr></thead>
                       <tbody>
-                        {filasBitacora.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-brand-brown/50">No hay eventos que coincidan con los filtros.</td></tr> : pagBitacora.filasPagina.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
+                        {cargando && bitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={6} columnas={6} compacto /></td></tr>) : filasBitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="acta" titulo="Sin eventos para mostrar" descripcion={bitacora.length === 0 ? 'Aún no hay eventos registrados en la bitácora.' : 'Ningún evento coincide con los filtros aplicados.'} /></td></tr>) : pagBitacora.filasPagina.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
                       </tbody>
                     </table>
                   </div>
@@ -2456,7 +2502,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       )}
 
                       <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'equipos_filtro', label: 'Equipos participantes' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada", "equipos_filtro"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
-                      {filasTorneos.filter(t => t.fecha_fin >= hoyStr && t.reglas?.estado !== 'Suspendido').length === 0 ? (
+                      {cargando && torneosList.length === 0 ? (<div className="py-8"><SkeletonTarjetas cantidad={4} /></div>) : filasTorneos.filter(t => t.fecha_fin >= hoyStr && t.reglas?.estado !== 'Suspendido').length === 0 ? (
                         <div className="text-center py-12 bg-brand-cream/10 rounded-xl border border-brand-gold/20">
                           <svg className="w-16 h-16 mx-auto text-brand-gold/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                           <p className="text-brand-brown/60 font-medium">No hay torneos activos o próximos.</p>
@@ -2622,7 +2668,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </div>
                           <div className="flex justify-between pt-4 border-t border-brand-gold/20">
                             <button type="button" onClick={() => setPasoTorneo(2)} className="bg-brand-cream text-brand-brown border border-brand-gold px-6 py-2 rounded-lg font-bold hover:bg-white transition-colors">Modificar Franquicias</button>
-                            <button type="button" onClick={guardarTorneoCompleto} className="bg-brand-blue hover:bg-brand-brown text-white px-8 py-3 rounded-lg font-bold transition-colors shadow-md">Desplegar Competición Oficial</button>
+                            <button type="button" onClick={guardarTorneoCompleto} disabled={guardandoTorneo} className="bg-brand-blue hover:bg-brand-brown text-white px-8 py-3 rounded-lg font-bold transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{guardandoTorneo ? 'Desplegando...' : 'Desplegar Competición Oficial'}</button>
                           </div>
                         </div>
                       )}
@@ -2818,7 +2864,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </CampoSelect>
                         </div>
                         <CampoTexto etiqueta="Fecha y hora del encuentro" tipo="datetime-local" min={ahoraIsoLocal} valor={formPartidoSuelto.fecha_hora} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, fecha_hora: e.target.value})} requerido />
-                        <button type="submit" className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-4">Confirmar Agendamiento</button>
+                        <button type="submit" disabled={guardandoModal} className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-4 disabled:opacity-50 disabled:cursor-not-allowed">Confirmar Agendamiento{guardandoModal ? 'Guardando...' : 'Confirmar Agendamiento'}</button>
                       </form>
                     </div>
                   )}
