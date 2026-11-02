@@ -17,6 +17,7 @@ import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificacion
 import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import ModoCancha from '../ModoCancha'; // FASE 3 UX: modo cancha para anotar a pie de cancha
+import { SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -64,6 +65,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [destinatarioMsg, setDestinatarioMsg] = useState('rol_arbitro');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cargando, setCargando] = useState(false); // FASE 3C UX: esqueletos mientras llegan los partidos del oficial
+  const [cargandoPartido, setCargandoPartido] = useState(false); // FASE 3C UX: candado del boton Abrir Planilla
   const socketRef = useRef(null);
   const partidoActivoRef = useRef(null); // LOTE T: espejo de partidoActivo para la reconexion del socket
   const estadoPlanillaRef = useRef(null); // LOTE T: ultima planilla local con datos, para resincronizar tras reconexion
@@ -125,6 +128,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   }, []);
 
   const cargarDatosOficial = async () => {
+    setCargando(true); // FASE 3C UX: esqueleto de carga mientras llegan los partidos
+    try {
     const res = await fetchConToken('/mis-partidos');
     if (res.ok) {
       const partidosData = await res.json();
@@ -146,6 +151,9 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       const dataLigas = await resLigas.json();
       setLigas(dataLigas);
       if (dataLigas.length > 0 && !ligaFiltro) setLigaFiltro(dataLigas[0].id);
+    }
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -220,7 +228,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     }
   };
 
+  // FASE 3C UX: candado del boton Abrir Planilla; un doble toque duplicaria los listeners del socket
   const seleccionarPartido = async (partido) => {
+    if (cargandoPartido) return;
+    setCargandoPartido(true);
+    try { await seleccionarPartidoBase(partido); } finally { setCargandoPartido(false); }
+  };
+
+  const seleccionarPartidoBase = async (partido) => {
     setArbitroConectado(false); // LOTE T: no heredar la presencia del partido anterior; el servidor envia la foto actual al unirse
     setPartidoActivo(partido);
     localStorage.setItem('partidoActivoId', partido.id);
@@ -622,7 +637,9 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     Encuentros Programados para Hoy
                   </h3>
                   <TableTools rows={partidosHoyBase} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="anotador_partidos_hoy" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
-                  {partidosHoy.length === 0 ? (
+                  {cargando && partidosHoy.length === 0 ? (
+                    <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosHoy.length === 0 ? (
                     <EmptyState
                       titulo="Sin partidos hoy"
                       descripcion="No hay partidos agendados para el día de hoy. Revisa el calendario o vuelve mas tarde."
@@ -646,9 +663,9 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                             </div>
                           </div>
 
-                          <button onClick={() => seleccionarPartido(p)} className="w-full bg-brand-blue text-white py-2.5 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors flex justify-center items-center gap-2 shadow-sm">
+                          <button onClick={() => seleccionarPartido(p)} disabled={cargandoPartido} className="w-full bg-brand-blue text-white py-2.5 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                            Abrir Planilla de Anotación
+                            {cargandoPartido ? 'Abriendo...' : 'Abrir Planilla de Anotación'}
                           </button>
                         </div>
                       ))}
@@ -665,10 +682,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     Próximos Partidos Agendados
                   </h3>
                   <TableTools rows={partidosAgendadosBase} filteredRows={partidosAgendados} filter={getFilter('proximos')} setFilter={setTableFilter('proximos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} dateFields={['fecha_hora']} filename="anotador_proximos_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
-                  {partidosAgendados.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay próximos partidos en el calendario.</p>
-                    </div>
+                  {cargando && partidosAgendados.length === 0 ? (
+                    <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosAgendados.length === 0 ? (
+                    <EmptyState
+                      titulo="Sin próximos partidos"
+                      descripcion="No hay partidos agendados después de hoy en el calendario de tus ligas."
+                      icono="reloj"
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {partidosAgendados.map(p => (
@@ -692,10 +713,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     Calendario de Partidos
                   </h3>
-                  {partidosFiltrados.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay partidos para mostrar en el calendario.</p>
-                    </div>
+                  {cargando && partidosFiltrados.length === 0 ? (
+                    <SkeletonTarjetas cantidad={6} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosFiltrados.length === 0 ? (
+                    <EmptyState
+                      titulo="Calendario vacío"
+                      descripcion="No hay partidos para mostrar en el calendario."
+                      icono="calendario"
+                    />
                   ) : (
                     <CalendarioPartidos partidos={partidosFiltrados} sedesPorPartido={sedesCalendario} />
                   )}
@@ -726,10 +751,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     Historial Reciente y Archivo
                   </h3>
                   <TableTools rows={partidosFinalizadosBase} filteredRows={partidosFinalizados} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado']} dateFields={['fecha_hora']} filename="anotador_historial_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
-                  {partidosFinalizados.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-xl border border-brand-gold/20 shadow-sm">
-                      <p className="text-brand-brown/50 text-sm">No hay registros en el historial.</p>
-                    </div>
+                  {cargando && partidosFinalizados.length === 0 ? (
+                    <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
+                  ) : partidosFinalizados.length === 0 ? (
+                    <EmptyState
+                      titulo="Historial vacío"
+                      descripcion="Aún no hay partidos finalizados ni suspendidos en tus ligas."
+                      icono="documento"
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {partidosFinalizados.map(p => (
