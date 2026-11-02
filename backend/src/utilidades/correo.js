@@ -1,9 +1,9 @@
 // LOTE 6G: utilidad de correo saliente (SMTP propio) y tokens de verificacion.
 // Agnostica del proveedor: todo se lee de variables de entorno:
 //   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, URL_FRONTEND
-// Ruta adicional (incidente Render 2/11/2026): con GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET
-// y GMAIL_REFRESH_TOKEN los envios van por la API de Gmail por HTTPS (puerto 443,
-// que Render no bloquea) en vez de por SMTP.
+// Ruta adicional (incidente Render 2/11/2026): con GMAIL_SCRIPT_URL y
+// GMAIL_SCRIPT_SECRETO los envios van por Google Apps Script por HTTPS (puerto
+// 443, que Render no bloquea) en vez de por SMTP.
 // Sin SMTP_HOST la utilidad entra en modo degradado: ningun correo se envia
 // y los endpoints que la usan deciden como fallar (por ejemplo, mostrar la
 // clave temporal al administrador, como hacia el sistema antes de este lote).
@@ -25,92 +25,54 @@ console.log('[correo] SMTP al arrancar:', SMTP_CONFIGURADO ? 'configurado' : 'SI
 });
 
 // ============================================================================
-// INCIDENTE RENDER 2/11/2026: puente de envio por la API de Gmail (HTTPS).
+// INCIDENTE RENDER 2/11/2026: puente de envio por Google Apps Script (HTTPS).
 // ============================================================================
 // El plan gratuito de Render bloquea el SMTP saliente (puertos 25, 465 y 587)
 // descartando los paquetes en silencio, y los proveedores transaccionales
 // gratuitos exigen verificacion telefonica que no llega a Venezuela (Brevo y
-// Elastic Email la pidieron). La API de Gmail va por HTTPS (puerto 443, que
-// Render no bloquea) y usa la misma cuenta de Gmail de la liga: no hace falta
-// ninguna cuenta nueva. Requiere 3 variables en Render:
-//   GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
-// Es un puente, no un lock-in: el dia que exista un proveedor SMTP viable
-// (por ejemplo Resend con dominio propio verificado), basta borrar las
-// variables GMAIL_* y la utilidad vuelve al camino SMTP sin cambiar codigo.
-// Sin ninguna de las dos rutas configurada, rige el modo degradado actual.
-const GMAIL_CLIENT_ID = process.env.GMAIL_CLIENT_ID;
-const GMAIL_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
-const GMAIL_REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN;
-const GMAIL_CONFIGURADO = !!(GMAIL_CLIENT_ID && GMAIL_CLIENT_SECRET && GMAIL_REFRESH_TOKEN);
+// Elastic Email la pidieron). Este puente llama por HTTPS (puerto 443, que
+// Render no bloquea) a una pequena aplicacion web de Google Apps Script
+// desplegada con la misma cuenta de Gmail de la liga (el archivo esta en
+// backend/scripts/EnviarCorreoCONMINGO.gs): sin consola de Google Cloud, sin
+// pantallas OAuth ni tokens de refresco. Requiere 2 variables en Render:
+//   GMAIL_SCRIPT_URL (la URL /exec de la aplicacion web desplegada),
+//   GMAIL_SCRIPT_SECRETO (la frase secreta compartida con el script)
+// Cuota de Gmail de consumo: 100 correos/dia. Es un puente, no un lock-in: el
+// dia que exista un proveedor SMTP viable (por ejemplo Resend con dominio
+// propio verificado), basta borrar las variables GMAIL_* y la utilidad vuelve
+// al camino SMTP sin cambiar codigo.
+const GMAIL_SCRIPT_URL = process.env.GMAIL_SCRIPT_URL;
+const GMAIL_SCRIPT_SECRETO = process.env.GMAIL_SCRIPT_SECRETO;
+const GMAIL_CONFIGURADO = !!(GMAIL_SCRIPT_URL && GMAIL_SCRIPT_SECRETO);
 
 console.log('[correo] Ruta de envio activa:', GMAIL_CONFIGURADO
-  ? 'Gmail API por HTTPS (variables GMAIL_* presentes)'
-  : 'SMTP (sin variables GMAIL_*, el puente de la API de Gmail esta apagado)');
+  ? 'Gmail por Apps Script (HTTPS, variables GMAIL_* presentes)'
+  : 'SMTP (sin variables GMAIL_*, el puente de Apps Script esta apagado)');
 
-// Cache del access token de Google (vive alrededor de 1 hora; se renueva solo).
-let tokenGmail = { acceso: null, expiraEn: 0 };
-
-const obtenerTokenGmail = async () => {
-  if (tokenGmail.acceso && Date.now() < tokenGmail.expiraEn) return tokenGmail.acceso;
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: GMAIL_CLIENT_ID,
-      client_secret: GMAIL_CLIENT_SECRET,
-      refresh_token: GMAIL_REFRESH_TOKEN,
-      grant_type: 'refresh_token'
-    })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    tokenGmail = { acceso: null, expiraEn: 0 };
-    throw new Error('token de Gmail: ' + (data.error_description || data.error || ('HTTP ' + res.status)));
-  }
-  // margen de 5 minutos antes de la expiracion real
-  tokenGmail = { acceso: data.access_token, expiraEn: Date.now() + ((data.expires_in || 3600) * 1000) - 300000 };
-  return tokenGmail.acceso;
-};
-
-// Compon el MIME crudo con nodemailer en modo streamTransport (solo compone el
-// mensaje, no abre conexion alguna) y lo entrega a la API REST de Gmail.
-// users/me = la cuenta duena del refresh token.
+// Llama a la aplicacion web del Apps Script con el mensaje ya compuesto.
 const enviarPorGmailApi = async ({ para, asunto, html, texto }) => {
   const inicio = Date.now();
   try {
-    const compositor = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'unix' });
-    const mensaje = await compositor.sendMail({
-      from: remitente(),
-      to: para,
-      subject: asunto,
-      html,
-      text: texto || html.replace(/<[^>]+>/g, ' ')
-    });
-    const crudo = mensaje.message.toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, ''); // base64url, como exige la API
-    const url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
-    const pedir = (token) => fetch(url, {
+    const res = await fetch(GMAIL_SCRIPT_URL, {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ raw: crudo })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secreto: GMAIL_SCRIPT_SECRETO,
+        para,
+        asunto,
+        html,
+        texto: texto || html.replace(/<[^>]+>/g, ' ')
+      })
     });
-    let res = await pedir(await obtenerTokenGmail());
-    if (res.status === 401) {
-      // El access token quedo invalidado en el servidor: refrescar y reintentar 1 vez.
-      tokenGmail = { acceso: null, expiraEn: 0 };
-      res = await pedir(await obtenerTokenGmail());
-    }
-    if (!res.ok) {
-      const detalle = await res.json().catch(() => ({}));
-      throw new Error('HTTP ' + res.status + ': ' + ((detalle.error && detalle.error.message) || 'sin detalle'));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok !== true) {
+      throw new Error('HTTP ' + res.status + ': ' + (data.error || 'sin detalle del script'));
     }
     const ms = Date.now() - inicio;
-    console.log('[correo] Enviado a ' + para + ' en ' + ms + ' ms (via Gmail API)');
+    console.log('[correo] Enviado a ' + para + ' en ' + ms + ' ms (via Gmail/Script)');
     return { ok: true, ms };
   } catch (error) {
-    return { ok: false, ms: Date.now() - inicio, error: 'Gmail API: ' + (error?.message || String(error)) };
+    return { ok: false, ms: Date.now() - inicio, error: 'Gmail Script: ' + (error?.message || String(error)) };
   }
 };
 
@@ -288,7 +250,7 @@ const enviarCorreo = async ({ para, asunto, html, texto }) => {
   if (GMAIL_CONFIGURADO) {
     const r = await enviarPorGmailApi({ para, asunto, html, texto });
     if (r.ok) return { enviado: true };
-    console.error('[correo] No se pudo enviar (Gmail API):', { para, asunto, error: r.error });
+    console.error('[correo] No se pudo enviar (Apps Script):', { para, asunto, error: r.error });
     return { enviado: false, motivo: 'error_envio', error: r.error };
   }
   if (!SMTP_CONFIGURADO) return { enviado: false, motivo: 'smtp_no_configurado' };
