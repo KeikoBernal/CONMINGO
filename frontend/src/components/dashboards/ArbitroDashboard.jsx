@@ -9,6 +9,7 @@ import BotonModoSolar from '../BotonModoSolar';
 import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
@@ -31,6 +32,11 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   // PESTAÑAS DEL PANEL LATERAL: 'hoy' | 'proximos' | 'historial'
   const [pestana, setPestana] = useState(localStorage.getItem('arbitroPestana') || 'hoy');
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [tourActivo, setTourActivo] = useState(() => tourPendiente('arbitro'));
+  const cerrarTour = () => {
+    marcarTourVisto('arbitro');
+    setTourActivo(false);
+  };
 
   // FASE 1 UX: toasts y dialogo de confirmacion en vez de alert/confirm nativos
   const { toasts, mostrarToast, cerrarToast } = useToasts();
@@ -423,6 +429,7 @@ const suspenderPartido = async () => {
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
+      <TourGuia rol="arbitro" activo={tourActivo} onCerrar={cerrarTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
       
       {/* MODAL SORTEO */}
@@ -541,6 +548,7 @@ const suspenderPartido = async () => {
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="arbitroSidebarColapsada"
+        onVerGuia={() => setTourActivo(true)}
       />
 
       {/* CONTENEDOR PRINCIPAL */}

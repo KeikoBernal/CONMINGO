@@ -9,6 +9,7 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
 import ProtestasDelegado from '../ProtestasDelegado';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
@@ -24,6 +25,11 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   });
   
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [tourActivo, setTourActivo] = useState(() => tourPendiente('delegado'));
+  const cerrarTour = () => {
+    marcarTourVisto('delegado');
+    setTourActivo(false);
+  };
 
   // FASE 1 UX: notificaciones toast en vez de alert nativo
   const { toasts, mostrarToast, cerrarToast } = useToasts();
@@ -358,6 +364,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
       
       <SistemaMensajeria usuario={usuario} token={token} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
+      <TourGuia rol="delegado" activo={tourActivo} onCerrar={cerrarTour} />
 
       {/* MODAL DE CAMBIO DE CONTRASEÑA */}
       {debeCambiarPass && (
@@ -407,6 +414,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="delegadoSidebarColapsada"
+        onVerGuia={() => setTourActivo(true)}
       />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}

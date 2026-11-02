@@ -12,6 +12,7 @@ import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginac
 import CampoTexto from '../CampoTexto';
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
+import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
 import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
 import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
@@ -79,6 +80,11 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const pedirConfirmacion = (titulo, mensaje, tipo) =>
     new Promise((resolver) => setConfirmacion({ titulo, mensaje, tipo, resolver }));
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [tourActivo, setTourActivo] = useState(() => tourPendiente('adminLiga'));
+  const cerrarTour = () => {
+    marcarTourVisto('adminLiga');
+    setTourActivo(false);
+  };
 
 // Estado para saber qué botón específico se está transformando en bola
   const [animandoBoton, setAnimandoBoton] = useState(null);
@@ -1273,6 +1279,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
+      <TourGuia rol="adminLiga" activo={tourActivo} onCerrar={cerrarTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
 
       {/* MODALES REUTILIZABLES */}
@@ -1407,6 +1414,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="adminLigaSidebarColapsada"
+        onVerGuia={() => setTourActivo(true)}
       />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
