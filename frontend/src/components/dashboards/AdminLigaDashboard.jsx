@@ -24,6 +24,7 @@ import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
 import ProtestasAdmin from '../ProtestasAdmin';
 import { QRCodeCanvas } from 'qrcode.react';
+import { tecladoModal } from '../Accesibilidad';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // LOTE 6B: VITE_SOCKET_URL puede llegar con el sufijo /api (la URL del REST, no la del
@@ -1299,7 +1300,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
       {/* MODALES REUTILIZABLES */}
       {modalCapitan.visible && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Reemplazo de Capitán Requerido">
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-red-600 mb-2 flex items-center gap-2">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -1307,7 +1308,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             </h3>
             <p className="text-sm text-brand-brown/80 mb-4">Estás desactivando al capitán del equipo. Todo equipo debe tener un capitán activo. Selecciona su reemplazo:</p>
             <form onSubmit={confirmarReemplazoCapitan} className="space-y-4">
-              <select className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalCapitan.nuevoCapitanId} onChange={e => setModalCapitan({...modalCapitan, nuevoCapitanId: e.target.value})} required>
+              <select autoFocus className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalCapitan.nuevoCapitanId} onChange={e => setModalCapitan({...modalCapitan, nuevoCapitanId: e.target.value})} required>
                 {modalCapitan.candidatos.map(c => <option key={c.id} value={c.id}>{c.nombre} {c.apellido} (Dorsal #{c.numero_dorsal})</option>)}
               </select>
               <div className="flex gap-3">
@@ -1321,7 +1322,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
       {/* MODAL DE TRANSFERENCIA DE JUGADOR (LOTE N) */}
       {modalTransferencia && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Transferir Jugador" onKeyDown={(evento) => tecladoModal(evento, () => setModalTransferencia(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-brand-brown mb-2">Transferir Jugador</h3>
             <p className="text-sm text-brand-brown/80 mb-4">
@@ -1330,7 +1331,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
             <form onSubmit={confirmarTransferencia} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-brand-brown/70 mb-1">Equipo destino</label>
-                <select className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalTransferencia.equipo_destino_id} onChange={e => setModalTransferencia({...modalTransferencia, equipo_destino_id: e.target.value})} required>
+                <select autoFocus className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalTransferencia.equipo_destino_id} onChange={e => setModalTransferencia({...modalTransferencia, equipo_destino_id: e.target.value})} required>
                   <option value="">Seleccione equipo destino...</option>
                   {equipos.filter(eq => eq.id !== equipoSeleccionado?.id).map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}{eq.categoria ? ' (' + eq.categoria + ' • ' + eq.tipo_genero + ')' : ''}</option>)}
                 </select>
@@ -1353,14 +1354,14 @@ const bitacoraConTexto = bitacora.map(evento => ({
       )}
 
       {modalReagendar.visible && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Reagendar Partido">
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-brand-brown mb-1">Reagendar Partido</h3>
             <p className="text-sm text-brand-brown/70 mb-4">{modalReagendar.partido.local_nombre} vs {modalReagendar.partido.visita_nombre}</p>
             <form onSubmit={confirmarReagendar} className="space-y-4">
               <div>
                 <label className="block text-sm font-bold text-brand-brown mb-1">Nueva fecha y hora:</label>
-                <input type="datetime-local" min={ahoraIsoLocal} className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalReagendar.nuevaFecha} onChange={e => setModalReagendar({...modalReagendar, nuevaFecha: e.target.value})} required />
+                <input autoFocus type="datetime-local" min={ahoraIsoLocal} className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalReagendar.nuevaFecha} onChange={e => setModalReagendar({...modalReagendar, nuevaFecha: e.target.value})} required />
               </div>
               <div className="flex gap-3">
                 <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Confirmar Fecha{guardandoModal ? 'Guardando...' : 'Confirmar Fecha'}</button>
@@ -1372,12 +1373,12 @@ const bitacoraConTexto = bitacora.map(evento => ({
       )}
 
       {modalEditarPartido.visible && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Editar Partido Programado">
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-brand-brown mb-1">Editar Partido Programado</h3>
             <p className="text-sm text-brand-brown/70 mb-4">{modalEditarPartido.partido.local_nombre} vs {modalEditarPartido.partido.visita_nombre}</p>
             <form onSubmit={confirmarEditarPartido} className="space-y-3">
-              <input type="datetime-local" min={ahoraIsoLocal} className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.fecha_hora} onChange={e => setModalEditarPartido({...modalEditarPartido, fecha_hora: e.target.value})} required />
+              <input autoFocus type="datetime-local" min={ahoraIsoLocal} className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.fecha_hora} onChange={e => setModalEditarPartido({...modalEditarPartido, fecha_hora: e.target.value})} required />
               <select className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.sede_id} onChange={e => setModalEditarPartido({...modalEditarPartido, sede_id: e.target.value})} required><option value="">-- Sede --</option>{recursosTorneo.sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}</select>
               <select className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.arbitro_id} onChange={e => setModalEditarPartido({...modalEditarPartido, arbitro_id: e.target.value})}><option value="">-- Árbitro --</option>{recursosTorneo.arbitros.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
               <select className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.anotador_id} onChange={e => setModalEditarPartido({...modalEditarPartido, anotador_id: e.target.value})}><option value="">-- Anotador --</option>{recursosTorneo.anotadores.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
@@ -1391,14 +1392,14 @@ const bitacoraConTexto = bitacora.map(evento => ({
       )}
 
       {debeCambiarPass && (
-        <div className="fixed inset-0 bg-black/90 flex justify-center items-center z-60 p-4">
+        <div className="fixed inset-0 bg-black/90 flex justify-center items-center z-60 p-4" role="dialog" aria-modal="true" aria-label="Actualización Obligatoria">
           <div className="bg-white p-8 rounded-xl w-full max-w-sm shadow-2xl">
             <h3 className="text-xl font-bold text-brand-brown mb-4 flex items-center gap-2">
               <svg className="w-6 h-6 text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8V7z" /></svg>
               Actualización Obligatoria
             </h3>
             <form onSubmit={cambiarClaveObligatoria} className="space-y-4">
-              <input type="password" placeholder="Nueva Contraseña (mín 6 chars)" className="w-full p-3 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={nuevaClave} onChange={e => setNuevaClave(e.target.value)} required minLength={6} />
+              <input autoFocus type="password" placeholder="Nueva Contraseña (mín 6 chars)" className="w-full p-3 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={nuevaClave} onChange={e => setNuevaClave(e.target.value)} required minLength={6} />
               <button type="submit" className="w-full bg-brand-rust text-white py-3 rounded font-bold hover:bg-brand-brown transition-colors">Actualizar Contraseña</button>
             </form>
           </div>
@@ -2938,7 +2939,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                   <CampoTexto etiqueta="Apellido" valor={p.apellido} onChange={e => actualizarParticipanteFlash(i, 'apellido', e.target.value)} />
                                   <CampoTexto etiqueta="Fecha de nacimiento" tipo="date" valor={p.fecha_nacimiento} onChange={e => actualizarParticipanteFlash(i, 'fecha_nacimiento', e.target.value)} />
                                   <CampoTexto etiqueta="Teléfono" tipo="tel" valor={p.telefono} onChange={e => actualizarParticipanteFlash(i, 'telefono', e.target.value)} />
-                                  <button type="button" onClick={() => quitarParticipanteFlash(i)} className="text-red-600 hover:bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold transition-colors" title="Quitar asistente">✕</button>
+                                  <button type="button" onClick={() => quitarParticipanteFlash(i)} className="text-red-600 hover:bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold transition-colors" title="Quitar asistente" aria-label="Quitar asistente">✕</button>
                                 </div>
                               ))}
                             </div>
@@ -3135,11 +3136,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
           </div>
       {/* MODAL FIRMAS DEL ACTA (LOTE 6D) */}
       {modalFirmasAdmin && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Firmas del Acta" onKeyDown={(evento) => tecladoModal(evento, () => setModalFirmasAdmin(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl border border-brand-gold/30 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-brand-brown">Firmas del Acta</h3>
-              <button onClick={() => setModalFirmasAdmin(null)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar">
+              <button autoFocus onClick={() => setModalFirmasAdmin(null)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar" aria-label="Cerrar">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -3171,7 +3172,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
       )}
       {/* MODAL CAMBIO DE CORREO DE CREDENCIAL (LOTE 6G) */}
       {modalCorreoCredencial && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Cambiar Correo Electrónico" onKeyDown={(evento) => tecladoModal(evento, () => setModalCorreoCredencial(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl border border-brand-gold/30">
             <h3 className="text-xl font-bold text-brand-brown mb-2">Cambiar Correo Electrónico</h3>
             <p className="text-sm text-brand-brown/70 mb-1">Usuario: <strong>{modalCorreoCredencial.nombre} {modalCorreoCredencial.apellido}</strong></p>
@@ -3180,7 +3181,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               Se enviará un aviso al correo actual y una confirmación al nuevo correo. El cambio se aplicará solo cuando el nuevo correo lo confirme desde el enlace recibido.
             </p>
             <form onSubmit={enviarCambioCorreoCredencial} className="flex flex-col gap-4">
-              <input
+              <input autoFocus
                 type="email"
                 placeholder="Nuevo correo electrónico"
                 value={nuevoCorreoCredencial}
@@ -3199,11 +3200,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
       )}
       {/* MODAL QR DEL MARCADOR PUBLICO (LOTE 6F) */}
       {modalQrPartido && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Marcador Publico" onKeyDown={(evento) => tecladoModal(evento, () => setModalQrPartido(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl border border-brand-gold/30">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-brand-brown">Marcador Publico</h3>
-              <button onClick={() => setModalQrPartido(null)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar">
+              <button autoFocus onClick={() => setModalQrPartido(null)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar" aria-label="Cerrar">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
