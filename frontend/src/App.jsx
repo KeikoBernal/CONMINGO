@@ -1,17 +1,30 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { supabase } from './supabaseClient';
 
-import SuperadminDashboard from './components/dashboards/SuperadminDashboard';
-import AdminLigaDashboard from './components/dashboards/AdminLigaDashboard';
-import ArbitroDashboard from './components/dashboards/ArbitroDashboard';
-import DelegadoDashboard from './components/dashboards/DelegadoDashboard';
-import AnotadorDashboard from './components/dashboards/AnotadorDashboard';
-import PantallaPuntajes from './components/dashboards/PantallaPuntajes';
+// FASE C1 UX: code splitting por rol; cada panel del sistema baja en su propio
+// chunk de Vite y el bundle inicial queda solo con la pantalla publica.
+const SuperadminDashboard = lazy(() => import('./components/dashboards/SuperadminDashboard'));
+const AdminLigaDashboard = lazy(() => import('./components/dashboards/AdminLigaDashboard'));
+const ArbitroDashboard = lazy(() => import('./components/dashboards/ArbitroDashboard'));
+const DelegadoDashboard = lazy(() => import('./components/dashboards/DelegadoDashboard'));
+const AnotadorDashboard = lazy(() => import('./components/dashboards/AnotadorDashboard'));
+const PantallaPuntajes = lazy(() => import('./components/dashboards/PantallaPuntajes'));
 import PantallaOffline, { useConexion } from './components/PantallaOffline';
 import VerificarCorreo from './components/VerificarCorreo'; // LOTE 6G: aterriza el enlace ?verificar=
 import RestablecerContrasena from './components/RestablecerContrasena'; // LOTE 6H: aterriza el enlace ?restablecer=
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+
+// FASE C1 UX: respaldo de marca mientras baja el chunk del panel del rol
+// (mismo patron visual del 'Cargando sistema...' de la sesion).
+const RespaldoCargaPanel = () => (
+  <div className="min-h-screen flex items-center justify-center bg-brand-cream">
+    <div className="flex flex-col items-center gap-4 animate-fade-in">
+      <div className="w-12 h-12 border-4 border-brand-gold border-t-brand-rust rounded-full animate-spin"></div>
+      <h3 className="text-brand-brown font-semibold tracking-wide">Abriendo tu panel...</h3>
+    </div>
+  </div>
+);
 
 export default function App() {
   // FIX #2: la vista pública '?vista=puntajes' se evalúa tras los hooks (ver más abajo),
@@ -116,7 +129,11 @@ export default function App() {
 
   // FIX #2: retorno temprano de la vista pública, ahora ubicado DESPUÉS de todos los hooks.
   if (new URLSearchParams(window.location.search).get('vista') === 'puntajes') {
-    return <PantallaPuntajes />;
+    return (
+      <Suspense fallback={<RespaldoCargaPanel />}>
+        <PantallaPuntajes />
+      </Suspense>
+    );
   }
 
   // LOTE 6G: aterriza el enlace de verificacion de correo (?verificar=token).
@@ -326,7 +343,9 @@ export default function App() {
   if (vista === 'dashboard') {
     return (
       <div className="h-screen w-full font-sans text-brand-brown selection:bg-brand-gold/40 overflow-hidden bg-brand-cream">
-        {renderizarDashboard()}
+        <Suspense fallback={<RespaldoCargaPanel />}>
+          {renderizarDashboard()}
+        </Suspense>
       </div>
     );
   }
