@@ -16,6 +16,7 @@ import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
+import ModoCanchaArbitro from '../ModoCanchaArbitro'; // FASE 3 UX: modo cancha para el arbitro a pie de cancha
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -79,6 +80,21 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const [firmasActa, setFirmasActa] = useState({ exigibles: [], firmas: [], faltantes: [] }); // LOTE 6D: estado de las firmas del acta
   const [modalFirma, setModalFirma] = useState(null); // LOTE 6D: rol de la firma que se esta dibujando
 
+  // FASE 3 UX: vista del partido activo. En pantallas chicas el modo cancha es la
+  // vista natural para dirigir desde el telefono; en escritorio, la planilla.
+  // La eleccion manual queda recordada para la proxima sesion.
+  const [modoCancha, setModoCancha] = useState(() => {
+    const preferencia = localStorage.getItem('arbitroModoVista');
+    if (preferencia === 'cancha' || preferencia === 'planilla') return preferencia === 'cancha';
+    return window.innerWidth < 1024;
+  });
+  const cambiarModoVista = (aCancha) => {
+    setModoCancha(aCancha);
+    localStorage.setItem('arbitroModoVista', aCancha ? 'cancha' : 'planilla');
+  };
+  // FASE 3 UX: estado del socket siempre visible (antes solo un toast unico al caer)
+  const [socketConectado, setSocketConectado] = useState(false);
+
   useEffect(() => { partidoActivoRef.current = partidoActivo; }, [partidoActivo]);
 
   useEffect(() => {
@@ -139,6 +155,7 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
       // LOTE T: reconexion automatica. Tras un reinicio del servidor (deploy de Render) el socket
       // se reconecta solo, pero hay que re-entrar a la sala y re-anunciar la presencia del rol.
       socketRef.current.on('connect', () => {
+        setSocketConectado(true);
         avisoSocketDadoRef.current = false; // LOTE 6B: la reconexion (p. ej. tras un deploy de Render) fue exitosa; el proximo corte de conexion vuelve a avisar
         const activo = partidoActivoRef.current;
         if (!activo) return;
@@ -149,8 +166,11 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
       socketRef.current.on('connect_error', () => {
         if (avisoSocketDadoRef.current) return;
         avisoSocketDadoRef.current = true;
+        setSocketConectado(false);
         mostrarToast('Conexion en tiempo real no disponible. El sistema reintentara automaticamente.', 'info');
       });
+
+      socketRef.current.on('disconnect', () => setSocketConectado(false));
     })();
 
     return () => {
@@ -334,12 +354,19 @@ const suspenderPartido = async () => {
     }
   };
 
-  const emitirTarjeta = async (color) => {
-    if (!jugadorSancionId) return mostrarToast('Selecciona un jugador.', 'error');
-    const j = [...jugadoresLocal, ...jugadoresVisita].find(x => x.id === parseInt(jugadorSancionId));
+  // FASE 3 UX: nucleo compartido entre el selector lateral y el modo cancha.
+  const emitirTarjetaA = async (jugadorId, color) => {
+    const j = [...jugadoresLocal, ...jugadoresVisita].find(x => x.id === parseInt(jugadorId));
+    if (!j) return mostrarToast('Selecciona un jugador.', 'error');
     if (!(await pedirConfirmacion(`Tarjeta ${color}`, `¿Amonestar con tarjeta ${color.toUpperCase()} a ${j.nombre} ${j.apellido}?`, color === 'Roja' ? 'peligro' : undefined))) return;
     socketRef.current?.emit('tarjeta_emitida', { partido_id: partidoActivo.id, jugador_id: j.id, color });
-    setJugadorSancionId(''); mostrarToast(`Tarjeta ${color} registrada en acta.`, 'exito');
+    mostrarToast(`Tarjeta ${color} registrada en acta.`, 'exito');
+  };
+
+  const emitirTarjeta = async (color) => {
+    if (!jugadorSancionId) return mostrarToast('Selecciona un jugador.', 'error');
+    await emitirTarjetaA(jugadorSancionId, color);
+    setJugadorSancionId('');
   };
 
   const solicitarRevision = (jugadorId, manoIndex, jugadaObj) => {
@@ -666,6 +693,31 @@ const suspenderPartido = async () => {
               )}
 
             </div>
+          ) : modoCancha ? (
+            <ModoCanchaArbitro
+              partido={partidoActivo}
+              jugadoresLocal={jugadoresLocal}
+              jugadoresVisita={jugadoresVisita}
+              puntosPorManoLocal={puntosPorManoLocal}
+              puntosPorManoVisita={puntosPorManoVisita}
+              tiempoTurno={tiempoTurno}
+              tiempoGlobal={tiempoGlobal}
+              formatoT={formatoT}
+              anotadorConectado={anotadorConectado}
+              socketConectado={socketConectado}
+              onEmitirTarjeta={emitirTarjetaA}
+              onAbrirIncidencias={abrirIncidencias}
+              onSuspender={suspenderPartido}
+              firmasActa={firmasActa}
+              onFirmar={setModalFirma}
+              isSubmitting={isSubmitting}
+              onVerPlanilla={() => cambiarModoVista(false)}
+              onVolverPanel={() => {
+                localStorage.removeItem('partidoActivoId');
+                setPartidoActivo(null);
+                socketRef.current?.emit('presencia_oficial', { partidoId: partidoActivo.id, rol: 'arbitro', estado: false });
+              }}
+            />
           ) : (
             // VISTA DEL PARTIDO ACTIVO (Planilla y Panel de Cancha)
             <div className="flex flex-col lg:flex-row gap-6 animate-fade-in items-start">
@@ -683,6 +735,10 @@ const suspenderPartido = async () => {
                   </button>
                   
                   <div className="flex flex-wrap items-center gap-3">
+                    <button onClick={() => cambiarModoVista(true)} className="bg-brand-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-sm flex items-center gap-2 text-sm">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                      Modo Cancha
+                    </button>
                     {partidoActivo.estado === 'Finalizado' && (
                       <button onClick={() => window.open(`/?vista=puntajes&partido_id=${partidoActivo.id}`, '_blank')} className="bg-brand-gold text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-sm flex items-center gap-2 text-sm">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
