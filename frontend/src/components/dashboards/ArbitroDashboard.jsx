@@ -15,6 +15,7 @@ import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
+import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import ModoCanchaArbitro from '../ModoCanchaArbitro'; // FASE 3 UX: modo cancha para el arbitro a pie de cancha
 
@@ -29,7 +30,7 @@ const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000').
 
 export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   // PESTAÑAS DEL PANEL LATERAL: 'hoy' | 'proximos' | 'historial'
-  const [pestana, setPestana] = useState(localStorage.getItem('arbitroPestana') || 'hoy');
+  const [pestana, setPestana] = useState('inicio'); // FASE B1 UX: el panel abre siempre en la pestana Inicio
   const [menuAbierto, setMenuAbierto] = useState(false);
 
   // FASE 1 UX: toasts y dialogo de confirmacion en vez de alert/confirm nativos
@@ -408,6 +409,9 @@ const suspenderPartido = async () => {
   const partidosHoy = filtrarTabla('hoy', partidosHoyBase);
   const partidosAgendados = filtrarTabla('proximos', partidosAgendadosBase, [], ['fecha_hora']);
   const partidosFinalizados = filtrarTabla('historial', partidosFinalizadosBase, ['estado'], ['fecha_hora']);
+  // FASE B1 UX: orientacion de la pestana Inicio (partido en juego o siguiente asignado).
+  const partidoEnCurso = partidosFiltrados.find(p => p.estado === 'En Curso') || null;
+  const proximoCompromiso = partidoEnCurso || partidosHoyBase[0] || partidosAgendadosBase[0] || null;
   const sedesCalendario = Object.fromEntries(partidosFiltrados.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   // FASE A1 UX: los listados de temporada crecen sin control; se paginan del lado
@@ -417,7 +421,7 @@ const suspenderPartido = async () => {
 
   // Íconos para la barra lateral del árbitro
   // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
-  const ICONOS_PESTANA = { hoy: 'calendario', proximos: 'reloj', historial: 'documento', calendario: 'calendario', protestas: 'protesta', votacion: 'votacion' };
+  const ICONOS_PESTANA = { inicio: 'inicio', hoy: 'calendario', proximos: 'reloj', historial: 'documento', calendario: 'calendario', protestas: 'protesta', votacion: 'votacion' };
 
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
@@ -524,6 +528,9 @@ const suspenderPartido = async () => {
         titulo="Árbitro Oficial"
         subtitulo="Control de Cancha"
         grupos={[
+          { etiqueta: 'Panel', items: [
+            { id: 'inicio', label: 'Inicio' },
+          ]},
           { etiqueta: 'Partidos', items: [
             { id: 'hoy', label: 'Hoy', badge: partidosHoy.length },
             { id: 'proximos', label: 'Próximos', badge: partidosAgendados.length },
@@ -549,7 +556,7 @@ const suspenderPartido = async () => {
         {/* HEADER SUPERIOR */}
         <HeaderPanel
           tituloMovil
-          titulo={partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Historial Reciente')}
+          titulo={partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'inicio' ? 'Inicio' : pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Historial Reciente')}
           onAbrirMenu={() => setMenuAbierto(true)}
           onCerrarSesion={cerrarSesion}
           acciones={<div className="flex items-center gap-3">
@@ -571,6 +578,39 @@ const suspenderPartido = async () => {
           {!partidoActivo ? (
             <div className="max-w-5xl mx-auto">
               
+{pestana === 'inicio' && (
+                <div className="space-y-4 animate-fade-in">
+                  <h3 className="text-lg font-bold text-brand-blue border-b-2 border-brand-blue/30 pb-2 flex items-center gap-2">
+                    <NavIcon nombre="inicio" className="w-5 h-5" />
+                    Resumen del dia
+                  </h3>
+                  {cargando && !proximoCompromiso ? (
+                    <SkeletonTarjetas cantidad={1} clasesGrid="grid grid-cols-1 gap-4" />
+                  ) : proximoCompromiso ? (
+                    <div className="bg-white rounded-lg border-l-4 border-brand-blue border-y border-r border-y-brand-gold/20 border-r-brand-gold/20 p-5 shadow-sm">
+                      <div className="text-xs font-bold uppercase tracking-wide text-brand-brown/60 mb-2">{partidoEnCurso ? 'Partido en juego ahora' : 'Tu proximo compromiso'}</div>
+                      <div className="text-lg font-black text-brand-brown leading-tight">{proximoCompromiso.local_nombre} <span className="text-brand-rust mx-1 text-sm">vs</span> {proximoCompromiso.visita_nombre}</div>
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-brand-brown/70 font-medium">
+                        <span>{new Date(proximoCompromiso.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{proximoCompromiso.sede_nombre}</span>
+                        {proximoCompromiso.estado ? <span className="bg-brand-cream/60 text-brand-brown px-2 py-0.5 rounded-full text-xs font-bold uppercase">{proximoCompromiso.estado}</span> : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        <button onClick={() => seleccionarPartido(proximoCompromiso)} disabled={cargandoPartido} className="bg-brand-blue text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-brown transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{cargandoPartido ? 'Abriendo...' : partidoEnCurso ? 'Retomar control de cancha' : 'Abrir control de cancha'}</button>
+                        <button onClick={() => setPestana('hoy')} className="bg-white border border-brand-gold/40 text-brand-brown px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-rust hover:text-white transition-colors shadow-sm">Ver encuentros de hoy</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyState titulo="Sin encuentros asignados" descripcion="Cuando la liga agende partidos con usted como arbitro, el proximo compromiso aparecera aqui." icono="calendario" />
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <TarjetaResumen icono="calendario" titulo="Partidos de hoy" valor={partidosHoy.length} texto="Encuentros programados para hoy." onClick={() => setPestana('hoy')} textoAccion="Ir a Hoy" />
+                    <TarjetaResumen icono="reloj" titulo="Proximos asignados" valor={partidosAgendados.length} texto="Compromisos futuros de la temporada." onClick={() => setPestana('proximos')} textoAccion="Ir a Proximos" />
+                    <TarjetaResumen icono="documento" titulo="Historial" valor={partidosFinalizados.length} texto="Partidos finalizados o suspendidos." onClick={() => setPestana('historial')} textoAccion="Ir al Historial" />
+                  </div>
+                </div>
+              )}
+
               {/* PESTAÑA: PARTIDOS DE HOY */}
               {pestana === 'hoy' && (
                 <div className="space-y-4 animate-fade-in">
