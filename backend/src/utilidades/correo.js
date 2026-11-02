@@ -53,9 +53,16 @@ console.log('[correo] Ruta de envio activa:', GMAIL_CONFIGURADO
 const enviarPorGmailApi = async ({ para, asunto, html, texto }) => {
   const inicio = Date.now();
   try {
+    // Apps Script no recibe los POST con Content-Type application/json: el
+    // endpoint /exec responde con una cadena de redirecciones que convierte
+    // el POST en GET (el cuerpo se pierde, doPost nunca corre y la respuesta
+    // final es una pagina HTML con estado 200). Con text/plain el POST llega
+    // directo al script y e.postData.contents trae el JSON: es el patron
+    // canonico documentado para integrar apps web de Apps Script.
     const res = await fetch(GMAIL_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         secreto: GMAIL_SCRIPT_SECRETO,
         para,
@@ -64,9 +71,18 @@ const enviarPorGmailApi = async ({ para, asunto, html, texto }) => {
         texto: texto || html.replace(/<[^>]+>/g, ' ')
       })
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok !== true) {
-      throw new Error('HTTP ' + res.status + ': ' + (data.error || 'sin detalle del script'));
+    const cuerpo = await res.text().catch(() => '');
+    let data = null;
+    try {
+      data = JSON.parse(cuerpo);
+    } catch (error) {
+      data = null;
+    }
+    if (!res.ok || !data || data.ok !== true) {
+      const detalle = data && data.error
+        ? data.error
+        : 'respuesta inesperada del script (verificar el despliegue con acceso Cualquier usuario): ' + cuerpo.slice(0, 120).replace(/\s+/g, ' ');
+      throw new Error('HTTP ' + res.status + ': ' + detalle);
     }
     const ms = Date.now() - inicio;
     console.log('[correo] Enviado a ' + para + ' en ' + ms + ' ms (via Gmail/Script)');
