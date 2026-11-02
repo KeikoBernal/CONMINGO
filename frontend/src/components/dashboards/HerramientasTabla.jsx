@@ -143,7 +143,7 @@ export function BotonAccionTabla({ titulo, onClick, tono = 'editar', deshabilita
     neutro: 'bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white border border-brand-gold/30',
   };
   return (
-    <button type="button" onClick={onClick} disabled={deshabilitado} title={titulo}
+    <button type="button" onClick={onClick} disabled={deshabilitado} title={titulo} aria-label={titulo}
       className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${tonos[tono] || tonos.editar}`}>
       {children}
     </button>

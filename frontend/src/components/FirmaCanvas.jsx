@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { tecladoModal } from './Accesibilidad';
 
 // LOTE 6D: modal de firma digital sobre canvas. Soporta dedo (táctil),
 // ratón y lápiz; devuelve la imagen como dataURL PNG lista para el
@@ -69,7 +70,7 @@ export default function FirmaCanvas({ titulo, onGuardar, onCerrar }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label={titulo} onKeyDown={(evento) => tecladoModal(evento, onCerrar)}>
       <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl border border-brand-gold/30">
         <h3 className="text-xl font-bold text-brand-brown mb-1">{titulo}</h3>
         <p className="text-xs text-brand-brown/60 mb-4">Firme con el dedo o el ratón dentro del recuadro.</p>
@@ -77,10 +78,11 @@ export default function FirmaCanvas({ titulo, onGuardar, onCerrar }) {
           ref={canvasRef}
           width={420}
           height={180}
+          aria-label="Área de firma"
           className="w-full h-44 bg-white border-2 border-dashed border-brand-gold/50 rounded-lg touch-none cursor-crosshair shadow-inner"
         />
         <div className="flex gap-3 mt-5">
-          <button onClick={guardar} disabled={!hayTrazo} className={'flex-1 text-white py-2.5 rounded-lg font-bold transition-colors shadow-sm ' + (hayTrazo ? 'bg-brand-blue hover:bg-brand-brown' : 'bg-gray-400 opacity-70 cursor-not-allowed')}>
+          <button autoFocus onClick={guardar} disabled={!hayTrazo} className={'flex-1 text-white py-2.5 rounded-lg font-bold transition-colors shadow-sm ' + (hayTrazo ? 'bg-brand-blue hover:bg-brand-brown' : 'bg-gray-400 opacity-70 cursor-not-allowed')}>
             Guardar Firma
           </button>
           <button onClick={limpiar} className="flex-1 bg-brand-cream text-brand-brown py-2.5 rounded-lg font-bold hover:bg-brand-gold hover:text-white transition-colors border border-brand-gold/30 shadow-sm">

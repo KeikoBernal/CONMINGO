@@ -20,6 +20,7 @@ import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resum
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import ModoCancha from '../ModoCancha'; // FASE 3 UX: modo cancha para anotar a pie de cancha
 import { SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
+import { tecladoModal } from '../Accesibilidad';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -514,11 +515,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       
       {/* MODAL SIMULADOR VISUAL DE CANCHA (LOTE S) */}
       {modalCancha && partidoActivo && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-[1700] p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-[1700] p-4" role="dialog" aria-modal="true" aria-label="Simulador Visual de Cancha" onKeyDown={(evento) => tecladoModal(evento, () => setModalCancha(false))}>
           <div className="bg-white rounded-xl w-full max-w-3xl shadow-2xl animate-slide-up border border-brand-gold/30 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-brand-gold/20 sticky top-0 bg-white">
               <h3 className="text-lg font-black text-brand-brown">Simulador Visual de Cancha</h3>
-              <button onClick={() => setModalCancha(false)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar simulador">
+              <button autoFocus onClick={() => setModalCancha(false)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar simulador" aria-label="Cerrar simulador">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -535,11 +536,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
       {/* MODAL REGISTRO JUGADAS (MESA DE ANOTACIÓN) */}
       {modalRegistro && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4" role="dialog" aria-modal="true" aria-label="Registro de jugada" onKeyDown={(evento) => tecladoModal(evento, () => setModalRegistro(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl animate-slide-up text-center border border-brand-gold/30">
             <h2 className="text-xl font-black text-brand-brown mb-5">Registro Mano #{modalRegistro.mIdx + 1}</h2>
             <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => registrarLanzamiento('A')} className="py-4 bg-brand-blue text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-brand-brown transition-colors">A</button>
+              <button autoFocus onClick={() => registrarLanzamiento('A')} className="py-4 bg-brand-blue text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-brand-brown transition-colors">A</button>
               <button onClick={() => registrarLanzamiento('a')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">a <span className="text-sm block font-medium">Nulo</span></button>
               <button onClick={() => registrarLanzamiento('B')} className="py-4 bg-green-600 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-green-700 transition-colors">B</button>
               <button onClick={() => registrarLanzamiento('b')} className="py-4 bg-red-500 text-white rounded-lg text-2xl font-bold shadow-sm hover:bg-red-600 transition-colors">b <span className="text-sm block font-medium">Nulo</span></button>
@@ -559,12 +560,12 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
       {/* MODAL STATS MANUALES */}
       {modalStatPanel && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1600 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1600 p-4" role="dialog" aria-modal="true" aria-label="Ajustar estadistica manual" onKeyDown={(evento) => tecladoModal(evento, () => setModalStatPanel(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-xs shadow-2xl animate-slide-up text-center border border-brand-gold/30">
             <h3 className="text-lg font-bold text-brand-brown/70 mb-2">Ajustar {modalStatPanel.tipo}</h3>
             <div className="text-6xl font-black text-brand-brown my-6">{manualStats[modalStatPanel.jId]?.[modalStatPanel.tipo] || 0}</div>
             <div className="flex gap-4">
-              <button onClick={() => modificarStatManual(modalStatPanel.jId, modalStatPanel.tipo, -1)} className="flex-1 py-4 text-3xl bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-colors shadow-sm">-</button>
+              <button autoFocus onClick={() => modificarStatManual(modalStatPanel.jId, modalStatPanel.tipo, -1)} className="flex-1 py-4 text-3xl bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-colors shadow-sm">-</button>
               <button onClick={() => modificarStatManual(modalStatPanel.jId, modalStatPanel.tipo, 1)} className="flex-1 py-4 text-3xl bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors shadow-sm">+</button>
             </div>
             <button onClick={() => setModalStatPanel(null)} className="mt-6 w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cerrar Panel</button>
@@ -574,7 +575,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
       {/* MODAL ASIGNAR TANTOS */}
       {modalTantos && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4" role="dialog" aria-modal="true" aria-label="Asignar tantos" onKeyDown={(evento) => tecladoModal(evento, () => setModalTantos(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl animate-slide-up text-center border border-brand-gold/30">
             <h3 className="text-xl font-black text-brand-brown mb-5">Asignar Tantos - Mano #{modalTantos.manoIdx + 1}</h3>
             <div className="grid grid-cols-3 gap-3 mb-5">
@@ -588,7 +589,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                 </button>
               ))}
             </div>
-            <button onClick={() => setModalTantos(null)} className="w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
+            <button autoFocus onClick={() => setModalTantos(null)} className="w-full py-3 bg-gray-200 text-brand-brown rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -942,6 +943,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <button
                       onClick={() => setModalCancha(true)}
                       title="Simulador Visual de Cancha"
+                      aria-label="Simulador Visual de Cancha"
                       className="w-14 shrink-0 py-4 rounded-xl bg-brand-blue text-white text-[0.65rem] font-bold tracking-wider hover:bg-brand-brown transition-colors shadow-md flex flex-col justify-center items-center gap-1"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12m9 0a9 9 0 11-18 0 9 9 0 0118 0M12 12m5 0a5 5 0 11-10 0 5 5 0 0110 0M12 12m1 0a1 1 0 11-2 0 1 1 0 012 0" /></svg>

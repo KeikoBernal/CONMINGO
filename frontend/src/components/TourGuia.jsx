@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import NavIcon from './NavIcon';
+import { tecladoModal } from './Accesibilidad';
 
 // B2: guia de bienvenida por rol (4 pasos) con marcador de primera visita en localStorage.
 const CLAVE_PREFIJO = 'tourVisto_';
@@ -82,7 +83,7 @@ export default function TourGuia({ rol, activo, onCerrar }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[1900] bg-brand-brown/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Guia del panel">
+    <div className="fixed inset-0 z-[1900] bg-brand-brown/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Guia del panel" onKeyDown={(evento) => tecladoModal(evento, cerrar)}>
       <div className="bg-brand-cream border border-brand-gold/40 rounded-lg max-w-sm w-full p-6 shadow-2xl animate-fade-in">
         <div className="w-14 h-14 rounded-lg bg-brand-brown text-brand-gold flex items-center justify-center mx-auto">
           <NavIcon nombre={actual.icono} className="w-7 h-7" />
@@ -107,6 +108,7 @@ export default function TourGuia({ rol, activo, onCerrar }) {
         <div className="flex items-center justify-between gap-3 mt-6">
           <button
             type="button"
+            autoFocus
             onClick={cerrar}
             className="px-4 py-2.5 rounded-lg border border-brand-gold/40 text-brand-brown font-semibold text-sm hover:bg-brand-rust/5 transition-colors"
           >

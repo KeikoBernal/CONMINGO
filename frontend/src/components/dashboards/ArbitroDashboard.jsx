@@ -19,6 +19,7 @@ import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import ModoCanchaArbitro from '../ModoCanchaArbitro'; // FASE 3 UX: modo cancha para el arbitro a pie de cancha
+import { tecladoModal } from '../Accesibilidad';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -438,13 +439,14 @@ const suspenderPartido = async () => {
       
       {/* MODAL SORTEO */}
       {modalSorteo && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4" role="dialog" aria-modal="true" aria-label="Sorteo Oficial" onKeyDown={(evento) => tecladoModal(evento, () => setModalSorteo(null))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl animate-slide-up border border-brand-gold/30">
             <h3 className="text-xl font-bold text-brand-brown mb-4 flex items-center gap-2">
               <svg className="w-6 h-6 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               Sorteo Oficial
             </h3>
-            <textarea 
+            <textarea
+              autoFocus
               placeholder="Ej: Equipo Reputation gana mingo y decide salir..." 
               value={sorteoTexto} 
               onChange={e => setSorteoTexto(e.target.value)} 
@@ -466,7 +468,7 @@ const suspenderPartido = async () => {
 
       {/* MODAL DE INCIDENCIAS DEL PARTIDO (LOTE N) */}
       {modalIncidencias && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Incidencias del Partido" onKeyDown={(evento) => tecladoModal(evento, () => setModalIncidencias(false))}>
           <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold text-brand-brown mb-1">Incidencias del Partido</h3>
             <p className="text-xs text-brand-brown/60 mb-4">{partidoActivo?.local_nombre} vs {partidoActivo?.visita_nombre}</p>
@@ -499,7 +501,7 @@ const suspenderPartido = async () => {
             <form onSubmit={registrarIncidencia} className="space-y-3 border-t border-brand-gold/20 pt-4">
               <div>
                 <label className="block text-xs font-bold text-brand-brown/70 mb-1">Tipo de incidencia</label>
-                <select value={formIncidencia.tipo} onChange={e => setFormIncidencia({...formIncidencia, tipo: e.target.value})} className="w-full p-2.5 rounded-lg border border-brand-gold/40 focus:ring-2 focus:ring-brand-rust outline-none text-sm font-medium text-brand-brown bg-brand-cream/20 cursor-pointer">
+                <select autoFocus value={formIncidencia.tipo} onChange={e => setFormIncidencia({...formIncidencia, tipo: e.target.value})} className="w-full p-2.5 rounded-lg border border-brand-gold/40 focus:ring-2 focus:ring-brand-rust outline-none text-sm font-medium text-brand-brown bg-brand-cream/20 cursor-pointer">
                   {['Protesta', 'Lesión', 'Retraso de equipo', 'Deterioro de sede', 'Afición', 'Otro'].map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
