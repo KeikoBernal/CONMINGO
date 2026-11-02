@@ -3181,7 +3181,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               Se enviará un aviso al correo actual y una confirmación al nuevo correo. El cambio se aplicará solo cuando el nuevo correo lo confirme desde el enlace recibido.
             </p>
             <form onSubmit={enviarCambioCorreoCredencial} className="flex flex-col gap-4">
-              <input autoFocus
+              <input 
                 type="email"
                 placeholder="Nuevo correo electrónico"
                 value={nuevoCorreoCredencial}
