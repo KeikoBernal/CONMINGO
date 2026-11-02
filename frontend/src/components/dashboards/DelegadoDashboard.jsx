@@ -9,6 +9,8 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
 import ProtestasDelegado from '../ProtestasDelegado';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
+import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -320,18 +322,8 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   };
 
   // Íconos SVG para la barra lateral
-  const NavIcon = ({ pestanaId }) => {
-    switch (pestanaId) {
-      case 'equipo': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
-      case 'calendario': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
-      case 'estadisticas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
-      case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
-      case 'pagos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
-      case 'votacion': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>;
-case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-      default: return null;
-    }
-  };
+  // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
+  const ICONOS_PESTANA = { equipo: 'usuarios', calendario: 'calendario', estadisticas: 'estadisticas', documentos: 'documentos', pagos: 'pagos', votacion: 'votacion', protestas: 'protesta' };
 
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
@@ -383,7 +375,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
         pestana={pestana}
         onPestana={cambiarPestanaConAnimacion}
         animandoBoton={animandoBoton}
-        renderIcono={(id) => <NavIcon pestanaId={id} />}
+        renderIcono={(id) => <NavIcon nombre={ICONOS_PESTANA[id]} />}
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="delegadoSidebarColapsada"
@@ -393,23 +385,12 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative">
         
         {/* HEADER SUPERIOR */}
-        <header className="h-16 sm:h-20 bg-white border-b border-brand-gold/20 flex items-center justify-between px-6 shadow-sm shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setMenuAbierto(true)} className="md:hidden p-2 text-brand-brown hover:bg-brand-cream rounded-md">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
-            <h2 className="text-2xl font-bold text-brand-brown hidden sm:block">
-              {pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Analítica y Scouting'}
-            </h2>
-          </div>
-          <div className="hidden sm:block">
-            {miEquipo && <span className="text-sm font-semibold text-brand-brown/70">{miEquipo.categoria} - {miEquipo.tipo_genero}</span>}
-          </div>
-          <button onClick={cerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            <span className="hidden sm:inline">Cerrar Sesión</span>
-          </button>
-        </header>
+        <HeaderPanel
+          titulo={pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Analítica y Scouting'}
+          onAbrirMenu={() => setMenuAbierto(true)}
+          onCerrarSesion={cerrarSesion}
+          acciones={miEquipo ? <span className="hidden sm:block text-sm font-semibold text-brand-brown/70">{miEquipo.categoria} - {miEquipo.tipo_genero}</span> : null}
+        />
 
         {/* CONTENEDOR DESLIZABLE (SCROLL) */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-8">
@@ -426,7 +407,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                 <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                  <NavIcon pestanaId="equipo" />
+                  <NavIcon nombre="usuarios" />
                   Nómina Oficial del Equipo
                 </h3>
                 <TableTools rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'posicion', label: 'Rol' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'posicion']} filename="nomina_filtrada_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
@@ -528,7 +509,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
               ) : (
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <NavIcon pestanaId="calendario" />
+                    <NavIcon nombre="calendario" />
                     Encuentros y Planillas de Puntajes
                   </h3>
                   <TableTools rows={partidos} filteredRows={filasPartidos} filter={getFilter('calendario')} setFilter={setTableFilter('calendario')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'fase', label: 'Fase' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'fase']} dateFields={['fecha_hora']} filename="calendario_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
@@ -576,7 +557,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
             <div className="space-y-6 animate-fade-in">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h3 className="text-xl font-bold text-brand-brown flex items-center gap-2">
-                  <NavIcon pestanaId="estadisticas" />
+                  <NavIcon nombre="estadisticas" />
                   Centro de Scouting Avanzado
                 </h3>
                 <div className="flex flex-wrap gap-2">
@@ -657,7 +638,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                 <h3 className="text-lg font-bold text-brand-brown mb-2 flex items-center gap-2">
-                  <NavIcon pestanaId="documentos" />
+                  <NavIcon nombre="documentos" />
                   Documentos de la Liga
                 </h3>
                 <p className="text-sm text-brand-brown/70 mb-4">Reglamentos, convocatorias, actas y comunicados publicados por la administración de la liga.</p>
@@ -702,7 +683,7 @@ case 'protestas': return <svg className="w-5 h-5" fill="none" stroke="currentCol
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                 <h3 className="text-lg font-bold text-brand-brown mb-2 flex items-center gap-2">
-                  <NavIcon pestanaId="pagos" />
+                  <NavIcon nombre="pagos" />
                   Pagos de Inscripción del Equipo
                 </h3>
                 <p className="text-sm text-brand-brown/70 mb-4">Pagos de inscripción a torneos registrados por la administración de la liga para tu equipo y sus jugadores.</p>

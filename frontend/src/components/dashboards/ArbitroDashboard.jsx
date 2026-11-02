@@ -9,6 +9,9 @@ import BotonModoSolar from '../BotonModoSolar';
 import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
+import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
+import { SkeletonTabla } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import FirmaCanvas from '../FirmaCanvas'; // LOTE 6D: firmas digitales del acta
 import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificaciones toast de marca
 import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
@@ -367,24 +370,8 @@ const suspenderPartido = async () => {
   const sedesCalendario = Object.fromEntries(partidosFiltrados.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   // Íconos para la barra lateral del árbitro
-  const NavIcon = ({ id }) => {
-    switch (id) {
-      case 'hoy':
-        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
-      case 'proximos':
-        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-      case 'historial':
-        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
-      case 'calendario':
-        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
-      case 'protestas':
-        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-      case 'votacion':
-        return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>;
-      default:
-        return null;
-    }
-  };
+  // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
+  const ICONOS_PESTANA = { hoy: 'calendario', proximos: 'reloj', historial: 'documento', calendario: 'calendario', protestas: 'protesta', votacion: 'votacion' };
 
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
@@ -430,7 +417,7 @@ const suspenderPartido = async () => {
             <div className="mb-5">
               <h4 className="text-sm font-bold text-brand-brown mb-2">Registradas ({incidencias.length})</h4>
               {cargandoIncidencias ? (
-                <p className="text-sm text-brand-brown/60">Cargando incidencias...</p>
+                <div className="py-2"><SkeletonTabla filas={3} columnas={2} compacto /></div>
               ) : incidencias.length === 0 ? (
                 <p className="text-sm text-brand-brown/60">No hay incidencias registradas en este partido.</p>
               ) : (
@@ -504,7 +491,7 @@ const suspenderPartido = async () => {
         ]}
         pestana={pestana}
         onPestana={(id) => { setPestana(id); setMenuAbierto(false); }}
-        renderIcono={(id) => <NavIcon id={id} />}
+        renderIcono={(id) => <NavIcon nombre={ICONOS_PESTANA[id]} />}
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="arbitroSidebarColapsada"
@@ -514,33 +501,24 @@ const suspenderPartido = async () => {
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto">
         
         {/* HEADER SUPERIOR */}
-        <header className="h-16 sm:h-20 bg-white border-b border-brand-gold/20 flex items-center justify-between px-6 shadow-sm shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setMenuAbierto(true)} className="md:hidden p-2 text-brand-brown hover:bg-brand-cream rounded-md">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
-            <h2 className="text-xl sm:text-2xl font-bold text-brand-brown capitalize truncate">
-              {partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Historial Reciente')}
-            </h2>
-          </div>
-          
-          <div className="flex items-center gap-3">
+        <HeaderPanel
+          tituloMovil
+          titulo={partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Historial Reciente')}
+          onAbrirMenu={() => setMenuAbierto(true)}
+          onCerrarSesion={cerrarSesion}
+          acciones={<div className="flex items-center gap-3">
             <BotonModoSolar />
             {ligas.length > 0 && (
-              <select 
-                value={ligaFiltro} 
+              <select
+                value={ligaFiltro}
                 onChange={(e) => setLigaFiltro(e.target.value)}
                 className="p-2 bg-brand-cream/30 border border-brand-gold/40 rounded-lg text-sm font-bold text-brand-brown focus:ring-2 focus:ring-brand-rust outline-none shadow-sm cursor-pointer"
               >
                 {ligas.map(l => <option key={l.id} value={l.id}>Liga: {l.nombre}</option>)}
               </select>
             )}
-          </div>
-          <button onClick={cerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            <span className="hidden sm:inline">Cerrar Sesión</span>
-          </button>
-        </header>
+          </div>}
+        />
 
         {/* CONTENIDO DE LAS PESTAÑAS O PARTIDO ACTIVO */}
         <div className="p-4 md:p-6 flex-1">
