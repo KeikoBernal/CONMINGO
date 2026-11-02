@@ -8,6 +8,9 @@ import autoTable from 'jspdf-autotable';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
+import HeaderPanel from '../HeaderPanel'; // FASE 2 UX: encabezado compartido de los paneles
+import NavIcon from '../NavIcon'; // FASE 2 UX: catalogo unico de iconos de navegacion
+import { SkeletonTabla } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -147,6 +150,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
 
   const cargarDatosPestana = async () => {
     setMensaje(null);
+    setCargandoPestana(true);
     try {
       if (pestana === 'metricas') {
         const resLigas = await fetchConToken('/ligas');
@@ -173,7 +177,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         const res = await fetchConToken(`/bitacora?rol=${filtroRol}&usuario_id=${filtroUsuarioId}&fecha_desde=${filtroFechaDesde}&fecha_hasta=${filtroFechaHasta}&busqueda=${encodeURIComponent(busquedaBitacora)}`);
         if (res.ok) setBitacora(await res.json());
       }
-    } catch (err) { setMensaje({ texto: 'Error conectando con el servidor.', tipo: 'error' }); }
+    } catch (err) { setMensaje({ texto: 'Error conectando con el servidor.', tipo: 'error' }); } finally { setCargandoPestana(false); }
   };
 
   useEffect(() => { cargarDatosPestana(); }, [pestana, filtroRol, filtroUsuarioId, filtroFechaDesde, filtroFechaHasta, busquedaBitacora]);
@@ -318,6 +322,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   // FASE 2 UX: paginacion compartida del directorio de ligas y pagina del directorio de usuarios
   const pagLigas = usePaginacion(filasLigas);
   const [paginaUsuarios, setPaginaUsuarios] = useState(1);
+  // FASE 2 UX: esqueleto de carga mientras llega la respuesta de la pestana activa
+  const [cargandoPestana, setCargandoPestana] = useState(true);
   const sedesGlobales = Object.fromEntries(partidosGlobales.filter(p => p.sede_nombre).map(p => [p.id, p.sede_nombre]));
 
   const guardarLiga = async (e) => {
@@ -570,7 +576,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-brand-gold/20 bg-white">
-          {filasUsuariosVista.length === 0 ? (
+          {cargandoPestana && filasUsuariosVista.length === 0 ? (
+            <tr><td colSpan={7} className="p-5"><SkeletonTabla filas={6} columnas={7} /></td></tr>
+          ) : filasUsuariosVista.length === 0 ? (
             <tr><td colSpan={7} className="text-center p-8 text-brand-brown/50">No se encontraron usuarios.</td></tr>
           ) : (
             filasUsuariosPagina.map((u) => (
@@ -750,17 +758,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
     bitacora: 'Bitácora de Actividad',
   };
 
-  const NavIcon = ({ id }) => {
-    switch (id) {
-      case 'metricas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
-      case 'ligas': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>;
-      case 'usuarios': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
-      case 'bitacora': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>;
-      case 'calendario': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
-      case 'documentos': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>;
-      default: return null;
-    }
-  };
+  // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
+  const ICONOS_PESTANA = { metricas: 'estadisticas', ligas: 'ligas', usuarios: 'usuarios', bitacora: 'acta', calendario: 'calendario', documentos: 'documentos' };
 
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
@@ -847,7 +846,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
         ]}
         pestana={pestana}
         onPestana={(id) => { setPestana(id); setLigaDetalle(null); setMenuAbierto(false); }}
-        renderIcono={(id) => <NavIcon id={id} />}
+        renderIcono={(id) => <NavIcon nombre={ICONOS_PESTANA[id]} />}
         menuAbierto={menuAbierto}
         onCerrarMenu={() => setMenuAbierto(false)}
         claveColapso="superadminSidebarColapsada"
@@ -857,29 +856,21 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       <main className="flex-1 flex flex-col min-w-0 h-full bg-brand-cream relative overflow-y-auto">
         
         {/* HEADER SUPERIOR */}
-        <header className="h-auto sm:h-20 py-4 sm:py-0 bg-white border-b border-brand-gold/20 flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 shadow-sm shrink-0 gap-4">
-          <div className="flex items-center gap-4 w-full sm:w-auto">
-            <button onClick={() => setMenuAbierto(true)} className="md:hidden p-2 text-brand-brown hover:bg-brand-cream rounded-md">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
-            <h2 className="text-xl font-bold text-brand-brown capitalize flex items-center gap-2">
-              <NavIcon id={pestana} /> {TITULOS_PESTANA[pestana] || pestana}
-            </h2>
-          </div>
-          
-          <div className="flex items-center gap-2 bg-brand-cream/30 p-1.5 rounded-lg border border-brand-gold/40 w-full sm:w-auto overflow-x-auto">
+        <HeaderPanel
+          apilado
+          claseTitulo="text-xl font-bold text-brand-brown capitalize flex items-center gap-2"
+          titulo={<><NavIcon nombre={ICONOS_PESTANA[pestana]} /> {TITULOS_PESTANA[pestana] || pestana}</>}
+          onAbrirMenu={() => setMenuAbierto(true)}
+          onCerrarSesion={ejecutarCerrarSesion}
+          acciones={<div className="flex items-center gap-2 bg-brand-cream/30 p-1.5 rounded-lg border border-brand-gold/40 w-full sm:w-auto overflow-x-auto">
             <span className="text-xs font-bold text-brand-brown/70 ml-2 mr-1 flex items-center gap-1">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
               Respaldo BD:
             </span>
             <button onClick={() => exportarRespaldoBD('sql')} className="px-3 py-1.5 bg-brand-brown text-brand-cream rounded-lg hover:bg-brand-brown/80 transition-colors text-xs font-bold">SQL</button>
             <button onClick={() => exportarRespaldoBD('json')} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold">JSON</button>
-          </div>
-          <button onClick={ejecutarCerrarSesion} className="flex items-center gap-2 px-4 py-2 bg-brand-brown text-brand-cream hover:bg-brand-rust rounded-lg font-semibold text-sm transition-colors shadow-sm shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            <span className="hidden sm:inline">Cerrar Sesión</span>
-          </button>
-        </header>
+          </div>}
+        />
 
         {/* CONTENIDO PRINCIPAL */}
         <div className="p-4 md:p-6 flex-1 max-w-7xl mx-auto w-full">
@@ -1083,7 +1074,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
                           <tr><th className="p-4">Nombre</th><th className="p-4">Administrador</th><th className="p-4">Estado</th><th className="p-4 text-center">Acciones</th></tr>
                         </thead>
                         <tbody className="divide-y divide-brand-gold/20 text-brand-brown">
-                          {pagLigas.filasPagina.map((l) => (
+                          {cargandoPestana && filasLigas.length === 0 ? (
+                            <tr><td colSpan={4} className="p-5"><SkeletonTabla filas={5} columnas={4} /></td></tr>
+                          ) : pagLigas.filasPagina.map((l) => (
                             <tr key={l.id} className="hover:bg-brand-cream/10 transition-colors">
                               <td className="p-4 font-bold">{l.nombre}</td>
                               <td className="p-4">{l.responsable_nombre}</td>
@@ -1242,7 +1235,7 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
             <div className="animate-fade-in space-y-6">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                 <h3 className="text-lg font-bold text-brand-brown mb-2 flex items-center gap-2">
-                  <NavIcon id="documentos" />
+                  <NavIcon nombre="documentos" />
                   Documentos Compartidos con Todas las Ligas
                 </h3>
                 <p className="text-sm text-brand-brown/70 mb-6">
