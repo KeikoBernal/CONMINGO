@@ -1537,9 +1537,9 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         <table className="tabla-admin">
                       <thead>
                         <tr>
-                          <th>Sede</th>
-                          <th>Dirección</th>
-                          <th className="text-center w-32">Acciones</th>
+                          <th scope="col">Sede</th>
+                          <th scope="col">Dirección</th>
+                          <th scope="col" className="text-center w-32">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1788,12 +1788,12 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <table className="tabla-admin">
                         <thead>
                           <tr>
-                            <th className="w-16 text-center"></th>
-                            <th className="text-center">Dorsal</th>
-                            <th>Jugador</th>
-                            <th>Cédula</th>
-                            <th className="text-center">Estado</th>
-                            <th className="text-center">Acciones</th>
+                            <th scope="col" className="w-16 text-center"></th>
+                            <th scope="col" className="text-center">Dorsal</th>
+                            <th scope="col">Jugador</th>
+                            <th scope="col">Cédula</th>
+                            <th scope="col" className="text-center">Estado</th>
+                            <th scope="col" className="text-center">Acciones</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2036,7 +2036,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <div className="overflow-x-auto">
                         <table className="tabla-admin">
                           <thead>
-                            <tr><th>#</th><th>Jugador</th><th>Equipo</th><th>Dorsal</th><th>Lances</th><th>Buenos</th><th>Avg Global</th><th>Avg Arrime</th><th>Avg Boche</th><th>Avg Rastrero</th></tr>
+                            <tr><th scope="col">#</th><th scope="col">Jugador</th><th scope="col">Equipo</th><th scope="col">Dorsal</th><th scope="col">Lances</th><th scope="col">Buenos</th><th scope="col">Avg Global</th><th scope="col">Avg Arrime</th><th scope="col">Avg Boche</th><th scope="col">Avg Rastrero</th></tr>
                           </thead>
                           <tbody>
                             {statsIndividuales.ranking.map((j, idx) => (
@@ -2083,7 +2083,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="tabla-admin">
-                            <thead><tr><th>#</th><th>Jugador</th><th>Equipo</th><th>Votos</th></tr></thead>
+                            <thead><tr><th scope="col">#</th><th scope="col">Jugador</th><th scope="col">Equipo</th><th scope="col">Votos</th></tr></thead>
                             <tbody>
                               {votacionMvpData.resultados.map((r, i) => (
                                 <tr key={r.jugador_id} className={i === 0 ? 'bg-brand-gold/10' : ''}>
@@ -2160,10 +2160,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <table className="tabla-admin">
                       <thead>
                         <tr>
-                          <th>Posición</th>
-                          <th>Jugador</th>
-                          <th>Equipo</th>
-                          <th className="text-right">Efectividad</th>
+                          <th scope="col">Posición</th>
+                          <th scope="col">Jugador</th>
+                          <th scope="col">Equipo</th>
+                          <th scope="col" className="text-right">Efectividad</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2232,13 +2232,13 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <table className="tabla-admin">
                       <thead>
                         <tr>
-                          <th>Documento</th>
-                          <th>Tipo</th>
-                          <th>Torneo</th>
-                          <th className="text-center">Tamaño</th>
-                          <th>Subido por</th>
-                          <th>Fecha</th>
-                          <th className="text-center w-32">Acciones</th>
+                          <th scope="col">Documento</th>
+                          <th scope="col">Tipo</th>
+                          <th scope="col">Torneo</th>
+                          <th scope="col" className="text-center">Tamaño</th>
+                          <th scope="col">Subido por</th>
+                          <th scope="col">Fecha</th>
+                          <th scope="col" className="text-center w-32">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2348,14 +2348,14 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <table className="tabla-admin">
                       <thead>
                         <tr>
-                          <th>Torneo</th>
-                          <th>Inscrito</th>
-                          <th className="text-center">Monto</th>
-                          <th>Método</th>
-                          <th>Referencia</th>
-                          <th>Registrado por</th>
-                          <th>Fecha</th>
-                          <th className="text-center w-20">Acciones</th>
+                          <th scope="col">Torneo</th>
+                          <th scope="col">Inscrito</th>
+                          <th scope="col" className="text-center">Monto</th>
+                          <th scope="col">Método</th>
+                          <th scope="col">Referencia</th>
+                          <th scope="col">Registrado por</th>
+                          <th scope="col">Fecha</th>
+                          <th scope="col" className="text-center w-20">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2430,11 +2430,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <table className="tabla-admin whitespace-nowrap">
                       <thead>
                         <tr>
-                          <th>Fecha</th>
-                          <th>Torneo</th>
-                          <th className="text-center">Encuentro</th>
-                          <th className="text-center">Marcador</th>
-                          <th className="text-center">Descargas y Actas</th>
+                          <th scope="col">Fecha</th>
+                          <th scope="col">Torneo</th>
+                          <th scope="col" className="text-center">Encuentro</th>
+                          <th scope="col" className="text-center">Marcador</th>
+                          <th scope="col" className="text-center">Descargas y Actas</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2532,7 +2532,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   <div className="overflow-x-auto">
                     <table className="tabla-admin">
                       <thead>
-                        <tr><th>Jugador</th><th>Equipo</th><th>Tipo</th><th>Motivo</th><th>Alcance</th><th>Cumplimiento</th><th>Progreso</th><th>Estado</th><th></th></tr>
+                        <tr><th scope="col">Jugador</th><th scope="col">Equipo</th><th scope="col">Tipo</th><th scope="col">Motivo</th><th scope="col">Alcance</th><th scope="col">Cumplimiento</th><th scope="col">Progreso</th><th scope="col">Estado</th><th scope="col"></th></tr>
                       </thead>
                       <tbody>
                         {cargando && sanciones.length === 0 ? (
@@ -2581,7 +2581,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={bitacoraConTexto} filteredRows={filasBitacora} filter={getFilter('bitacora')} setFilter={setTableFilter('bitacora')} columns={[{ key: 'fecha_hora', label: 'Fecha y hora' }, { key: 'usuario', label: 'Usuario' }, { key: 'usuario_rol', label: 'Rol' }, { key: 'accion', label: 'Acción' }, { key: 'tabla', label: 'Recurso' }, { key: 'ip', label: 'IP' }]} categoryFields={["accion", "tabla", "usuario_rol", "usuario"]} dateFields={["fecha_hora"]} filename="bitacora_organizacion" />
                   <div className="overflow-x-auto rounded-lg border border-brand-gold/15">
                     <table className="tabla-admin min-w-[760px] whitespace-nowrap">
-                      <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Rol</th><th>Qué hizo</th><th>Recurso consultado</th><th>IP</th></tr></thead>
+                      <thead><tr><th scope="col">Fecha y hora</th><th scope="col">Usuario</th><th scope="col">Rol</th><th scope="col">Qué hizo</th><th scope="col">Recurso consultado</th><th scope="col">IP</th></tr></thead>
                       <tbody>
                         {cargando && bitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={6} columnas={6} compacto /></td></tr>) : filasBitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="acta" titulo="Sin eventos para mostrar" descripcion={bitacora.length === 0 ? 'Aún no hay eventos registrados en la bitácora.' : 'Ningún evento coincide con los filtros aplicados.'} /></td></tr>) : pagBitacora.filasPagina.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
                       </tbody>
@@ -2670,11 +2670,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 <table className="tabla-admin">
                                   <thead>
                                     <tr>
-                                      <th>Fase</th>
-                                      <th>Encuentro</th>
-                                      <th>Fecha / Hora</th>
-                                      <th>Sede</th>
-                                      <th className="text-center">Ajustes</th>
+                                      <th scope="col">Fase</th>
+                                      <th scope="col">Encuentro</th>
+                                      <th scope="col">Fecha / Hora</th>
+                                      <th scope="col">Sede</th>
+                                      <th scope="col" className="text-center">Ajustes</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -3043,10 +3043,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                   <table className="tabla-admin">
                                     <thead>
                                       <tr>
-                                        <th>Pos</th>
-                                        <th>Equipo</th>
-                                        <th className="text-center">Pts</th>
-                                        <th className="text-center">Diff</th>
+                                        <th scope="col">Pos</th>
+                                        <th scope="col">Equipo</th>
+                                        <th scope="col" className="text-center">Pts</th>
+                                        <th scope="col" className="text-center">Diff</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -3085,11 +3085,11 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           <table className="tabla-admin">
                             <thead>
                               <tr>
-                                <th>Rank</th>
-                                <th>Franquicia</th>
-                                <th className="text-center">Score Global</th>
-                                <th className="text-center">Torneos</th>
-                                <th className="text-center">Índice Asistencia</th>
+                                <th scope="col">Rank</th>
+                                <th scope="col">Franquicia</th>
+                                <th scope="col" className="text-center">Score Global</th>
+                                <th scope="col" className="text-center">Torneos</th>
+                                <th scope="col" className="text-center">Índice Asistencia</th>
                               </tr>
                             </thead>
                             <tbody>
