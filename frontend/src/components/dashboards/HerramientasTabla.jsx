@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -79,6 +80,74 @@ export function TableTools({ rows, filteredRows, filter, setFilter, columns, cat
     </div>
     <div className="mt-3 flex flex-col gap-2 border-t border-brand-gold/20 pt-3 sm:flex-row sm:items-center sm:justify-between"><span className="text-xs font-bold uppercase tracking-wide text-brand-brown/70">{filteredRows.length} de {rows.length} registros</span><select value="" onChange={event => { const formato = event.target.value; if (formato) exportRows(formato); }} className="w-full min-h-11 rounded-lg border border-brand-gold/40 bg-white px-4 py-2 text-sm font-bold text-brand-brown focus:border-brand-rust focus:outline-none sm:w-52"><option value="">Descargar reporte</option><option value="pdf">Descargar PDF</option><option value="excel">Descargar Excel</option><option value="csv">Descargar CSV</option><option value="json">Descargar JSON</option></select></div>
   </div>;
+}
+
+// FASE 2 UX (consolidacion de tablas): encabezado, paginacion y acciones de
+// tabla compartidos por todos los paneles. Mismas convenciones de marca:
+// rounded-lg, hovers solo brand-*, iconos SVG, sin emojis.
+export function EncabezadoTabla({ titulo, total, icono, acciones }) {
+  return (
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <h3 className="flex items-center gap-2 text-lg font-bold text-brand-brown">
+        {icono}
+        {titulo}
+        {typeof total === 'number' && (
+          <span className="bg-brand-cream text-brand-brown px-2 py-0.5 rounded-full text-xs font-bold border border-brand-gold/30">{total}</span>
+        )}
+      </h3>
+      {acciones && <div className="flex flex-wrap gap-2">{acciones}</div>}
+    </div>
+  );
+}
+
+// Paginacion del lado del cliente: recorta las filas ya filtradas y mantiene
+// la pagina segura cuando los filtros reducen el listado.
+export function usePaginacion(filas, porPagina = 12) {
+  const [pagina, setPagina] = useState(1);
+  const totalPaginas = Math.max(1, Math.ceil(filas.length / porPagina));
+  useEffect(() => { if (pagina > totalPaginas) setPagina(totalPaginas); }, [pagina, totalPaginas]);
+  const paginaSegura = Math.min(pagina, totalPaginas);
+  const inicio = (paginaSegura - 1) * porPagina;
+  return {
+    pagina: paginaSegura,
+    setPagina,
+    filasPagina: filas.slice(inicio, inicio + porPagina),
+    totalPaginas,
+    total: filas.length,
+    desde: filas.length === 0 ? 0 : inicio + 1,
+    hasta: Math.min(inicio + porPagina, filas.length),
+  };
+}
+
+export function PaginacionTabla({ pagina, setPagina, totalPaginas, desde, hasta, total }) {
+  if (totalPaginas <= 1) return null;
+  const boton = 'px-3 py-2 rounded-lg border border-brand-gold/40 bg-white text-sm font-bold text-brand-brown transition-colors hover:bg-brand-rust hover:text-white disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed';
+  return (
+    <div className="mt-4 flex flex-col gap-2 border-t border-brand-gold/20 pt-3 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-xs font-bold uppercase tracking-wide text-brand-brown/70">Mostrando {desde} a {hasta} de {total} registros</span>
+      <div className="flex items-center gap-2">
+        <button type="button" className={boton} onClick={() => setPagina(Math.max(1, pagina - 1))} disabled={pagina <= 1}>Anterior</button>
+        <span className="text-xs font-bold text-brand-brown/70">Página {pagina} de {totalPaginas}</span>
+        <button type="button" className={boton} onClick={() => setPagina(Math.min(totalPaginas, pagina + 1))} disabled={pagina >= totalPaginas}>Siguiente</button>
+      </div>
+    </div>
+  );
+}
+
+// Boton de accion de tabla: siempre visible (nada de aparecer solo al pasar el
+// mouse, que rompe en pantallas tactiles) y con los tonos permitidos de marca.
+export function BotonAccionTabla({ titulo, onClick, tono = 'editar', deshabilitado = false, children }) {
+  const tonos = {
+    editar: 'bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white',
+    peligro: 'bg-red-100 text-red-600 hover:bg-red-600 hover:text-white',
+    neutro: 'bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white border border-brand-gold/30',
+  };
+  return (
+    <button type="button" onClick={onClick} disabled={deshabilitado} title={titulo}
+      className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${tonos[tono] || tonos.editar}`}>
+      {children}
+    </button>
+  );
 }
 
 const descargarBlob = (blob, filename) => {
