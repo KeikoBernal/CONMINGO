@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import PlanillaUniversal from './PlanillaUniversal';
+import ChipOffline from '../ChipOffline';
+import { useEnLinea, leerCola, encolar, contarCola, procesarCola, reintentarFallidos } from '../ColaOffline'; // FASE D UX: cola offline del arbitro
 import SistemaMensajeria from './SistemaMensajeria';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, usePaginacion, PaginacionTabla } from './HerramientasTabla'; // FASE A1 UX: paginacion compartida
 import CalendarioPartidos from '../CalendarioPartidos';
@@ -75,6 +77,44 @@ export default function ArbitroDashboard({ usuario, cerrarSesion }) {
   const [cargandoPartido, setCargandoPartido] = useState(false); // FASE 3C UX: candado del boton Control
 
   const [token, setToken] = useState(null);
+
+  // FASE D UX: modo offline del arbitro. Sin senal el partido se sigue operando;
+  // las escrituras se guardan en este dispositivo y se reenvian al reconectar.
+  const enLinea = useEnLinea();
+  const [colaOffline, setColaOffline] = useState(() => contarCola('arbitro'));
+  const [reintentandoCola, setReintentandoCola] = useState(false);
+  const refrescarCola = () => setColaOffline(contarCola('arbitro'));
+  const reintentarColaFallidos = async () => {
+    reintentarFallidos('arbitro');
+    refrescarCola();
+    setReintentandoCola(true);
+    const resumen = await procesarCola('arbitro', fetchConToken);
+    setReintentandoCola(false);
+    refrescarCola();
+    if (resumen.enviados > 0) {
+      mostrarToast(resumen.enviados + (resumen.enviados === 1 ? ' envio sincronizado con el servidor.' : ' envios sincronizados con el servidor.'), 'exito');
+      cargarDatosOficial();
+    }
+    if (contarCola('arbitro').fallidos > 0) mostrarToast('El envio sigue rechazado por el servidor. Comunicalo al AdminLiga si persiste.', 'error');
+  };
+  useEffect(() => {
+    refrescarCola();
+    if (!enLinea) return;
+    if (leerCola('arbitro').length === 0) return;
+    let vivo = true;
+    (async () => {
+      mostrarToast('Enviando lo guardado en este dispositivo...', 'info');
+      const resumen = await procesarCola('arbitro', fetchConToken);
+      if (!vivo) return;
+      refrescarCola();
+      if (resumen.enviados > 0) {
+        mostrarToast(resumen.enviados + (resumen.enviados === 1 ? ' envio sincronizado con el servidor.' : ' envios sincronizados con el servidor.'), 'exito');
+        cargarDatosOficial();
+      }
+      if (resumen.fallidos > 0) mostrarToast('Un envio fallo al reconectar y quedo en espera. Usa Reintentar en el aviso.', 'error');
+    })();
+    return () => { vivo = false; };
+  }, [enLinea]);
   const [ligas, setLigas] = useState([]);
   const [ligaFiltro, setLigaFiltro] = useState('');
 
@@ -272,6 +312,14 @@ const guardarSorteo = async () => {
     if (!textoSaneado) return mostrarToast('El acta de sorteo no puede estar vacía.', 'error');
     
     setIsSubmitting(true);
+    if (!enLinea) {
+      encolar('arbitro', { metodo: 'PUT', ruta: `/partidos/${modalSorteo}/sorteo`, cuerpo: JSON.stringify({ sorteo: textoSaneado }), etiqueta: 'Sorteo del partido' });
+      refrescarCola();
+      setIsSubmitting(false);
+      setModalSorteo(null);
+      setSorteoTexto('');
+      return mostrarToast('Sin conexion: sorteo guardado en este dispositivo. Se enviara al reconectar.', 'info');
+    }
     const res = await fetchConToken(`/partidos/${modalSorteo}/sorteo`, { method: 'PUT', body: JSON.stringify({ sorteo: textoSaneado }) });
     setIsSubmitting(false);
     
@@ -285,6 +333,13 @@ const guardarSorteo = async () => {
     const rolFirma = modalFirma;
     setModalFirma(null);
     setIsSubmitting(true);
+    if (!enLinea) {
+      encolar('arbitro', { metodo: 'POST', ruta: `/partidos/${partidoActivo.id}/firmas`, cuerpo: JSON.stringify({ rol_firma: rolFirma, imagen: dataUrl }), etiqueta: 'Firma del acta' });
+      setFirmasActa(prev => ({ ...prev, firmas: [...(prev.firmas || []).filter(fr => fr.rol_firma !== rolFirma), { rol_firma: rolFirma, firmada: true }], faltantes: (prev.faltantes || []).filter(fl => fl !== rolFirma) }));
+      refrescarCola();
+      setIsSubmitting(false);
+      return mostrarToast('Sin conexion: firma guardada en este dispositivo. Se enviara al reconectar.', 'info');
+    }
     try {
       const res = await fetchConToken(`/partidos/${partidoActivo.id}/firmas`, { method: 'POST', body: JSON.stringify({ rol_firma: rolFirma, imagen: dataUrl }) });
       const data = await res.json().catch(() => ({}));
@@ -306,6 +361,14 @@ const suspenderPartido = async () => {
     if (!(await pedirConfirmacion('Suspender partido', '¿Estás seguro de suspender este partido? Se guardarán los resultados actuales y desaparecerá de tu panel y del anotador hasta ser reagendado.', 'peligro'))) return;
 
     setIsSubmitting(true); // INSERCIÓN: Bloqueo
+    if (!enLinea) {
+      encolar('arbitro', { metodo: 'PUT', ruta: `/partidos/${partidoActivo.id}/suspender`, cuerpo: null, etiqueta: 'Suspender partido' });
+      refrescarCola();
+      setIsSubmitting(false); // INSERCIÓN: Liberación
+      localStorage.removeItem('partidoActivoId');
+      setPartidoActivo(null);
+      return mostrarToast('Sin conexion: la suspension quedo guardada en este dispositivo. Al reconectar se enviara y el AdminLiga sera notificado.', 'info');
+    }
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/suspender`, { method: 'PUT' });
     setIsSubmitting(false); // INSERCIÓN: Liberación
     
@@ -355,6 +418,15 @@ const suspenderPartido = async () => {
     e.preventDefault();
     if (formIncidencia.descripcion.trim().length < 5) return mostrarToast('La descripción debe tener al menos 5 caracteres.', 'error');
     setIsSubmitting(true);
+    if (!enLinea) {
+      // FASE D UX: la incidencia viaja con client_id para que el backend deduplique el reenvio.
+      encolar('arbitro', { metodo: 'POST', ruta: `/partidos/${partidoActivo.id}/incidencias`, cuerpo: JSON.stringify({ tipo: formIncidencia.tipo, descripcion: formIncidencia.descripcion.trim(), jugador_id: formIncidencia.jugador_id || null, client_id: 'inc-' + partidoActivo.id + '-' + Date.now() }), etiqueta: 'Incidencia del partido' });
+      setIncidencias(prev => [{ id: 'local-' + Date.now(), tipo: formIncidencia.tipo, descripcion: formIncidencia.descripcion.trim(), jugador_id: formIncidencia.jugador_id || null, autor_nombre: usuario?.nombre, autor_apellido: usuario?.apellido, created_at: new Date().toISOString() }, ...prev]);
+      setFormIncidencia({ tipo: 'Protesta', jugador_id: '', descripcion: '' });
+      refrescarCola();
+      setIsSubmitting(false);
+      return mostrarToast('Sin conexion: incidencia guardada en este dispositivo. Se enviara al reconectar.', 'info');
+    }
     try {
       const res = await fetchConToken(`/partidos/${partidoActivo.id}/incidencias`, { method: 'POST', body: JSON.stringify({ tipo: formIncidencia.tipo, descripcion: formIncidencia.descripcion.trim(), jugador_id: formIncidencia.jugador_id || null }) });
       const data = await res.json().catch(() => ({}));
@@ -433,6 +505,7 @@ const suspenderPartido = async () => {
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
+      <ChipOffline enLinea={enLinea} pendientes={colaOffline.pendientes} fallidos={colaOffline.fallidos} reintentando={reintentandoCola} onReintentar={reintentarColaFallidos} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
       <TourGuia rol="arbitro" activo={tourActivo} onCerrar={cerrarTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
