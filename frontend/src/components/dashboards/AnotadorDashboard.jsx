@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import PlanillaUniversal from './PlanillaUniversal';
+import ChipOffline from '../ChipOffline';
+import { useEnLinea, leerCola, encolar, contarCola, procesarCola, reintentarFallidos } from '../ColaOffline'; // FASE D UX: cola offline del anotador
 import SistemaMensajeria from './SistemaMensajeria';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, usePaginacion, PaginacionTabla } from './HerramientasTabla'; // FASE A1 UX: paginacion compartida
 import CalendarioPartidos from '../CalendarioPartidos';
@@ -99,6 +101,44 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   const [token, setToken] = useState(null);
 
+  // FASE D UX: modo offline del anotador. Sin senal la planilla se sigue anotando;
+  // iniciar, manos y firmas se guardan en este dispositivo y se reenvian al reconectar.
+  const enLinea = useEnLinea();
+  const [colaOffline, setColaOffline] = useState(() => contarCola('anotador'));
+  const [reintentandoCola, setReintentandoCola] = useState(false);
+  const refrescarCola = () => setColaOffline(contarCola('anotador'));
+  const reintentarColaFallidos = async () => {
+    reintentarFallidos('anotador');
+    refrescarCola();
+    setReintentandoCola(true);
+    const resumen = await procesarCola('anotador', fetchConToken);
+    setReintentandoCola(false);
+    refrescarCola();
+    if (resumen.enviados > 0) {
+      mostrarToast(resumen.enviados + (resumen.enviados === 1 ? ' envio sincronizado con el servidor.' : ' envios sincronizados con el servidor.'), 'exito');
+      cargarDatosOficial();
+    }
+    if (contarCola('anotador').fallidos > 0) mostrarToast('El envio sigue rechazado por el servidor. Comunicalo al AdminLiga si persiste.', 'error');
+  };
+  useEffect(() => {
+    refrescarCola();
+    if (!enLinea) return;
+    if (leerCola('anotador').length === 0) return;
+    let vivo = true;
+    (async () => {
+      mostrarToast('Enviando lo guardado en este dispositivo...', 'info');
+      const resumen = await procesarCola('anotador', fetchConToken);
+      if (!vivo) return;
+      refrescarCola();
+      if (resumen.enviados > 0) {
+        mostrarToast(resumen.enviados + (resumen.enviados === 1 ? ' envio sincronizado con el servidor.' : ' envios sincronizados con el servidor.'), 'exito');
+        cargarDatosOficial();
+      }
+      if (resumen.fallidos > 0) mostrarToast('Un envio fallo al reconectar y quedo en espera. Usa Reintentar en el aviso.', 'error');
+    })();
+    return () => { vivo = false; };
+  }, [enLinea]);
+
   // --- ESTADOS MULTILIGA ---
   const [ligas, setLigas] = useState([]);
   const [ligaFiltro, setLigaFiltro] = useState('');
@@ -137,6 +177,27 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   const cargarDatosOficial = async () => {
     setCargando(true); // FASE 3C UX: esqueleto de carga mientras llegan los partidos
+    // FASE D UX: sin senal no se puede pedir la lista al servidor; si hay un acta
+    // abierta respaldada en este dispositivo, se retoma completa desde el backup local.
+    if (!enLinea) {
+      const savedPartidoId = localStorage.getItem('partidoActivoId');
+      const localData = savedPartidoId ? localStorage.getItem(`backup_partido_${savedPartidoId}`) : null;
+      if (savedPartidoId && localData) {
+        const parsed = JSON.parse(localData);
+        if (parsed.partido) {
+          setPartidoActivo(parsed.partido);
+          setJugadoresLocal(parsed.nominaLocal || []);
+          setJugadoresVisita(parsed.nominaVisita || []);
+          setEfectividadJugadores(parsed.efectividadJugadores || {});
+          setManualStats(parsed.manualStats || {});
+          setPuntosPorManoLocal(parsed.puntosPorManoLocal || Array(20).fill(''));
+          setPuntosPorManoVisita(parsed.puntosPorManoVisita || Array(20).fill(''));
+          mostrarToast('Sin conexion: se retomo el acta guardada en este dispositivo. Los cambios se enviaran al reconectar.', 'info');
+        }
+      }
+      setCargando(false);
+      return;
+    }
     try {
     const res = await fetchConToken('/mis-partidos');
     if (res.ok) {
@@ -212,7 +273,9 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   useEffect(() => {
     if (partidoActivo && (Object.keys(efectividadJugadores).length > 0 || puntosPorManoLocal.some(p => p !== ''))) {
-      const backup = { efectividadJugadores, manualStats, puntosPorManoLocal, puntosPorManoVisita, timestamp: Date.now() };
+      // FASE D UX: el backup ahora incluye el partido y las nominas para poder
+      // retomar el acta completa en este dispositivo incluso sin conexion.
+      const backup = { partido: partidoActivo, nominaLocal: jugadoresLocal, nominaVisita: jugadoresVisita, efectividadJugadores, manualStats, puntosPorManoLocal, puntosPorManoVisita, timestamp: Date.now() };
       localStorage.setItem(`backup_partido_${partidoActivo.id}`, JSON.stringify(backup));
     }
   }, [efectividadJugadores, manualStats, puntosPorManoLocal, puntosPorManoVisita, partidoActivo]);
@@ -325,6 +388,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     setIsSubmitting(true);
     
     const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+    if (!enLinea) {
+      encolar('anotador', { metodo: 'PUT', ruta: `/partidos/${partidoActivo.id}/iniciar`, cuerpo: JSON.stringify({ hora_inicio: hora }), etiqueta: 'Iniciar partido' });
+      refrescarCola();
+      setIsSubmitting(false);
+      setPartidoActivo(prev => ({ ...prev, estado: 'En Curso', hora_inicio: hora }));
+      setCronometroGlobalActivo(true);
+      return mostrarToast('Sin conexion: el inicio quedo registrado en este dispositivo. Se enviara al reconectar.', 'info');
+    }
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/iniciar`, { method: 'PUT', body: JSON.stringify({ hora_inicio: hora }) });
     
     setIsSubmitting(false);
@@ -358,6 +429,14 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       let tantos = 0;
       if (tantosLocal > tantosVisita) { ganadorId = partidoActivo.equipo_local_id; tantos = tantosLocal; }
       else if (tantosVisita > tantosLocal) { ganadorId = partidoActivo.equipo_visita_id; tantos = tantosVisita; }
+      if (!enLinea) {
+        // FASE D UX: sin senal cada mano se guarda en la cola local; el backend hace
+        // upsert por (partido, numero de mano), asi que el reenvio es idempotente.
+        encolar('anotador', { metodo: 'POST', ruta: `/partidos/${partidoActivo.id}/manos`, cuerpo: JSON.stringify({ numero_mano: mIdx + 1, equipo_ganador_id: ganadorId, tantos_anotados: tantos, detalle_jugadas: jugadas }), etiqueta: 'Mano ' + (mIdx + 1) + ' del acta' });
+        refrescarCola();
+        guardadas++;
+        continue;
+      }
       try {
         const res = await fetchConToken(`/partidos/${partidoActivo.id}/manos`, { method: 'POST', body: JSON.stringify({ numero_mano: mIdx + 1, equipo_ganador_id: ganadorId, tantos_anotados: tantos, detalle_jugadas: jugadas }) });
         if (res.ok) guardadas++; else fallidas++;
@@ -373,6 +452,13 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     const rolFirma = modalFirma;
     setModalFirma(null);
     setIsSubmitting(true);
+    if (!enLinea) {
+      encolar('anotador', { metodo: 'POST', ruta: `/partidos/${partidoActivo.id}/firmas`, cuerpo: JSON.stringify({ rol_firma: rolFirma, imagen: dataUrl }), etiqueta: 'Firma del acta' });
+      setFirmasActa(prev => ({ ...prev, firmas: [...(prev.firmas || []).filter(fr => fr.rol_firma !== rolFirma), { rol_firma: rolFirma, firmada: true }], faltantes: (prev.faltantes || []).filter(fl => fl !== rolFirma) }));
+      refrescarCola();
+      setIsSubmitting(false);
+      return mostrarToast('Sin conexion: firma guardada en este dispositivo. Se enviara al reconectar.', 'info');
+    }
     try {
       const res = await fetchConToken(`/partidos/${partidoActivo.id}/firmas`, { method: 'POST', body: JSON.stringify({ rol_firma: rolFirma, imagen: dataUrl }) });
       const data = await res.json().catch(() => ({}));
@@ -391,6 +477,9 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   const finalizarPartido = async () => {
     if (isSubmitting) return;
+    // FASE D UX: el cierre del acta exige que el servidor valide las firmas exigibles;
+    // sin conexion no se puede garantizar, asi que se bloquea con aviso claro.
+    if (!enLinea) return mostrarToast('Finaliza el acta con conexion: el servidor valida las firmas exigibles antes de cerrar.', 'error');
     if (!(await pedirConfirmacion('Finalizar acta', '¿Cerrar acta y registrar hora final?'))) return;
     
     setIsSubmitting(true);
@@ -509,6 +598,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
+      <ChipOffline enLinea={enLinea} pendientes={colaOffline.pendientes} fallidos={colaOffline.fallidos} reintentando={reintentandoCola} onReintentar={reintentarColaFallidos} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
       <TourGuia rol="anotador" activo={tourActivo} onCerrar={cerrarTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />

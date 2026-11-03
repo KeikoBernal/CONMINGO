@@ -73,9 +73,14 @@ export default function App() {
       });
       if (!res.ok) return 'Usuario';
       const datosPerfil = await res.json();
-      return datosPerfil?.rol || 'Usuario';
+      const rolPerfil = datosPerfil?.rol || 'Usuario';
+      // FASE D UX: cache local del rol; sin senal, el refresh mantiene el panel del oficial abierto.
+      try { localStorage.setItem('conmingo_rol_cache', rolPerfil); } catch (errCache) { /* almacenamiento no disponible */ }
+      return rolPerfil;
     } catch (err) {
-      return 'Usuario';
+      // FASE D UX: sin conexion se usa el ultimo rol conocido (si existe) para no
+      // degradar al panel general a un arbitro o anotador en plena cancha.
+      try { return localStorage.getItem('conmingo_rol_cache') || 'Usuario'; } catch (errCache) { return 'Usuario'; }
     }
   };
 
@@ -123,7 +128,12 @@ export default function App() {
   // LOTE M (PWA offline): sin conexión, toda la app (login, dashboards y pizarra
   // pública) muestra la pantalla offline en lugar de errores de red crípticos.
   // El hook useConexion la retira sola al volver la señal (evento 'online').
-  if (!enLinea) {
+  // FASE D UX: sin conexion toda la app muestra la pantalla offline, EXCEPTO los
+  // oficiales de cancha (arbitro y anotador), que siguen operando el partido con
+  // la cola local y el chip "Sin conexion" de sus paneles.
+  const rolParaOffline = (rolUsuario || '').toLowerCase();
+  const esOficialDeCancha = rolParaOffline === 'arbitro' || rolParaOffline === 'árbitro' || rolParaOffline === 'arbitro/anotador' || rolParaOffline === 'árbitro / anotador' || rolParaOffline === 'anotador';
+  if (!enLinea && !esOficialDeCancha) {
     return <PantallaOffline verificando={verificando} onReintentar={verificarConexion} />;
   }
 
@@ -297,6 +307,7 @@ export default function App() {
   const cerrarSesion = async () => {
     enProcesoLoginRef.current = false;
     await supabase.auth.signOut();
+    try { localStorage.removeItem('conmingo_rol_cache'); } catch (errCache) { /* almacenamiento no disponible */ } // FASE D UX
     setUsuario(null);
     setRolUsuario('');
     setPaso(1);

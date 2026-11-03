@@ -601,7 +601,7 @@ router.get('/partidos/:id/incidencias', async (req, res) => {
 
 router.post('/partidos/:id/incidencias', async (req, res) => {
   const partidoId = req.params.id;
-  const { tipo, descripcion, jugador_id } = req.body;
+  const { tipo, descripcion, jugador_id, client_id } = req.body; // FASE D UX: client_id deduplica el reenvio offline
   try {
     const acceso = await puedeAccederPartido(req, partidoId);
     if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error });
@@ -631,10 +631,19 @@ router.post('/partidos/:id/incidencias', async (req, res) => {
         return res.status(400).json({ error: 'El jugador indicado no es válido.' });
       }
     }
+    // FASE D UX (offline): la incidencia llega con client_id cuando se registro sin
+    // conexion; si ya existe (reenvio al reconectar) se devuelve la original.
+    const clientId = client_id ? String(client_id).trim().slice(0, 120) : null;
+    if (clientId) {
+      const previa = await db.query('SELECT * FROM public.incidencias_partido WHERE partido_id = $1 AND client_id = $2', [partidoId, clientId]);
+      if (previa.rows.length > 0) {
+        return res.status(201).json({ mensaje: 'Incidencia ya registrada.', incidencia: previa.rows[0] });
+      }
+    }
     const insertada = await db.query(
-      `INSERT INTO public.incidencias_partido (partido_id, usuario_id, jugador_id, tipo, descripcion)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [partidoId, req.usuario.id, jugadorIdNum, tipoNormalizado, descLimpia]
+      `INSERT INTO public.incidencias_partido (partido_id, usuario_id, jugador_id, tipo, descripcion, client_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [partidoId, req.usuario.id, jugadorIdNum, tipoNormalizado, descLimpia, clientId]
     );
     await registrarAuditoria(req.usuario.id, 'REGISTRAR_INCIDENCIA', 'incidencias_partido', { partido_id: parseInt(partidoId) }, { tipo: tipoNormalizado, jugador_id: jugadorIdNum }, req.ip, await obtenerOrgDePartido(partidoId));
     res.status(201).json({ mensaje: 'Incidencia registrada correctamente.', incidencia: insertada.rows[0] });
