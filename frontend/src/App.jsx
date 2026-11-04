@@ -415,10 +415,10 @@ export default function App() {
               </defs>
               <circle cx="30" cy="34" r="26" fill="url(#grad-bola-nav)" />
               <g fill="none" stroke="#4A2313" strokeWidth="4" strokeLinecap="round">
-                <ellipse cx="30" cy="34" rx="25" ry="8" transform="rotate(0 30 34)" />
-                <ellipse cx="30" cy="34" rx="25" ry="8" transform="rotate(45 30 34)" />
-                <ellipse cx="30" cy="34" rx="25" ry="8" transform="rotate(90 30 34)" />
-                <ellipse cx="30" cy="34" rx="25" ry="8" transform="rotate(135 30 34)" />
+                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(0 30 34)" />
+                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(45 30 34)" />
+                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(90 30 34)" />
+                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(135 30 34)" />
               </g>
               <ellipse cx="20" cy="24" rx="6" ry="3.5" fill="#FFF7DF" opacity="0.35" transform="rotate(-28 20 24)" />
               <circle cx="53" cy="10" r="6" fill="#E7BA67" stroke="#9E7A2E" strokeWidth="2" />
