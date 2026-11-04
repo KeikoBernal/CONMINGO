@@ -966,6 +966,42 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                   </div>
                 </div>
 
+                {/* ACCIONES PRINCIPALES DEL PARTIDO: iniciar y finalizar quedan a la
+                    cima de la planilla, ordenados por prioridad de uso (pedido de Keiko). */}
+                {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
+                  <div className="flex gap-2 items-stretch mb-4">
+                    {partidoActivo.estado === 'Agendado' && (
+                      <button
+                        onClick={handleIniciarPartido}
+                        disabled={isSubmitting}
+                        className={`min-w-0 flex-1 py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                      >
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                        {isSubmitting ? 'INICIANDO...' : 'INICIAR PARTIDO'}
+                      </button>
+                    )}
+                    {partidoActivo.estado === 'En Curso' && (
+                      <button
+                        onClick={finalizarPartido}
+                        disabled={isSubmitting}
+                        className={`min-w-0 flex-1 py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+                      >
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
+                        {isSubmitting ? 'FINALIZANDO...' : 'FINALIZAR ACTA'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => window.open('/?vista=simulador' + (partidoActivo ? '&partido_id=' + (partidoActivo.uuid_publico || partidoActivo.id) : ''), '_blank')}
+                      title="Simulador de Partidos (nueva pestaña)"
+                      aria-label="Simulador de Partidos (nueva pestaña)"
+                      className="w-14 shrink-0 py-4 rounded-xl bg-brand-blue text-white text-[0.65rem] font-bold tracking-wider hover:bg-brand-brown transition-colors shadow-md flex flex-col justify-center items-center gap-1"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12m9 0a9 9 0 11-18 0 9 9 0 0118 0M12 12m5 0a5 5 0 11-10 0 5 5 0 0110 0M12 12m1 0a1 1 0 11-2 0 1 1 0 012 0" /></svg>
+                      Simulador
+                    </button>
+                  </div>
+                )}
+
                 <div id="acta-planilla-pdf">
                   <PlanillaUniversal
                     rol={partidoActivo.estado === 'Finalizado' ? 'espectador' : 'anotador'}
@@ -985,40 +1021,6 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
               {/* BARRA LATERAL DERECHA: HERRAMIENTAS DE MESA */}
               <div className="w-full lg:w-80 flex flex-col gap-5 shrink-0 lg:sticky lg:top-6">
-                
-                                {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
-                  <div className="flex gap-2 items-stretch">
-                    {partidoActivo.estado === 'Agendado' && (
-                      <button 
-                        onClick={handleIniciarPartido} 
-                        disabled={isSubmitting}
-                        className={`min-w-0 flex-1 py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                      >
-                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
-                        {isSubmitting ? 'INICIANDO...' : 'INICIAR PARTIDO'}
-                      </button>
-                    )}
-                    {partidoActivo.estado === 'En Curso' && (
-                      <button 
-                        onClick={finalizarPartido} 
-                        disabled={isSubmitting}
-                        className={`min-w-0 flex-1 py-4 rounded-xl text-lg font-black tracking-wider transition-colors shadow-md flex justify-center items-center gap-2 text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
-                      >
-                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
-                        {isSubmitting ? 'FINALIZANDO...' : 'FINALIZAR ACTA'}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => window.open('/?vista=simulador' + (partidoActivo ? '&partido_id=' + (partidoActivo.uuid_publico || partidoActivo.id) : ''), '_blank')}
-                      title="Simulador de Partidos (nueva pestaña)"
-                      aria-label="Simulador de Partidos (nueva pestaña)"
-                      className="w-14 shrink-0 py-4 rounded-xl bg-brand-blue text-white text-[0.65rem] font-bold tracking-wider hover:bg-brand-brown transition-colors shadow-md flex flex-col justify-center items-center gap-1"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12m9 0a9 9 0 11-18 0 9 9 0 0118 0M12 12m5 0a5 5 0 11-10 0 5 5 0 0110 0M12 12m1 0a1 1 0 11-2 0 1 1 0 012 0" /></svg>
-                      Simulador
-                    </button>
-                  </div>
-                )}
 
                 {/* FIRMAS DIGITALES DEL ACTA (LOTE 6D) */}
                 {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
