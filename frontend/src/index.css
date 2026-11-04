@@ -187,3 +187,105 @@ body.modo-luz-solar button {
   }
 }
 
+
+/* ==========================================
+   INICIO PUBLICO (CONMINGO): LA JUGADA
+   Las bolas criollas ruedan hacia el mingo
+   dorado cuando la seccion entra en pantalla
+   (el IntersectionObserver del componente agrega
+   la clase jugada-animar).
+   ========================================== */
+
+/* Posiciones finales dentro de la cancha */
+.jugada-cancha .bola-jugada { position: absolute; opacity: 0; }
+.jugada-cancha .bola-jugada-1 { left: 68%; top: 22%; }
+.jugada-cancha .bola-jugada-2 { left: 46%; top: 60%; }
+.jugada-cancha .bola-jugada-3 { left: 22%; top: 42%; }
+.jugada-cancha .mingo-jugada { position: absolute; right: 4%; top: 36%; }
+.jugada-cancha .anillo-arrimada { opacity: 0; }
+.jugada-cancha .etiqueta-arrimada { opacity: 0; }
+
+/* Recorrido de cada bola: entra desde la izquierda y frena cerca del mingo */
+@keyframes bola-recorre-1 {
+  0% { left: -20%; opacity: 0; }
+  8% { opacity: 1; }
+  72% { left: 72%; }
+  86% { left: 67%; }
+  100% { left: 68%; opacity: 1; }
+}
+@keyframes bola-recorre-2 {
+  0% { left: -25%; opacity: 0; }
+  8% { opacity: 1; }
+  70% { left: 50%; }
+  84% { left: 45%; }
+  100% { left: 46%; opacity: 1; }
+}
+@keyframes bola-recorre-3 {
+  0% { left: -15%; opacity: 0; }
+  8% { opacity: 1; }
+  70% { left: 26%; }
+  84% { left: 21%; }
+  100% { left: 22%; opacity: 1; }
+}
+
+/* La bola gira sobre su eje mientras avanza (rodadura) */
+@keyframes bola-rueda {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(1080deg); }
+}
+
+/* El mingo aparece primero, con un pequeno rebote */
+@keyframes mingo-aparece {
+  0% { transform: scale(0.3); opacity: 0; }
+  70% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Anillo dorado de la bola arrimada y su etiqueta */
+@keyframes anillo-arrimada {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes etiqueta-arrimada {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Secuencia completa (delays encadenados) */
+.jugada-animar .bola-jugada-1 { animation: bola-recorre-1 1.5s cubic-bezier(0.22, 0.85, 0.35, 1) 0.5s both; }
+.jugada-animar .bola-jugada-2 { animation: bola-recorre-2 1.4s cubic-bezier(0.22, 0.85, 0.35, 1) 1.15s both; }
+.jugada-animar .bola-jugada-3 { animation: bola-recorre-3 1.3s cubic-bezier(0.22, 0.85, 0.35, 1) 1.8s both; }
+.jugada-animar .bola-gira-1 { animation: bola-rueda 1.5s linear 0.5s both; }
+.jugada-animar .bola-gira-2 { animation: bola-rueda 1.4s linear 1.15s both; }
+.jugada-animar .bola-gira-3 { animation: bola-rueda 1.3s linear 1.8s both; }
+.jugada-animar .mingo-jugada { animation: mingo-aparece 0.6s ease-out both; }
+.jugada-animar .anillo-arrimada { animation: anillo-arrimada 0.55s ease-out 2.7s both; }
+.jugada-animar .etiqueta-arrimada { animation: etiqueta-arrimada 0.55s ease-out 2.9s both; }
+
+/* Flotacion suave del grupo de bolas del hero */
+@keyframes flotar-suave {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.flotar-suave { animation: flotar-suave 5s ease-in-out infinite; }
+.flotar-suave-lento { animation: flotar-suave 7s ease-in-out infinite; }
+
+/* Accesibilidad: sin movimiento, todo queda en su posicion final */
+@media (prefers-reduced-motion: reduce) {
+  .jugada-animar .bola-jugada,
+  .jugada-animar .bola-gira-1,
+  .jugada-animar .bola-gira-2,
+  .jugada-animar .bola-gira-3,
+  .jugada-animar .mingo-jugada,
+  .jugada-animar .anillo-arrimada,
+  .jugada-animar .etiqueta-arrimada,
+  .flotar-suave,
+  .flotar-suave-lento {
+    animation: none;
+  }
+  .jugada-cancha .bola-jugada,
+  .jugada-cancha .anillo-arrimada,
+  .jugada-cancha .etiqueta-arrimada {
+    opacity: 1;
+  }
+}
