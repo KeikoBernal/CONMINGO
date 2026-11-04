@@ -278,6 +278,54 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     }
   }, [efectividadJugadores, manualStats, puntosPorManoLocal, puntosPorManoVisita, partidoActivo]);
 
+  // UX ajustes (pedido de Keiko): el simulador de partidos (pestana nueva)
+  // puede enviar sus datos generados para aplicarlos a la planilla real del
+  // partido activo. El simulador deja la carga en localStorage y aqui se
+  // escucha el evento storage que el navegador dispara entre pestanas.
+  const [simuladorPendiente, setSimuladorPendiente] = useState(null);
+
+  useEffect(() => {
+    const alCambiarAlmacenamiento = (evento) => {
+      if (evento.key !== 'conmingo_simulador_export' || !evento.newValue) return;
+      try { setSimuladorPendiente(JSON.parse(evento.newValue)); } catch { return; }
+    };
+    window.addEventListener('storage', alCambiarAlmacenamiento);
+    return () => window.removeEventListener('storage', alCambiarAlmacenamiento);
+  }, []);
+
+  useEffect(() => {
+    if (!simuladorPendiente) return;
+    let vigente = true;
+    (async () => {
+      const carga = simuladorPendiente;
+      const activo = partidoActivoRef.current;
+      if (!activo) {
+        mostrarToast('Para aplicar los datos del simulador, abre la planilla de un partido.', 'info');
+      } else if (String(carga.partidoId) !== String(activo.uuid_publico || activo.id)) {
+        mostrarToast('Los datos del simulador son de otro partido; no se aplicaron.', 'error');
+      } else if (activo.estado === 'Finalizado' || activo.estado === 'Suspendido') {
+        mostrarToast('El partido ya esta cerrado; no se pueden aplicar los datos del simulador.', 'error');
+      } else {
+        const aplicar = await pedirConfirmacion('Datos del simulador', 'Se reemplazara el contenido del acta en curso (lanzamientos, estadisticas y tantos por mano) con los datos generados por el simulador. Continuar?');
+        if (aplicar) {
+          const normalizarTantos = (tantos) => Array.from({ length: 20 }, (_, i) => (tantos && tantos[i] !== '' && tantos[i] != null ? String(tantos[i]) : ''));
+          const efectividad = carga.efectividadJugadores || {};
+          const stats = carga.manualStats || {};
+          const tantosLocal = normalizarTantos(carga.puntosLocal);
+          const tantosVisita = normalizarTantos(carga.puntosVisita);
+          setEfectividadJugadores(efectividad);
+          setManualStats(stats);
+          setPuntosPorManoLocal(tantosLocal);
+          setPuntosPorManoVisita(tantosVisita);
+          socketRef.current?.emit('sincronizar_planilla_completa', { partido_id: activo.id, efectividad, manualStats: stats, tantosLocal, tantosVisita });
+          mostrarToast('Datos del simulador aplicados al acta.', 'exito');
+        }
+      }
+      if (vigente) setSimuladorPendiente(null);
+    })();
+    return () => { vigente = false; };
+  }, [simuladorPendiente, mostrarToast, pedirConfirmacion]);
+
   useEffect(() => {
     let intGlobal, intTurno;
     if (cronometroGlobalActivo) intGlobal = setInterval(() => setTiempoGlobal(t => t + 1), 1000);
