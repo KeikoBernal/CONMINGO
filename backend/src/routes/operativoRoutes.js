@@ -750,6 +750,101 @@ router.post('/votacion-mvp', async (req, res) => {
 
 
 // ============================================================
+// PREMIACION DEL TORNEO: vista destacada de los campeones del
+// acta (arrimador, bochador, rastrero y Jugador Mas Util) y del
+// MVP por votacion de la liga. La consume la vista compartida de
+// premiacion (AdminLiga y delegados): pantalla, acta de
+// premiacion en PDF y diplomas individuales por campeon.
+// ============================================================
+const LANCES_MINIMOS_PREMIACION = 10; // mismo minimo de las estadisticas individuales
+
+router.get('/torneos-premiacion', async (req, res) => {
+  try {
+    const resDb = await db.query(
+      "SELECT t.id, t.nombre, t.fecha_inicio, t.fecha_fin, t.tipo FROM public.torneos t WHERE t.tipo IS DISTINCT FROM 'Flash' AND t.organizacion_id IN (SELECT organizacion_id FROM public.usuario_organizaciones WHERE usuario_id = $1 UNION SELECT organizacion_id FROM public.usuarios WHERE id = $1 AND organizacion_id IS NOT NULL) ORDER BY t.fecha_inicio DESC, t.nombre ASC",
+      [req.usuario.id]
+    );
+    res.json(resDb.rows.map(t => ({ id: t.id, nombre: t.nombre, fecha_inicio: t.fecha_inicio, fecha_fin: t.fecha_fin, tipo: t.tipo })));
+  } catch (error) {
+    console.error('Error al listar torneos para premiacion:', error);
+    res.status(500).json({ error: 'Error al obtener los torneos.' });
+  }
+});
+
+router.get('/torneos/:id/premiacion', async (req, res) => {
+  try {
+    const torneoId = parseInt(req.params.id, 10);
+    if (!torneoId) return res.status(400).json({ error: 'Torneo invalido.' });
+    const torneoRes = await db.query('SELECT id, nombre, fecha_inicio, fecha_fin, organizacion_id, reglas FROM public.torneos WHERE id = $1', [torneoId]);
+    if (torneoRes.rows.length === 0) return res.status(404).json({ error: 'Torneo no encontrado.' });
+    const torneo = torneoRes.rows[0];
+    if (!(await esMiembroDeOrg(req.usuario, torneo.organizacion_id))) {
+      return res.status(403).json({ error: 'Ese torneo no pertenece a tu liga.' });
+    }
+    // Campeones del acta: mismos criterios de las estadisticas individuales
+    // (average = buenos x 1000 / lances, con minimo de lances exigido).
+    const resDb = await db.query(
+      "SELECT j.id AS jugador_id, j.nombre, j.apellido, j.numero_dorsal, e.nombre AS equipo_nombre, COUNT(dj.id) AS lances, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) IN ('a','b','r') THEN 1 ELSE 0 END) AS lances_validos, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) IN ('a','b','r') AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'a' THEN 1 ELSE 0 END) AS lances_arrime, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'a' AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos_arrime, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'b' THEN 1 ELSE 0 END) AS lances_boche, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'b' AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos_boche, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'r' THEN 1 ELSE 0 END) AS lances_rastrero, SUM(CASE WHEN LOWER(TRIM(CAST(dj.tipo_destreza AS TEXT))) = 'r' AND dj.efectividad = true THEN 1 ELSE 0 END) AS buenos_rastrero FROM public.detalle_jugadas dj JOIN public.manos m ON dj.mano_id = m.id JOIN public.partidos p ON m.partido_id = p.id JOIN public.jugadores j ON dj.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id WHERE p.estado = 'Finalizado' AND p.torneo_id = $1 GROUP BY j.id, j.nombre, j.apellido, j.numero_dorsal, e.nombre",
+      [torneoId]
+    );
+    const average = (lances, buenos) => lances > 0 ? Math.round((buenos * 1000) / lances) : null;
+    const filas = resDb.rows.map(r => {
+      const lances = parseInt(r.lances_validos);
+      const buenos = parseInt(r.buenos);
+      const lancesArrime = parseInt(r.lances_arrime);
+      const lancesBoche = parseInt(r.lances_boche);
+      const lancesRastrero = parseInt(r.lances_rastrero);
+      return {
+        jugador_id: r.jugador_id, nombre: r.nombre, apellido: r.apellido, numero_dorsal: r.numero_dorsal, equipo_nombre: r.equipo_nombre,
+        lances, buenos,
+        lances_arrime: lancesArrime, buenos_arrime: parseInt(r.buenos_arrime),
+        lances_boche: lancesBoche, buenos_boche: parseInt(r.buenos_boche),
+        lances_rastrero: lancesRastrero, buenos_rastrero: parseInt(r.buenos_rastrero),
+        average_global: average(lances, buenos),
+        average_arrime: average(lancesArrime, parseInt(r.buenos_arrime)),
+        average_boche: average(lancesBoche, parseInt(r.buenos_boche)),
+        average_rastrero: average(lancesRastrero, parseInt(r.buenos_rastrero))
+      };
+    });
+    const campeon = (campoLances, campoAvg) => filas.filter(f => f[campoLances] >= LANCES_MINIMOS_PREMIACION).sort((a, b) => (b[campoAvg] || 0) - (a[campoAvg] || 0))[0] || null;
+    // MVP del torneo: se conoce cuando el AdminLiga cierra la votacion.
+    let mvp = null;
+    const votacion = (torneo.reglas && torneo.reglas.votacion_mvp) || null;
+    if (votacion !== 'Abierta') {
+      const conteo = await db.query(
+        "SELECT j.id AS jugador_id, TRIM(j.nombre || ' ' || j.apellido) AS jugador_nombre, e.nombre AS equipo_nombre, COUNT(v.id) AS votos FROM public.votos_mvp v JOIN public.jugadores j ON v.jugador_id = j.id JOIN public.equipos e ON j.equipo_id = e.id WHERE v.torneo_id = $1 GROUP BY j.id, j.nombre, j.apellido, e.nombre ORDER BY votos DESC, j.nombre ASC LIMIT 1",
+        [torneoId]
+      );
+      const total = await db.query('SELECT COUNT(*) AS n FROM public.votos_mvp WHERE torneo_id = $1', [torneoId]);
+      if (conteo.rows.length > 0) {
+        mvp = {
+          jugador_id: conteo.rows[0].jugador_id,
+          jugador_nombre: conteo.rows[0].jugador_nombre,
+          equipo_nombre: conteo.rows[0].equipo_nombre,
+          votos: parseInt(conteo.rows[0].votos, 10),
+          total_votos: parseInt(total.rows[0].n, 10)
+        };
+      }
+    }
+    res.json({
+      torneo: { id: torneo.id, nombre: torneo.nombre, fecha_inicio: torneo.fecha_inicio, fecha_fin: torneo.fecha_fin, votacion_mvp: votacion },
+      lances_minimos: LANCES_MINIMOS_PREMIACION,
+      campeones: {
+        arrimador: campeon('lances_arrime', 'average_arrime'),
+        bochador: campeon('lances_boche', 'average_boche'),
+        rastrero: campeon('lances_rastrero', 'average_rastrero'),
+        mas_util: campeon('lances', 'average_global')
+      },
+      ranking: filas.slice().sort((a, b) => (b.average_global || 0) - (a.average_global || 0)).slice(0, 10),
+      mvp
+    });
+  } catch (error) {
+    console.error('Error al calcular la premiacion del torneo:', error);
+    res.status(500).json({ error: 'Error al calcular la premiación del torneo.' });
+  }
+});
+
+// ============================================================
 // LOTE 4D (P1): CONFIRMACION DE PROTESTAS POR LOS OFICIALES
 // ============================================================
 router.get('/protestas-confirmacion', async (req, res) => {

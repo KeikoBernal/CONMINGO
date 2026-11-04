@@ -23,6 +23,7 @@ import FotoJugador from '../FotoJugador';
 import { generarCarnetsPdf } from '../CarnetJugador';
 import GraficasEstadisticas from '../GraficasEstadisticas';
 import ProtestasAdmin from '../ProtestasAdmin';
+import Premiacion from '../Premiacion';
 import { QRCodeCanvas } from 'qrcode.react';
 import { tecladoModal } from '../Accesibilidad';
 
@@ -1973,7 +1974,13 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <BarraSubPestanas opciones={[
                 { id: 'estadisticas', label: 'Estadísticas Globales' },
                 { id: 'historial', label: 'Historial / Archivo' },
+                { id: 'premiacion', label: 'Premiación' },
               ]} valor={subResultados} onChange={setSubResultados} />
+            )}
+
+            {/* === VISTA: PREMIACION DEL TORNEO === */}
+            {pestana === 'resultados' && subResultados === 'premiacion' && (
+              <Premiacion />
             )}
 
             {/* === VISTA: ESTADISTICAS === */}
