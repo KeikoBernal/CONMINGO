@@ -7,7 +7,6 @@ import { useEnLinea, leerCola, encolar, contarCola, procesarCola, reintentarFall
 import SistemaMensajeria from './SistemaMensajeria';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, usePaginacion, PaginacionTabla } from './HerramientasTabla'; // FASE A1 UX: paginacion compartida
 import CalendarioPartidos from '../CalendarioPartidos';
-import VisualizadorCancha from '../VisualizadorCancha';
 import BotonModoSolar from '../BotonModoSolar';
 import VotacionMvp from '../VotacionMvp';
 import ConfirmarProtestas from '../ConfirmarProtestas';
@@ -61,7 +60,6 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   
   const [modalRegistro, setModalRegistro] = useState(null);
   const [modalTantos, setModalTantos] = useState(null);
-  const [modalCancha, setModalCancha] = useState(false); // LOTE S: simulador visual de cancha
   const [modalStatPanel, setModalStatPanel] = useState(null);
   const [arbitroConectado, setArbitroConectado] = useState(false);
   
@@ -603,27 +601,6 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       <TourGuia rol="anotador" activo={tourActivo} onCerrar={cerrarTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
       
-      {/* MODAL SIMULADOR VISUAL DE CANCHA (LOTE S) */}
-      {modalCancha && partidoActivo && (
-        <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-[1700] p-4" role="dialog" aria-modal="true" aria-label="Simulador Visual de Cancha" onKeyDown={(evento) => tecladoModal(evento, () => setModalCancha(false))}>
-          <div className="bg-white rounded-xl w-full max-w-3xl shadow-2xl animate-slide-up border border-brand-gold/30 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-brand-gold/20 sticky top-0 bg-white">
-              <h3 className="text-lg font-black text-brand-brown">Simulador Visual de Cancha</h3>
-              <button autoFocus onClick={() => setModalCancha(false)} className="p-2 text-brand-brown hover:bg-brand-cream rounded-lg" title="Cerrar simulador" aria-label="Cerrar simulador">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="p-5">
-              <VisualizadorCancha
-                plantillaReglas={partidoActivo.torneo_reglas || {}}
-                nombreLocal={partidoActivo.local_nombre}
-                nombreVisita={partidoActivo.visita_nombre}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL REGISTRO JUGADAS (MESA DE ANOTACIÓN) */}
       {modalRegistro && (
         <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-1500 p-4" role="dialog" aria-modal="true" aria-label="Registro de jugada" onKeyDown={(evento) => tecladoModal(evento, () => setModalRegistro(null))}>
@@ -1032,13 +1009,13 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                       </button>
                     )}
                     <button
-                      onClick={() => setModalCancha(true)}
-                      title="Simulador Visual de Cancha"
-                      aria-label="Simulador Visual de Cancha"
+                      onClick={() => window.open('/?vista=simulador' + (partidoActivo ? '&partido_id=' + (partidoActivo.uuid_publico || partidoActivo.id) : ''), '_blank')}
+                      title="Simulador de Partidos (nueva pestaña)"
+                      aria-label="Simulador de Partidos (nueva pestaña)"
                       className="w-14 shrink-0 py-4 rounded-xl bg-brand-blue text-white text-[0.65rem] font-bold tracking-wider hover:bg-brand-brown transition-colors shadow-md flex flex-col justify-center items-center gap-1"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12m9 0a9 9 0 11-18 0 9 9 0 0118 0M12 12m5 0a5 5 0 11-10 0 5 5 0 0110 0M12 12m1 0a1 1 0 11-2 0 1 1 0 012 0" /></svg>
-                      Simular
+                      Simulador
                     </button>
                   </div>
                 )}
