@@ -44,6 +44,8 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bloqueadoHasta, setBloqueadoHasta] = useState(null);
   const [correoPorVerificar, setCorreoPorVerificar] = useState(''); // LOTE 6G: correo del aviso de verificacion pendiente
+  const [mostrarOlvide, setMostrarOlvide] = useState(false); // LOTE 6K: panel de recuperacion de contrasena del login
+  const [enviandoOlvide, setEnviandoOlvide] = useState(false); // LOTE 6K: candado del boton de envio del enlace
 
   const enProcesoLoginRef = useRef(false);
 
@@ -304,6 +306,29 @@ export default function App() {
     }
   };
 
+  // LOTE 6K: recuperacion de contrasena desde el login. Pide al backend el
+  // enlace de restablecimiento con el correo indicado; el backend responde
+  // SIEMPRE con un mensaje generico (no revela si el correo existe) y aplica
+  // su propio rate limit. Aqui solo se bloquea el boton mientras dura la peticion.
+  const manejarOlvide = async (e) => {
+    e.preventDefault();
+    if (enviandoOlvide) return;
+    setMensaje('');
+    setEnviandoOlvide(true);
+    try {
+      const resOlvide = await fetch(`${API_URL}/solicitar-restablecer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const datosOlvide = await resOlvide.json().catch(() => ({}));
+      setMensaje(datosOlvide.mensaje || datosOlvide.error || 'Si el correo está registrado, enviamos un enlace para restablecer la contraseña.');
+    } catch (err) {
+      setMensaje('Error de conexión con el servidor. Intenta de nuevo.');
+    }
+    setEnviandoOlvide(false);
+  };
+
   const cerrarSesion = async () => {
     enProcesoLoginRef.current = false;
     await supabase.auth.signOut();
@@ -386,7 +411,7 @@ export default function App() {
           </div>
           
           <button 
-            onClick={() => { setVista(vista === 'inicio' ? 'login' : 'inicio'); setPaso(1); setMensaje(''); }}
+            onClick={() => { setVista(vista === 'inicio' ? 'login' : 'inicio'); setPaso(1); setMostrarOlvide(false); setMensaje(''); }}
             className="flex items-center gap-2 px-6 py-2.5 bg-brand-brown text-brand-cream rounded-lg hover:bg-brand-rust transition-all duration-300 shadow-md hover:shadow-lg font-semibold transform hover:-translate-y-0.5"
           >
             {vista === 'inicio' ? (
@@ -494,14 +519,29 @@ export default function App() {
                 <svg className="w-8 h-8 text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8V7z" /></svg>
               </div>
               <h3 className="text-2xl font-bold text-brand-brown">
-                {paso === 1 ? 'Acceso al Sistema' : 'Verificación de Seguridad'}
+                {mostrarOlvide ? 'Recuperar Contraseña' : (paso === 1 ? 'Acceso al Sistema' : 'Verificación de Seguridad')}
               </h3>
               <p className="text-sm text-brand-brown/60 mt-2">
-                {paso === 1 ? 'Ingresa tus credenciales oficiales' : `Ingresa el código enviado a ${email}`}
+                {mostrarOlvide ? 'Enviaremos a tu correo un enlace para restablecerla' : (paso === 1 ? 'Ingresa tus credenciales oficiales' : `Ingresa el código enviado a ${email}`)}
               </p>
             </div>
 
-            <form onSubmit={manejarLogin} className="space-y-6">
+            {mostrarOlvide ? (
+              <form onSubmit={manejarOlvide} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-brand-brown">Correo Electrónico</label>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full px-4 py-3 bg-brand-cream/20 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-rust focus:ring-2 focus:ring-brand-rust/20 transition-all" />
+                </div>
+                <p className="text-xs text-brand-brown/60">Si el correo está registrado, recibirás un enlace para establecer una contraseña nueva. El enlace es válido por 24 horas y de un solo uso.</p>
+                <button type="submit" disabled={enviandoOlvide} className={`w-full text-white py-3.5 rounded-lg font-bold tracking-wide transition-colors shadow-md hover:shadow-lg mt-4 ${enviandoOlvide ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-rust hover:bg-brand-brown'}`}>
+                  {enviandoOlvide ? 'Enviando...' : 'Enviar enlace de restablecimiento'}
+                </button>
+                <button type="button" onClick={() => { setMostrarOlvide(false); setMensaje(''); }} className="w-full py-3 rounded-lg font-bold bg-gray-100 text-brand-brown hover:bg-gray-200 transition-colors">
+                  Volver al acceso
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={manejarLogin} className="space-y-6">
               {paso === 1 && (
                 <>
                   <div className="space-y-2">
@@ -526,6 +566,12 @@ export default function App() {
                   <button type="submit" disabled={isSubmitting} className={`w-full text-white py-3.5 rounded-lg font-bold tracking-wide transition-colors shadow-md hover:shadow-lg mt-4 ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-rust hover:bg-brand-brown'}`}>
                     {isSubmitting ? 'Validando...' : 'Entrar al Sistema'}
                   </button>
+
+                  <div className="text-center">
+                    <button type="button" onClick={() => { setMostrarOlvide(true); setMensaje(''); }} className="text-sm font-semibold text-brand-blue hover:text-brand-rust transition-colors">
+                      ¿Olvidó su contraseña?
+                    </button>
+                  </div>
                 </>
               )}
 
@@ -542,9 +588,10 @@ export default function App() {
                 </div>
               )}
             </form>
+            )}
 
             {mensaje && (
-              <div className={`mt-6 p-4 rounded-lg text-sm text-center font-medium ${mensaje.toLowerCase().includes('error') || mensaje.toLowerCase().includes('incorrectas') || mensaje.toLowerCase().includes('aún no ha sido verificado') ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+              <div className={`mt-6 p-4 rounded-lg text-sm text-center font-medium ${mensaje.toLowerCase().includes('error') || mensaje.toLowerCase().includes('incorrectas') || mensaje.toLowerCase().includes('aún no ha sido verificado') || mensaje.toLowerCase().includes('demasiadas') ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
                 {mensaje}
               </div>
             )}
