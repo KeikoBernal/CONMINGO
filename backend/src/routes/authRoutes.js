@@ -86,7 +86,7 @@ const { createClient } = require('@supabase/supabase-js');
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 const supabaseAdminProxy = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 // LOTE 6G: utilidad de correo saliente y tokens de verificacion
-const { consumirTokenCorreo, crearTokenCorreo, reenviarVerificacion } = require('../utilidades/correo');
+const { consumirTokenCorreo, crearTokenCorreo, reenviarVerificacion, enviarRestablecerPassword } = require('../utilidades/correo'); // LOTE 6K: enlace de recuperacion pedido por la propia persona
 
 const MAX_INTENTOS_LOGIN = 5;
 const MINUTOS_BLOQUEO_LOGIN = 15;
@@ -131,6 +131,18 @@ const restablecerLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de restablecer la contraseña. Espera unos minutos antes de reintentar.' }
+});
+
+// LOTE 6K: limite del acceso publico de recuperacion de contrasena
+// (5 cada 15 minutos por IP y correo). Dentro de la ventana, un atacante
+// no puede escanear correos del sistema ni bombardear peticiones.
+const olvideLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  keyGenerator: claveLoginLimiter,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes de restablecimiento. Espera unos minutos antes de reintentar.' }
 });
 
 // Paso 1: verificación de email + contraseña (bloqueo persistente por correo)
@@ -428,7 +440,7 @@ router.post('/restablecer-password', restablecerLimiter, async (req, res) => {
   try {
     const fila = await consumirTokenCorreo(token, 'recuperacion');
     if (!fila) {
-      return res.status(400).json({ error: 'El enlace de restablecimiento es inválido o ya expiró. Pide al administrador de tu liga que envíe uno nuevo.' });
+      return res.status(400).json({ error: 'El enlace de restablecimiento es inválido o ya expiró. Puedes pedir uno nuevo con ¿Olvidó tu contraseña? en la pantalla de acceso.' });
     }
     const { error: errorAuth } = await supabaseAdminProxy.auth.admin.updateUserById(fila.usuario_id, {
       password: nuevaPassword.trim(),
@@ -449,6 +461,55 @@ router.post('/restablecer-password', restablecerLimiter, async (req, res) => {
   } catch (error) {
     console.error('Error restableciendo contraseña:', error);
     return res.status(500).json({ error: 'Error interno al restablecer la contraseña.' });
+  }
+});
+
+// ============================================================
+// LOTE 6K: ¿OLVIDÓ SU CONTRASEÑA? (acceso publico, sin sesion)
+// ============================================================
+// La persona pide por si misma el enlace de restablecimiento con su correo.
+// Medidas anti-abuso de un endpoint expuesto al publico:
+//   1. Rate limit por IP y correo (5 cada 15 minutos).
+//   2. Respuesta SIEMPRE identica y generica: no revela si el correo existe
+//      en el sistema (evita el enumerado de cuentas).
+//   3. El control anti-reenvio de la utilidad de correo (ventana de 2 minutos
+//      por usuario y tipo) impide inundar la bandeja de una victima aunque
+//      el atacante rote IPs o repita el mismo correo.
+//   4. El enlace usa el token de recuperacion: 24 horas, de un solo uso y
+//      guardado como hash sha256; cada pedido nuevo invalida el anterior.
+//   5. La contrasena nunca viaja en el correo: la persona la establece en la
+//      pantalla del enlace con la politica completa del sistema.
+//   6. A una cuenta sin verificar no se le manda enlace de clave (seguiria
+//      bloqueada igual): recibe el correo de verificacion pendiente.
+// ============================================================
+router.post('/solicitar-restablecer', olvideLimiter, async (req, res) => {
+  const email = normalizarEmailLogin(req.body?.email);
+  if (!REGEX_EMAIL_LOGIN.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Correo con formato inválido.' });
+  }
+  try {
+    const usuarioRes = await db.query('SELECT id, nombre, correo_verificado FROM public.usuarios WHERE email = $1 AND estado <> $2', [email, 'Inactivo']);
+    const usuarioBD = usuarioRes.rows[0];
+    if (usuarioBD) {
+      // El resultado del envio se ignora a proposito: la respuesta es generica
+      // tanto si el correo no existe como si el envio fallo.
+      if (usuarioBD.correo_verificado === false) {
+        await reenviarVerificacion({ usuarioId: usuarioBD.id, para: email, nombre: usuarioBD.nombre });
+      } else {
+        await enviarRestablecerPassword({ usuarioId: usuarioBD.id, para: email, nombre: usuarioBD.nombre });
+      }
+      try {
+        await db.query(
+          'INSERT INTO public.audit_logs (usuario_id, accion, tabla, nuevos_valores, ip) VALUES ($1, $2, $3, $4, $5)',
+          [usuarioBD.id, 'SOLICITAR_RESTABLECER', 'usuarios', JSON.stringify({ email, motivo: usuarioBD.correo_verificado === false ? 'verificacion_pendiente' : 'recuperacion' }), req.ip]
+        );
+      } catch (_) { /* no bloquea y no revela nada */ }
+    }
+    // Respuesta generica: no revela si el correo existe en el sistema
+    return res.json({ mensaje: 'Si el correo está registrado, enviamos un enlace para restablecer la contraseña. Revisa tu bandeja de entrada y la carpeta de correo no deseado.' });
+  } catch (error) {
+    console.error('Error solicitando restablecimiento:', error);
+    return res.status(500).json({ error: 'Error interno al procesar la solicitud.' });
   }
 });
 
