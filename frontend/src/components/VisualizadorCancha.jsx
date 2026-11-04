@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // LOTE S: Simulador Visual Dinámico de Bolas Criollas.
 // Componente de ASISTENCIA pasivo para pruebas manuales y validación del ciclo
 // de vida del torneo: no consulta la API, no escribe en la base de datos, no
 // altera estados externos y no envía eventos en tiempo real. Su única función
 // es dibujar una entrada simulada y sugerir el tanteo según la gráfica.
+// MODO DATOS (pedido de Keiko): si se recibe la prop entrada (una mano del
+// acta con sus lanzamientos y tantos registrados), dibuja ESA mano en vez de
+// generar su propia entrada aleatoria; sin entrada conserva su modo
+// interactivo original.
 
 const MARGEN_TABLERO = 5; // Porcentaje de margen para que las piezas no se corten.
 const PROBABILIDAD_NULA = 0.2; // Proporción de lanzamientos anulados por entrada.
@@ -12,6 +16,32 @@ const PROBABILIDAD_NULA = 0.2; // Proporción de lanzamientos anulados por entra
 // Tipos de lanzamiento del sistema, con el mismo vocabulario del modal del
 // Anotador: 'A'/'a' = Arrime válido/nulo, 'B'/'b' = Boche válido/nulo.
 const TIPOS_LANZAMIENTO = ['Arrime', 'Boche'];
+
+// MODO DATOS: PRNG determinista (mulberry32) para que el dibujo de una mano sea
+// estable entre renderizaciones; la semilla sale del numero de mano.
+const prngDeterminista = (semilla) => {
+  let a = semilla >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+// Vocabulario completo del acta: A/a arrime, B/b boche de aire, R/r rastrero,
+// N nulo general. Mayuscula = lanzamiento valido.
+const tipoDeValor = (valor) => {
+  const v = String(valor || '').toUpperCase();
+  if (v === 'A') return 'Arrime';
+  if (v === 'B') return 'Boche';
+  if (v === 'R') return 'Rastrero';
+  return 'Nulo general';
+};
+const esValorValido = (valor) => {
+  const v = String(valor || '');
+  return v !== '' && v !== 'N' && v === v.toUpperCase();
+};
 
 // Lectura estricta de la plantilla de reglas del torneo (sin hardcodeo):
 // la cantidad de bolas por equipo se toma de la propiedad esferas_por_equipo.
@@ -36,7 +66,7 @@ const lanzamientoAleatorio = () => ({
 // geometría del tablero coincide con la distancia real sobre la arena.
 const distanciaAlMingo = (bola, mingo) => Math.sqrt(Math.pow(bola.x - mingo.x, 2) + Math.pow(bola.y - mingo.y, 2));
 
-export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal = 'Local', nombreVisita = 'Visita' }) {
+export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal = 'Local', nombreVisita = 'Visita', entrada = null }) {
   const [mingo, setMingo] = useState(null);
   const [bolasLocal, setBolasLocal] = useState([]);
   const [bolasVisita, setBolasVisita] = useState([]);
@@ -44,6 +74,64 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
   const [bolaSeleccionada, setBolaSeleccionada] = useState(null);
 
   const esferasPorEquipo = leerEsferasPorEquipo(plantillaReglas);
+
+  const modoDatos = !!entrada;
+
+  // MODO DATOS: dibuja los lanzamientos registrados de una mano del acta (los
+  // de la planilla, no una entrada aleatoria propia). Los tantos de la mano son
+  // los registrados en el acta; las validas se dibujan cerca del mingo y las
+  // nulas alejadas, con posiciones deterministicas por mano.
+  useEffect(() => {
+    if (!entrada) return;
+    const azar = prngDeterminista(((entrada.mano || 1) * 7919) + 13);
+    const nuevoMingo = { x: 30 + azar() * 40, y: 30 + azar() * 40 };
+    const posicionar = (valida) => {
+      const angulo = azar() * 2 * Math.PI;
+      const radio = valida ? 5 + azar() * 15 : 28 + azar() * 25;
+      return {
+        x: Math.min(100 - MARGEN_TABLERO, Math.max(MARGEN_TABLERO, nuevoMingo.x + Math.cos(angulo) * radio)),
+        y: Math.min(100 - MARGEN_TABLERO, Math.max(MARGEN_TABLERO, nuevoMingo.y + Math.sin(angulo) * radio))
+      };
+    };
+    const aBola = (jugada) => {
+      const valida = esValorValido(jugada.valor);
+      return { ...posicionar(valida), tipo: tipoDeValor(jugada.valor), valida, valor: String(jugada.valor || ''), etiqueta: jugada.etiqueta || '' };
+    };
+    const jugadasLocal = entrada.jugadas.filter(j => j.equipo === 'Local');
+    const jugadasVisita = entrada.jugadas.filter(j => j.equipo === 'Visita');
+    const nuevasLocal = jugadasLocal.map(aBola);
+    const nuevasVisita = jugadasVisita.map(aBola);
+
+    const distancias = []
+      .concat(nuevasLocal.map((bola, i) => ({ equipo: 'Local', indice: jugadasLocal[i].indice, etiqueta: bola.etiqueta, valor: bola.valor, tipo: bola.tipo, valida: bola.valida, distancia: distanciaAlMingo(bola, nuevoMingo) })))
+      .concat(nuevasVisita.map((bola, i) => ({ equipo: 'Visita', indice: jugadasVisita[i].indice, etiqueta: bola.etiqueta, valor: bola.valor, tipo: bola.tipo, valida: bola.valida, distancia: distanciaAlMingo(bola, nuevoMingo) })));
+
+    // Solo las bolas válidas participan del arrime; las nulas quedan como evidencia.
+    const validas = distancias.filter(d => d.valida).sort((a, b) => a.distancia - b.distancia);
+    const nulas = distancias.filter(d => !d.valida).sort((a, b) => a.distancia - b.distancia);
+    const filas = validas.concat(nulas);
+
+    const tantosLocal = parseInt(entrada.tantosLocal, 10) || 0;
+    const tantosVisita = parseInt(entrada.tantosVisita, 10) || 0;
+    const manoNula = tantosLocal === 0 && tantosVisita === 0;
+    const ganador = tantosLocal > tantosVisita ? 'Local' : tantosVisita > tantosLocal ? 'Visita' : null;
+
+    setBolaSeleccionada(null);
+    setMingo(nuevoMingo);
+    setBolasLocal(nuevasLocal);
+    setBolasVisita(nuevasVisita);
+    setVeredicto({
+      filas,
+      ganador,
+      puntos: manoNula ? 0 : Math.max(tantosLocal, tantosVisita),
+      raya: false,
+      sinValidas: validas.length === 0,
+      tipoGanador: validas.length > 0 ? validas[0].tipo : null,
+      modoDatos: true,
+      mano: entrada.mano || 1,
+      manoNula
+    });
+  }, [entrada]);
 
   // Genera posiciones aleatorias para el mingo y las bolas de ambos equipos,
   // clasifica cada lanzamiento (Arrime/Boche, Válido/Nulo), agrupa las
@@ -86,7 +174,7 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
     });
   };
 
-  const hayLanzamiento = mingo && bolasLocal.length > 0 && bolasVisita.length > 0;
+  const hayLanzamiento = mingo && (modoDatos ? bolasLocal.length + bolasVisita.length > 0 : bolasLocal.length > 0 && bolasVisita.length > 0);
 
   // M3: panel de referencia por lanzamiento. Todo se deriva del veredicto ya
   // calculado; nada sale del componente (mantiene el contrato pasivo del Lote S).
@@ -95,20 +183,28 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
   const posicionSel = bolaSeleccionada ? (bolaSeleccionada.equipo === 'Local' ? bolasLocal[bolaSeleccionada.indice - 1] : bolasVisita[bolaSeleccionada.indice - 1]) : null;
   const ordenValidas = filaSel && filaSel.valida ? veredicto.filas.filter(f => f.valida).findIndex(f => f.equipo === filaSel.equipo && f.indice === filaSel.indice) : -1;
   const puntuaSel = !!(filaSel && filaSel.valida && !veredicto.raya && !veredicto.sinValidas && ordenValidas !== -1 && ordenValidas < veredicto.puntos);
-  const codigoSel = filaSel ? (filaSel.tipo === 'Arrime' ? (filaSel.valida ? 'A' : 'a') : (filaSel.valida ? 'B' : 'b')) : '';
+  const codigoSel = filaSel ? (filaSel.valor || (filaSel.tipo === 'Arrime' ? (filaSel.valida ? 'A' : 'a') : (filaSel.valida ? 'B' : 'b'))) : '';
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-xs text-brand-brown/60 font-medium max-w-md">
-          Herramienta de asistencia para pruebas manuales. No registra jugadas, no modifica el partido ni envía datos.
-        </p>
-        <button
-          onClick={lanzarBolas}
-          className="px-5 py-3 bg-brand-rust text-white rounded-lg font-bold tracking-wider hover:bg-brand-brown transition-colors shadow-sm"
-        >
-          LANZAR BOLAS
-        </button>
+        {modoDatos ? (
+          <p className="text-xs text-brand-brown/60 font-medium max-w-md">
+            El tablero dibuja los lanzamientos registrados en la planilla para la mano seleccionada (validas cerca del mingo, nulas alejadas). No genera entradas propias.
+          </p>
+        ) : (
+          <p className="text-xs text-brand-brown/60 font-medium max-w-md">
+            Herramienta de asistencia para pruebas manuales. No registra jugadas, no modifica el partido ni envía datos.
+          </p>
+        )}
+        {!modoDatos && (
+          <button
+            onClick={lanzarBolas}
+            className="px-5 py-3 bg-brand-rust text-white rounded-lg font-bold tracking-wider hover:bg-brand-brown transition-colors shadow-sm"
+          >
+            LANZAR BOLAS
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
@@ -128,7 +224,7 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                   onClick={() => setBolaSeleccionada({ equipo: 'Local', indice: i + 1 })}
                   className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-blue sin-toque border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Local', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
-                  title={'Bola ' + (i + 1) + ' de ' + nombreLocal + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
+                  title={(bola.etiqueta ? bola.etiqueta + ' (' + nombreLocal + ') - ' : 'Bola ' + (i + 1) + ' de ' + nombreLocal + ' - ') + 'Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
               ))}
               {bolasVisita.map((bola, i) => (
@@ -138,14 +234,14 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                   onClick={() => setBolaSeleccionada({ equipo: 'Visita', indice: i + 1 })}
                   className={'absolute w-3.5 h-3.5 -ml-1.5 -mt-1.5 rounded-full bg-brand-rust sin-toque border border-brand-brown/40 shadow z-20 cursor-pointer transition-transform' + (esSeleccion('Visita', i + 1) ? ' scale-150 ring-4 ring-brand-gold z-30' : '') + (bola.valida ? '' : ' opacity-40 border-dashed')}
                   style={{ left: bola.x + '%', top: bola.y + '%' }}
-                  title={'Bola ' + (i + 1) + ' de ' + nombreVisita + ' - Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
+                  title={(bola.etiqueta ? bola.etiqueta + ' (' + nombreVisita + ') - ' : 'Bola ' + (i + 1) + ' de ' + nombreVisita + ' - ') + 'Lanzamiento: ' + bola.tipo + ' (' + (bola.valida ? 'Válido' : 'Nulo') + ')'}
                 />
               ))}
             </div>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center p-6">
               <p className="text-brand-brown/40 text-sm font-semibold text-center">
-                Pulsa LANZAR BOLAS para simular una entrada con {esferasPorEquipo} bolas por equipo.
+                {modoDatos ? 'Esta mano no tiene lanzamientos registrados.' : 'Pulsa LANZAR BOLAS para simular una entrada con ' + esferasPorEquipo + ' bolas por equipo.'}
               </p>
             </div>
           )}
@@ -157,21 +253,31 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-white border border-brand-brown inline-block"></span> Mingo</div>
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-brand-blue inline-block"></span> {nombreLocal}</div>
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-brand-rust inline-block"></span> {nombreVisita}</div>
-            <p className="text-xs text-brand-brown/60 font-normal pt-1">Reglas del torneo: {esferasPorEquipo} bolas por equipo (propiedad esferas_por_equipo de la plantilla de reglas).</p>
+            {modoDatos ? (
+              <p className="text-xs text-brand-brown/60 font-normal pt-1">Lanzamientos de la mano: {bolasLocal.length} de {nombreLocal}, {bolasVisita.length} de {nombreVisita}. Vocabulario del acta: A/a arrime, B/b boche, R/r rastrero, N nulo general.</p>
+            ) : (
+              <p className="text-xs text-brand-brown/60 font-normal pt-1">Reglas del torneo: {esferasPorEquipo} bolas por equipo (propiedad esferas_por_equipo de la plantilla de reglas).</p>
+            )}
             <p className="text-xs text-brand-brown/60 font-normal">Lanzamientos: Arrime y Boche. Las bolas con lanzamiento nulo se dibujan atenuadas con borde punteado y no puntúan.</p>
           </div>
 
           {veredicto && (
             <div className="bg-white border border-brand-gold/30 rounded-lg p-3 shadow-sm">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className={'px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ' + (veredicto.raya || veredicto.sinValidas ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700')}>
-                  {veredicto.raya || veredicto.sinValidas ? 'Entrada nula' : 'Entrada válida'}
+                <span className={'px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ' + (veredicto.raya || veredicto.sinValidas || veredicto.modoDatos && veredicto.manoNula ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700')}>
+                  {veredicto.modoDatos ? (veredicto.manoNula ? 'Mano nula' : 'Mano con tantos') : (veredicto.raya || veredicto.sinValidas ? 'Entrada nula' : 'Entrada válida')}
                 </span>
                 <span className="text-xs font-semibold text-brand-brown/60">
-                  {veredicto.sinValidas ? 'Sin bolas válidas' : 'Tipo de la bola más cercana: ' + veredicto.tipoGanador}
+                  {veredicto.modoDatos ? ('Mano ' + veredicto.mano + ' del acta') : (veredicto.sinValidas ? 'Sin bolas válidas' : 'Tipo de la bola más cercana: ' + veredicto.tipoGanador)}
                 </span>
               </div>
-              {veredicto.sinValidas ? (
+              {veredicto.modoDatos ? (
+                veredicto.manoNula ? (
+                  <p className="text-sm font-bold text-brand-brown">Mano {veredicto.mano} del acta: sin tantos registrados (mano nula o aun sin anotar).</p>
+                ) : (
+                  <p className="text-sm font-bold text-brand-brown">Mano {veredicto.mano} del acta: {veredicto.ganador === 'Local' ? nombreLocal : nombreVisita} anotó {veredicto.puntos} punto{veredicto.puntos === 1 ? '' : 's'}.</p>
+                )
+              ) : veredicto.sinValidas ? (
                 <p className="text-sm font-bold text-brand-brown">Entrada nula: todos los lanzamientos quedaron anulados. No hay bolas válidas para el arrime.</p>
               ) : veredicto.raya ? (
                 <p className="text-sm font-bold text-brand-brown">Caso de raya: la bola válida más cercana de cada equipo quedó a la misma distancia. Entrada nula, no se sugiere tanteo.</p>
@@ -196,13 +302,13 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                       <tr
                         key={'dist-' + i}
                         onClick={() => setBolaSeleccionada({ equipo: d.equipo, indice: d.indice })}
-                        className={(d.valida && !veredicto.raya && !veredicto.sinValidas && i < veredicto.puntos
+                        className={(d.valida && !veredicto.raya && !veredicto.sinValidas && i < veredicto.puntos && (!veredicto.modoDatos || veredicto.ganador === null || d.equipo === veredicto.ganador)
                           ? 'border-b border-brand-gold/10 font-bold text-brand-blue'
                           : (d.valida ? 'border-b border-brand-gold/10 text-brand-brown/60' : 'border-b border-brand-gold/10 text-brand-brown/40')) + (esSeleccion(d.equipo, d.indice) ? ' bg-brand-gold/20' : ' cursor-pointer hover:bg-brand-gold/10')}
                       >
                         <td className="py-1 pr-2">{i + 1}</td>
-                        <td className="py-1 pr-2">{d.equipo === 'Local' ? nombreLocal : nombreVisita} #{d.indice}</td>
-                        <td className="py-1 pr-2">{d.tipo}</td>
+                        <td className="py-1 pr-2">{veredicto.modoDatos && d.etiqueta ? d.etiqueta : (d.equipo === 'Local' ? nombreLocal : nombreVisita) + ' #' + d.indice}</td>
+                        <td className="py-1 pr-2">{d.tipo}{d.valor ? ' (' + d.valor + ')' : ''}</td>
                         <td className="py-1 pr-2">{d.valida ? 'Válido' : 'Nulo'}</td>
                         <td className="py-1">{d.distancia.toFixed(2)} %</td>
                       </tr>
@@ -223,14 +329,14 @@ export default function VisualizadorCancha({ plantillaReglas = {}, nombreLocal =
                     <span className={'w-3 h-3 rounded-full inline-block ' + (filaSel.equipo === 'Local' ? 'bg-brand-blue' : 'bg-brand-rust')}></span>
                     <span className="font-bold">{filaSel.equipo === 'Local' ? nombreLocal : nombreVisita} - Bola #{filaSel.indice}</span>
                     <span className={'px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ' + (filaSel.valida ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300')}>
-                      {filaSel.tipo} {filaSel.valida ? 'válido' : 'nulo'}
+                      {filaSel.valor === 'N' ? 'Nulo general' : filaSel.tipo + ' ' + (filaSel.valida ? 'válido' : 'nulo')}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="bg-brand-cream/10 rounded p-2">
                       <p className="text-brand-gold font-bold uppercase tracking-wider text-[0.65rem] mb-1">Código en el registro manual</p>
                       <p className="text-lg font-black leading-none">{codigoSel}</p>
-                      <p className="text-brand-cream/60 mt-1">Equivale a {filaSel.tipo.toLowerCase()} {filaSel.valida ? 'válido' : 'nulo'} del vocabulario del sistema (A/a, B/b).</p>
+                      <p className="text-brand-cream/60 mt-1">{filaSel.valor ? 'Letra ' + filaSel.valor + ' del vocabulario del acta (A/a, B/b, R/r, N).' : 'Equivale a ' + filaSel.tipo.toLowerCase() + ' ' + (filaSel.valida ? 'válido' : 'nulo') + ' del vocabulario del sistema (A/a, B/b).'}</p>
                     </div>
                     <div className="bg-brand-cream/10 rounded p-2">
                       <p className="text-brand-gold font-bold uppercase tracking-wider text-[0.65rem] mb-1">Distancia al mingo</p>

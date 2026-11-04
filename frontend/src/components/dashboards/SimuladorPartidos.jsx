@@ -78,6 +78,7 @@ export default function SimuladorPartidos() {
   });
   const [reglas, setReglas] = useState({});
   const [semilla, setSemilla] = useState(0);
+  const [manoSel, setManoSel] = useState(0);
 
   useEffect(() => {
     // Si la URL trae partido_id (uuid_publico o id interno) se usan sus
@@ -122,9 +123,38 @@ export default function SimuladorPartidos() {
   );
 
   const filasResumen = [
-    ...jugadoresLocal.map(j => ({ ...j, equipo: datosPartido.localNombre })),
-    ...jugadoresVisita.map(j => ({ ...j, equipo: datosPartido.visitaNombre }))
+    ...jugadoresLocal.map(j => ({ ...j, lado: 'Local', equipo: datosPartido.localNombre })),
+    ...jugadoresVisita.map(j => ({ ...j, lado: 'Visita', equipo: datosPartido.visitaNombre }))
   ];
+
+  // Manos con datos registrados para el tablero de cancha.
+  const manosDisponibles = useMemo(() => {
+    const lista = [];
+    for (let m = 0; m < 20; m++) {
+      const hayJugadas = Object.values(datosActuales.efectividadJugadores).some(manos => manos && manos[m]);
+      if (hayJugadas || datosActuales.puntosLocal[m] || datosActuales.puntosVisita[m]) lista.push(m);
+    }
+    return lista;
+  }, [datosActuales]);
+
+  const manoActual = manosDisponibles.includes(manoSel) ? manoSel : (manosDisponibles.length > 0 ? manosDisponibles[0] : -1);
+
+  // Entrada del tablero: lanzamientos y tantos de la mano seleccionada, tal
+  // como quedaron registrados en la planilla (el visualizador no genera nada).
+  const entradaCancha = useMemo(() => {
+    if (manoActual < 0) return null;
+    const jugadas = filasResumen.flatMap(j => {
+      const celda = (datosActuales.efectividadJugadores[j.id] || {})[manoActual];
+      if (!celda) return [];
+      return [{ equipo: j.lado, indice: j.numero_dorsal || 0, etiqueta: '#' + (j.numero_dorsal || '-') + ' ' + (j.apellido ? j.apellido + ' ' : '') + j.nombre, valor: celda.valor }];
+    });
+    return {
+      mano: manoActual + 1,
+      jugadas,
+      tantosLocal: datosActuales.puntosLocal[manoActual] || '0',
+      tantosVisita: datosActuales.puntosVisita[manoActual] || '0'
+    };
+  }, [manoActual, datosActuales, jugadoresLocal, jugadoresVisita]);
 
   return (
     <div className="min-h-screen bg-brand-cream text-brand-brown font-sans p-4 md:p-8">
@@ -208,12 +238,28 @@ export default function SimuladorPartidos() {
             </div>
 
             <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm p-4 sm:p-6">
-              <h2 className="text-lg font-black text-brand-brown uppercase tracking-wider mb-4">Simulador visual de cancha</h2>
-              <VisualizadorCancha
-                plantillaReglas={reglas}
-                nombreLocal={datosPartido.localNombre}
-                nombreVisita={datosPartido.visitaNombre}
-              />
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <h2 className="text-lg font-black text-brand-brown uppercase tracking-wider">Cancha por mano (datos del acta)</h2>
+                <select
+                  value={manoActual}
+                  onChange={e => setManoSel(Number(e.target.value))}
+                  className="p-2.5 rounded-lg border border-brand-gold/40 bg-brand-cream/20 text-sm font-bold text-brand-brown outline-none cursor-pointer"
+                >
+                  {manosDisponibles.map(m => (
+                    <option key={m} value={m}>Mano {m + 1}</option>
+                  ))}
+                </select>
+              </div>
+              {manosDisponibles.length === 0 ? (
+                <p className="text-sm text-brand-brown/60">Genera un partido para ver el tablero de una mano.</p>
+              ) : (
+                <VisualizadorCancha
+                  plantillaReglas={reglas}
+                  nombreLocal={datosPartido.localNombre}
+                  nombreVisita={datosPartido.visitaNombre}
+                  entrada={entradaCancha}
+                />
+              )}
             </div>
           </>
         )}
