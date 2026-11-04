@@ -7,6 +7,7 @@ import autoTable from 'jspdf-autotable';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CalendarioPartidos from '../CalendarioPartidos';
 import VotacionMvp from '../VotacionMvp';
+import Premiacion from '../Premiacion';
 import ProtestasDelegado from '../ProtestasDelegado';
 import Sidebar from '../Sidebar'; // UX: barra lateral compartida (colapso, grupos, notificaciones)
 import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
@@ -358,7 +359,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
 
   // Íconos SVG para la barra lateral
   // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
-  const ICONOS_PESTANA = { equipo: 'usuarios', calendario: 'calendario', estadisticas: 'estadisticas', documentos: 'documentos', pagos: 'pagos', votacion: 'votacion', protestas: 'protesta' };
+  const ICONOS_PESTANA = { equipo: 'usuarios', calendario: 'calendario', estadisticas: 'estadisticas', documentos: 'documentos', pagos: 'pagos', votacion: 'votacion', protestas: 'protesta', premiacion: 'trofeo' };
 
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
@@ -408,6 +409,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
           ]},
           { etiqueta: 'Liga', items: [
             { id: 'documentos', label: 'Documentos de la Liga' },
+            { id: 'premiacion', label: 'Premiación de la Liga' },
           ]},
         ]}
         pestana={pestana}
@@ -425,7 +427,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
         
         {/* HEADER SUPERIOR */}
         <HeaderPanel
-          titulo={pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Analítica y Scouting'}
+          titulo={pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : pestana === 'premiacion' ? 'Premiación de la Liga' : 'Analítica y Scouting'}
           onAbrirMenu={() => setMenuAbierto(true)}
           acciones={miEquipo ? <span className="hidden sm:block text-sm font-semibold text-brand-brown/70">{miEquipo.categoria} - {miEquipo.tipo_genero}</span> : null}
         />
@@ -842,6 +844,13 @@ const exportarPlanillaBase = async (partidoId, formato) => {
           {pestana === 'votacion' && (
             <div className="space-y-6 animate-fade-in">
               <VotacionMvp />
+            </div>
+          )}
+
+          {/* VISTA 8: PREMIACION DE LA LIGA */}
+          {pestana === 'premiacion' && (
+            <div className="space-y-6 animate-fade-in">
+              <Premiacion />
             </div>
           )}
 
