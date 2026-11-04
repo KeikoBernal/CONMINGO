@@ -54,6 +54,16 @@ const BarraSubPestanas = ({ opciones, valor, onChange }) => (
     </div>
   </div>
 );
+
+// UX (pedido de Keiko): las 7 sub-pestanas de Torneos se agrupan en 3 opciones de
+// barra principal (Calendario / Nuevo evento / Posiciones); cada grupo expone sus
+// sub-vistas originales en un selector interno de pills sin tocar su logica.
+const GRUPOS_TORNEOS = [
+  { id: 'calendario', label: 'Calendario', sub: [{ id: 'lista', label: 'Torneos Activos' }, { id: 'calendario', label: 'Calendario' }] },
+  { id: 'nuevo', label: 'Nuevo evento', sub: [{ id: 'crear', label: 'Nuevo Torneo' }, { id: 'flash', label: 'Torneo Flash' }, { id: 'partido-suelto', label: 'Partido Suelto' }] },
+  { id: 'posiciones', label: 'Posiciones', sub: [{ id: 'posiciones', label: 'Posiciones y Grupos' }, { id: 'acumulado', label: 'Acumulado Anual' }] }
+];
+
 export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   // UX (menus por ciclo real): las pestanas individuales se consolidan en contenedores
   // con sub-pestanas. Se migra el valor guardado para no romper la sesion abierta.
@@ -2599,26 +2609,25 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm animate-fade-in">
                 
                 <div className="flex flex-wrap gap-1 bg-brand-cream/30 p-2 border-b border-brand-gold/20">
-                  {[
-                    { id: 'lista', label: 'Torneos Activos' },
-                    { id: 'crear', label: 'Nuevo Torneo' },
-                    { id: 'flash', label: 'Torneo Flash' },
-                    { id: 'partido-suelto', label: 'Partido Suelto' },
-                    { id: 'posiciones', label: 'Posiciones y Grupos' },
-                    { id: 'acumulado', label: 'Acumulado Anual' },
-                    { id: 'calendario', label: 'Calendario' }
-                  ].map(sub => (
+                  {GRUPOS_TORNEOS.map(grupo => (
                     <button 
-                      key={sub.id} 
-                      onClick={() => setSubPestanaTorneo(sub.id)} 
-                      className={`min-h-10 rounded-lg border px-4 py-2 text-sm font-bold transition-colors ${subPestanaTorneo === sub.id ? 'border-brand-gold/30 bg-white text-brand-rust shadow-sm' : 'border-transparent text-brand-brown/70 hover:border-brand-gold/20 hover:bg-white/70 hover:text-brand-brown'}`}
+                      key={grupo.id} 
+                      onClick={() => setSubPestanaTorneo(grupo.sub.some(s => s.id === subPestanaTorneo) ? subPestanaTorneo : grupo.sub[0].id)} 
+                      className={`min-h-10 rounded-lg border px-4 py-2 text-sm font-bold transition-colors ${grupo.sub.some(s => s.id === subPestanaTorneo) ? 'border-brand-gold/30 bg-white text-brand-rust shadow-sm' : 'border-transparent text-brand-brown/70 hover:border-brand-gold/20 hover:bg-white/70 hover:text-brand-brown'}`}
                     >
-                      {sub.label}
+                      {grupo.label}
                     </button>
                   ))}
                 </div>
 
 <div className="p-4 sm:p-6">
+  <div className="mb-6">
+                  <BarraSubPestanas
+                    opciones={(GRUPOS_TORNEOS.find(g => g.sub.some(s => s.id === subPestanaTorneo)) || GRUPOS_TORNEOS[0]).sub}
+                    valor={subPestanaTorneo}
+                    onChange={setSubPestanaTorneo}
+                  />
+  </div>
   {/* SUB PESTAÑA LISTA */}
                   {subPestanaTorneo === 'lista' && (
                     <div className="space-y-6">
