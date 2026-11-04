@@ -412,13 +412,14 @@ export default function App() {
                   <stop offset="52%" stopColor="#C89B6E" />
                   <stop offset="100%" stopColor="#754625" />
                 </radialGradient>
+                <clipPath id="recorte-bola-nav"><circle cx="30" cy="34" r="26" /></clipPath>
               </defs>
               <circle cx="30" cy="34" r="26" fill="url(#grad-bola-nav)" />
-              <g fill="none" stroke="#4A2313" strokeWidth="4" strokeLinecap="round">
-                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(0 30 34)" />
-                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(45 30 34)" />
-                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(90 30 34)" />
-                <path d="M43 56.5 A26 26 0 0 1 43 11.5" transform="rotate(135 30 34)" />
+              <g fill="none" stroke="#4A2313" strokeWidth="2.5" clipPath="url(#recorte-bola-nav)">
+                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(0 30 34)" />
+                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(90 30 34)" />
+                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(180 30 34)" />
+                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(270 30 34)" />
               </g>
               <ellipse cx="20" cy="24" rx="6" ry="3.5" fill="#FFF7DF" opacity="0.35" transform="rotate(-28 20 24)" />
               <circle cx="53" cy="10" r="6" fill="#E7BA67" stroke="#9E7A2E" strokeWidth="2" />
