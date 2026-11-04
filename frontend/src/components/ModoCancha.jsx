@@ -140,6 +140,23 @@ export default function ModoCancha({
         </div>
       </div>
 
+      {/* ACCIONES DEL PARTIDO: iniciar y finalizar justo debajo del marcador,
+          orden de prioridad de uso (pedido de Keiko). */}
+      {enJuego && (
+        <div className="flex gap-2">
+          {estado === 'Agendado' && (
+            <button onClick={onIniciar} disabled={isSubmitting} className={`flex-1 py-4 rounded-xl text-base font-black tracking-wider transition-colors shadow-md text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}>
+              {isSubmitting ? 'INICIANDO...' : 'INICIAR PARTIDO'}
+            </button>
+          )}
+          {estado === 'En Curso' && (
+            <button onClick={onFinalizar} disabled={isSubmitting} className={`flex-1 py-4 rounded-xl text-base font-black tracking-wider transition-colors shadow-md text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}>
+              {isSubmitting ? 'FINALIZANDO...' : 'FINALIZAR ACTA'}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* CRONOMETRO PROTAGONISTA */}
       <div className="bg-brand-brown text-white p-5 rounded-xl border border-brand-gold/20 shadow-lg text-center">
         <div className="text-xs font-bold text-brand-cream/70 uppercase tracking-wider mb-1">Tiempo de Lanzamiento</div>
@@ -213,22 +230,6 @@ export default function ModoCancha({
         ))}
         <p className="text-[0.7rem] text-brand-brown/50 text-center">Asignar tantos cierra la mano y pasa a la siguiente. Si te equivocaste, vuelve con Anterior y toca el numero correcto.</p>
       </div>
-
-      {/* ACCIONES DEL PARTIDO */}
-      {enJuego && (
-        <div className="flex gap-2">
-          {estado === 'Agendado' && (
-            <button onClick={onIniciar} disabled={isSubmitting} className={`flex-1 py-4 rounded-xl text-base font-black tracking-wider transition-colors shadow-md text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}>
-              {isSubmitting ? 'INICIANDO...' : 'INICIAR PARTIDO'}
-            </button>
-          )}
-          {estado === 'En Curso' && (
-            <button onClick={onFinalizar} disabled={isSubmitting} className={`flex-1 py-4 rounded-xl text-base font-black tracking-wider transition-colors shadow-md text-white ${isSubmitting ? 'bg-gray-400 opacity-70 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}>
-              {isSubmitting ? 'FINALIZANDO...' : 'FINALIZAR ACTA'}
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

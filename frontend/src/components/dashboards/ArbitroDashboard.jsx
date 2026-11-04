@@ -609,6 +609,20 @@ const suspenderPartido = async () => {
       <Sidebar
         titulo="Árbitro Oficial"
         subtitulo="Control de Cancha"
+        onCerrarSesion={cerrarSesion}
+        extras={<>
+          <BotonModoSolar className="w-full" />
+          {ligas.length > 0 && (
+            <select
+              value={ligaFiltro}
+              onChange={(e) => setLigaFiltro(e.target.value)}
+              className="w-full p-2 bg-brand-cream/10 border border-brand-gold/30 rounded-lg text-xs font-bold text-brand-cream focus:ring-2 focus:ring-brand-rust outline-none shadow-sm cursor-pointer"
+            >
+              {ligas.map(l => <option key={l.id} value={l.id}>Liga: {l.nombre}</option>)}
+            </select>
+          )}
+        </>}
+
         grupos={[
           { etiqueta: 'Panel', items: [
             { id: 'inicio', label: 'Inicio' },
@@ -641,19 +655,6 @@ const suspenderPartido = async () => {
           tituloMovil
           titulo={partidoActivo ? `Partido en Curso: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'inicio' ? 'Inicio' : pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Historial Reciente')}
           onAbrirMenu={() => setMenuAbierto(true)}
-          onCerrarSesion={cerrarSesion}
-          acciones={<div className="flex items-center gap-3">
-            <BotonModoSolar />
-            {ligas.length > 0 && (
-              <select
-                value={ligaFiltro}
-                onChange={(e) => setLigaFiltro(e.target.value)}
-                className="p-2 bg-brand-cream/30 border border-brand-gold/40 rounded-lg text-sm font-bold text-brand-brown focus:ring-2 focus:ring-brand-rust outline-none shadow-sm cursor-pointer"
-              >
-                {ligas.map(l => <option key={l.id} value={l.id}>Liga: {l.nombre}</option>)}
-              </select>
-            )}
-          </div>}
         />
 
         {/* CONTENIDO DE LAS PESTAÑAS O PARTIDO ACTIVO */}
@@ -953,6 +954,42 @@ const suspenderPartido = async () => {
                   <div className="text-[0.65rem] text-brand-cream/40 mt-2 uppercase tracking-wide">Controlado por el Anotador</div>
                 </div>
 
+                <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
+                  <h3 className="text-base font-bold text-brand-brown mb-4 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    Sanciones Disciplinarias
+                  </h3>
+                  <select 
+                    value={jugadorSancionId} 
+                    onChange={e => setJugadorSancionId(e.target.value)} 
+                    className="w-full p-2.5 mb-4 rounded-lg border border-brand-gold/40 focus:ring-2 focus:ring-brand-rust outline-none text-sm font-medium text-brand-brown bg-brand-cream/20 cursor-pointer"
+                  >
+                    <option value="">Seleccione infractor...</option>
+                    <optgroup label={partidoActivo?.local_nombre || 'Local'}>
+                       {jugadoresLocal.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
+                    </optgroup>
+                    <optgroup label={partidoActivo?.visita_nombre || 'Visita'}>
+                       {jugadoresVisita.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
+                    </optgroup>
+                  </select>
+                  <div className="flex gap-2">
+                    <button onClick={() => emitirTarjeta('Amarilla')} className="flex-1 py-2.5 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 border border-yellow-500/30 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-1">Amonestar</button>
+                    <button onClick={() => emitirTarjeta('Roja')} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-1">Expulsar</button>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-amber-200 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                  <h3 className="text-base font-bold text-brand-brown mb-2 pl-2">Incidencias del Partido</h3>
+                  <p className="text-[0.75rem] text-brand-brown/60 mb-4 pl-2 leading-relaxed">
+                    Registre novedades: Protesta, Lesión, Retraso de equipo, Deterioro de sede, Afición u Otro.
+                  </p>
+                  <button onClick={abrirIncidencias} className="w-full py-3 border rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    Ver y Registrar Incidencias
+                  </button>
+                </div>
+
                 {/* FIRMAS DIGITALES DEL ACTA (LOTE 6D) */}
                 {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
                   <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
@@ -986,30 +1023,6 @@ const suspenderPartido = async () => {
                   </div>
                 )}
 
-                <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
-                  <h3 className="text-base font-bold text-brand-brown mb-4 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                    Sanciones Disciplinarias
-                  </h3>
-                  <select 
-                    value={jugadorSancionId} 
-                    onChange={e => setJugadorSancionId(e.target.value)} 
-                    className="w-full p-2.5 mb-4 rounded-lg border border-brand-gold/40 focus:ring-2 focus:ring-brand-rust outline-none text-sm font-medium text-brand-brown bg-brand-cream/20 cursor-pointer"
-                  >
-                    <option value="">Seleccione infractor...</option>
-                    <optgroup label={partidoActivo?.local_nombre || 'Local'}>
-                       {jugadoresLocal.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
-                    </optgroup>
-                    <optgroup label={partidoActivo?.visita_nombre || 'Visita'}>
-                       {jugadoresVisita.map(j => <option key={j.id} value={j.id}>#{j.numero_dorsal} {j.nombre} {j.apellido}</option>)}
-                    </optgroup>
-                  </select>
-                  <div className="flex gap-2">
-                    <button onClick={() => emitirTarjeta('Amarilla')} className="flex-1 py-2.5 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 border border-yellow-500/30 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-1">Amonestar</button>
-                    <button onClick={() => emitirTarjeta('Roja')} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-1">Expulsar</button>
-                  </div>
-                </div>
-
                 <div className="bg-white p-5 rounded-xl border border-red-200 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
                   <h3 className="text-base font-bold text-brand-brown mb-2 pl-2">Control de Juego</h3>
@@ -1023,18 +1036,6 @@ const suspenderPartido = async () => {
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
                     {isSubmitting ? 'Suspendiendo...' : 'Suspender Partido'}
-                  </button>
-                </div>
-
-                <div className="bg-white p-5 rounded-xl border border-amber-200 shadow-sm relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
-                  <h3 className="text-base font-bold text-brand-brown mb-2 pl-2">Incidencias del Partido</h3>
-                  <p className="text-[0.75rem] text-brand-brown/60 mb-4 pl-2 leading-relaxed">
-                    Registre novedades: Protesta, Lesión, Retraso de equipo, Deterioro de sede, Afición u Otro.
-                  </p>
-                  <button onClick={abrirIncidencias} className="w-full py-3 border rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                    Ver y Registrar Incidencias
                   </button>
                 </div>
 

@@ -9,6 +9,7 @@ const ArbitroDashboard = lazy(() => import('./components/dashboards/ArbitroDashb
 const DelegadoDashboard = lazy(() => import('./components/dashboards/DelegadoDashboard'));
 const AnotadorDashboard = lazy(() => import('./components/dashboards/AnotadorDashboard'));
 const PantallaPuntajes = lazy(() => import('./components/dashboards/PantallaPuntajes'));
+const SimuladorPartidos = lazy(() => import('./components/dashboards/SimuladorPartidos')); // UX: simulador de partidos en pestaña nueva
 import PantallaOffline, { useConexion } from './components/PantallaOffline';
 import VerificarCorreo from './components/VerificarCorreo'; // LOTE 6G: aterriza el enlace ?verificar=
 import RestablecerContrasena from './components/RestablecerContrasena'; // LOTE 6H: aterriza el enlace ?restablecer=
@@ -144,6 +145,16 @@ export default function App() {
     return (
       <Suspense fallback={<RespaldoCargaPanel />}>
         <PantallaPuntajes />
+      </Suspense>
+    );
+  }
+
+  // UX: la vista pública '?vista=simulador' abre el simulador de partidos en
+  // su propia pestaña del navegador (mismo mecanismo que la pizarra pública).
+  if (new URLSearchParams(window.location.search).get('vista') === 'simulador') {
+    return (
+      <Suspense fallback={<RespaldoCargaPanel />}>
+        <SimuladorPartidos />
       </Suspense>
     );
   }

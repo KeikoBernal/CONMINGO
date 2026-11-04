@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import ActivarNotificaciones from './ActivarNotificaciones'; // LOTE 5 (N4): notificaciones push
-import CampanaNotificaciones from './CampanaNotificaciones'; // LOTE 6A: bandeja de notificaciones
 
 // C2: barra lateral compartida de los dashboards.
 // En escritorio se contrae a modo solo-iconos (persistido en localStorage);
@@ -18,6 +16,8 @@ export default function Sidebar({
   onCerrarMenu,
   claveColapso = 'sidebarColapsada',
   onVerGuia,
+  onCerrarSesion,
+  extras,
 }) {
   const [colapsado, setColapsado] = useState(() => localStorage.getItem(claveColapso) === 'true');
 
@@ -111,13 +111,25 @@ export default function Sidebar({
           ))}
         </div>
 
-        {/* LOTE 5 (N4): activacion de notificaciones push del navegador */}
-        <div className={`border-t border-brand-gold/20 shrink-0 ${colapsado ? 'md:px-2 md:py-3' : 'px-6 py-4'}`}>
-          <CampanaNotificaciones colapsado={colapsado} />
-          <ActivarNotificaciones colapsado={colapsado} />
+
+        {/* CUENTA: funciones que antes vivian en la barra del titulo del header */}
+        <div className={`border-t border-brand-gold/20 shrink-0 space-y-2 ${colapsado ? 'md:px-2 md:py-3' : 'px-6 py-4'}`}>
+          {extras && <div className={`space-y-2 ${colapsado ? 'md:hidden' : ''}`}>{extras}</div>}
+          {onCerrarSesion && (
+            <button
+              type="button"
+              onClick={onCerrarSesion}
+              title="Cerrar Sesion"
+              aria-label="Cerrar Sesion"
+              className={`w-full flex items-center gap-3 ${colapsado ? 'md:justify-center' : ''} py-2 text-sm font-semibold text-brand-cream/70 hover:bg-red-500/10 hover:text-brand-cream rounded-lg transition-colors`}
+            >
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+              <span className={`transition-all ${colapsado ? 'md:hidden' : ''}`}>Cerrar Sesion</span>
+            </button>
+          )}
         </div>
 
-        {/* B2: guia del panel, relanzable al pie del sidebar */}
+                {/* B2: guia del panel, relanzable al pie del sidebar */}
         {onVerGuia && (
           <div className={`border-t border-brand-gold/20 shrink-0 ${colapsado ? 'md:px-2 md:py-3' : 'px-6 py-4'}`}>
             <button
