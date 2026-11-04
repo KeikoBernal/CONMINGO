@@ -9,10 +9,12 @@ import { useEffect, useRef, useState } from 'react';
 
 // Bola criolla vectorial. Las bolas reales son de madera dura (vera,
 // guayacan) y se identifican con una cruz pintada que las rodea para
-// diferenciar los equipos; aqui esa red son ocho arcos de circulo que
-// entran en puntos opuestos del contorno y se comban hacia el centro
-// (curvas de nivel esfericas cruzadas, patron guilloche), dibujados
-// como cuatro elipses giradas a 0/45/90/135 grados.
+// diferenciar los equipos; aqui esa red son cuatro arcos de circulo
+// que atraviesan el centro exacto de la cara y abrazan el borde: cada
+// arco es un circulo con centro sobre la silueta y radio igual al de
+// la esfera (curvas de nivel esfericas cruzadas, patron guilloche),
+// girado a 0/45/90/135 grados: cruce denso en el centro y malla de
+// rombos alrededor.
 const BolaCriolla = ({ tamano = 'h-12 w-12' }) => (
   <svg viewBox="0 0 64 64" className={tamano} role="img" aria-label="Bola criolla">
     <defs>
@@ -27,10 +29,10 @@ const BolaCriolla = ({ tamano = 'h-12 w-12' }) => (
     <path d="M13 40 C 21 44, 43 44, 51 40" fill="none" stroke="#8F5B33" strokeWidth="1" opacity="0.35" />
     <path d="M15 22 C 23 18, 41 18, 49 22" fill="none" stroke="#E9CFA4" strokeWidth="1" opacity="0.3" />
     <g fill="none" stroke="#4A2313" strokeWidth="6" strokeLinecap="round">
-      <ellipse cx="32" cy="32" rx="28" ry="9" transform="rotate(0 32 32)" />
-      <ellipse cx="32" cy="32" rx="28" ry="9" transform="rotate(45 32 32)" />
-      <ellipse cx="32" cy="32" rx="28" ry="9" transform="rotate(90 32 32)" />
-      <ellipse cx="32" cy="32" rx="28" ry="9" transform="rotate(135 32 32)" />
+      <path d="M46.5 57.11 A29 29 0 0 1 46.5 6.89" transform="rotate(0 32 32)" />
+      <path d="M46.5 57.11 A29 29 0 0 1 46.5 6.89" transform="rotate(45 32 32)" />
+      <path d="M46.5 57.11 A29 29 0 0 1 46.5 6.89" transform="rotate(90 32 32)" />
+      <path d="M46.5 57.11 A29 29 0 0 1 46.5 6.89" transform="rotate(135 32 32)" />
     </g>
     <ellipse cx="21" cy="17" rx="7.5" ry="4.5" fill="#FFF7DF" opacity="0.35" transform="rotate(-28 21 17)" />
   </svg>
@@ -187,10 +189,10 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
               </radialGradient>
             </defs>
             <circle cx="32" cy="32" r="30" fill="url(#arte-disco-rust)" opacity="0.55" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(0 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(45 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(90 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(135 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(0 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(45 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(90 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(135 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
           </svg>
         </div>
 
@@ -204,10 +206,10 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
               </radialGradient>
             </defs>
             <circle cx="32" cy="32" r="30" fill="url(#arte-disco-blue)" opacity="0.45" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(0 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(45 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(90 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
-            <ellipse cx="32" cy="32" rx="28" ry="9.5" transform="rotate(135 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(0 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(45 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(90 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <path d="M47 58 A30 30 0 0 1 47 6" transform="rotate(135 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
           </svg>
         </div>
 
