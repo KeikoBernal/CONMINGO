@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import PlanillaUniversal from './PlanillaUniversal';
 import VisualizadorCancha from '../VisualizadorCancha';
 
@@ -78,12 +78,17 @@ export default function SimuladorPartidos() {
   });
   const [reglas, setReglas] = useState({});
   const [semilla, setSemilla] = useState(0);
+  const [manoSel, setManoSel] = useState(0);
+  const [conNominasReales, setConNominasReales] = useState(false); // habilita "Usar en la planilla real"
+  const [envioPlanilla, setEnvioPlanilla] = useState(null);
+  const idPartidoUrlRef = useRef(null);
 
   useEffect(() => {
     // Si la URL trae partido_id (uuid_publico o id interno) se usan sus
     // nominas reales; los datos generados siguen siendo de guia.
     const id = new URLSearchParams(window.location.search).get('partido_id');
     if (!id) { setCargando(false); return; }
+    idPartidoUrlRef.current = id;
     fetch(`${API_URL}/publico/partidos/${id}`)
       .then(res => res.json())
       .then(data => {
@@ -103,6 +108,7 @@ export default function SimuladorPartidos() {
             const lista = Array.isArray(nomina) ? nomina : [];
             setJugadoresLocal(lista.filter(j => j.equipo_id === data.equipo_local_id));
             setJugadoresVisita(lista.filter(j => j.equipo_id === data.equipo_visita_id));
+            setConNominasReales(true);
           });
       })
       .catch(() => {
@@ -112,6 +118,29 @@ export default function SimuladorPartidos() {
   }, []);
 
   const regenerar = () => setSemilla(s => s + 1);
+
+  // UX ajustes (pedido de Keiko): deja los datos generados listos para aplicar
+  // a la planilla REAL del partido. El simulador corre en su propia pestana y
+  // no toca el estado del panel del Anotador: publica la carga en localStorage
+  // y el panel del Anotador la recoge por el evento storage (siempre con
+  // confirmacion y solo para el mismo partido). Requiere nominas reales, que
+  // solo existen cuando se abre con partido_id.
+  const usarEnPlanillaReal = () => {
+    if (!conNominasReales || !idPartidoUrlRef.current) return;
+    try {
+      localStorage.setItem('conmingo_simulador_export', JSON.stringify({
+        ts: Date.now(),
+        partidoId: idPartidoUrlRef.current,
+        efectividadJugadores: datosActuales.efectividadJugadores,
+        manualStats: datosActuales.manualStats,
+        puntosLocal: datosActuales.puntosLocal,
+        puntosVisita: datosActuales.puntosVisita
+      }));
+      setEnvioPlanilla(Date.now());
+    } catch {
+      setEnvioPlanilla(null);
+    }
+  };
   // Los datos se generan solo al montar, al cargar nominas reales o al pedir
   // otro partido (memoizados), para que la planilla no cambie sola.
   const datosActuales = useMemo(
@@ -122,9 +151,38 @@ export default function SimuladorPartidos() {
   );
 
   const filasResumen = [
-    ...jugadoresLocal.map(j => ({ ...j, equipo: datosPartido.localNombre })),
-    ...jugadoresVisita.map(j => ({ ...j, equipo: datosPartido.visitaNombre }))
+    ...jugadoresLocal.map(j => ({ ...j, lado: 'Local', equipo: datosPartido.localNombre })),
+    ...jugadoresVisita.map(j => ({ ...j, lado: 'Visita', equipo: datosPartido.visitaNombre }))
   ];
+
+  // Manos con datos registrados para el tablero de cancha.
+  const manosDisponibles = useMemo(() => {
+    const lista = [];
+    for (let m = 0; m < 20; m++) {
+      const hayJugadas = Object.values(datosActuales.efectividadJugadores).some(manos => manos && manos[m]);
+      if (hayJugadas || datosActuales.puntosLocal[m] || datosActuales.puntosVisita[m]) lista.push(m);
+    }
+    return lista;
+  }, [datosActuales]);
+
+  const manoActual = manosDisponibles.includes(manoSel) ? manoSel : (manosDisponibles.length > 0 ? manosDisponibles[0] : -1);
+
+  // Entrada del tablero: lanzamientos y tantos de la mano seleccionada, tal
+  // como quedaron registrados en la planilla (el visualizador no genera nada).
+  const entradaCancha = useMemo(() => {
+    if (manoActual < 0) return null;
+    const jugadas = filasResumen.flatMap(j => {
+      const celda = (datosActuales.efectividadJugadores[j.id] || {})[manoActual];
+      if (!celda) return [];
+      return [{ equipo: j.lado, indice: j.numero_dorsal || 0, etiqueta: '#' + (j.numero_dorsal || '-') + ' ' + (j.apellido ? j.apellido + ' ' : '') + j.nombre, valor: celda.valor }];
+    });
+    return {
+      mano: manoActual + 1,
+      jugadas,
+      tantosLocal: datosActuales.puntosLocal[manoActual] || '0',
+      tantosVisita: datosActuales.puntosVisita[manoActual] || '0'
+    };
+  }, [manoActual, datosActuales, jugadoresLocal, jugadoresVisita]);
 
   return (
     <div className="min-h-screen bg-brand-cream text-brand-brown font-sans p-4 md:p-8">
@@ -134,12 +192,31 @@ export default function SimuladorPartidos() {
           <div className="flex-1">
             <h1 className="text-2xl font-black text-brand-brown uppercase tracking-wider">Simulador de Partidos</h1>
             <p className="text-xs text-brand-brown/60 mt-1">
-              Esta es la planilla de guia: el sistema llena estos datos de referencia. El anotador llena la planilla real y esos son los datos que se procesan. Sirve para probar y validar el sistema sin un partido real.
+              Esta es la planilla de guia: el sistema llena estos datos de referencia. Sirve para probar y validar el sistema sin un partido real, y puedes aplicar los datos a la planilla real con el boton de la derecha.
             </p>
+            {envioPlanilla ? (
+              <p className="text-xs font-bold text-green-700 mt-1">
+                Datos enviados. Vuelve a la pestana del panel del Anotador de este partido y confirma el aviso para aplicarlos al acta.
+              </p>
+            ) : !conNominasReales && !cargando ? (
+              <p className="text-xs text-brand-brown/60 mt-1">
+                El boton "Usar en la planilla real" se habilita cuando el simulador se abre con un partido real (boton Simulador del panel del Anotador).
+              </p>
+            ) : null}
           </div>
-          <button onClick={regenerar} className="px-6 py-3 bg-brand-blue text-white rounded-lg font-bold shadow-sm hover:bg-brand-brown transition-colors">
-            Generar otro partido
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+            <button onClick={regenerar} className="px-6 py-3 bg-brand-blue text-white rounded-lg font-bold shadow-sm hover:bg-brand-brown transition-colors">
+              Generar otro partido
+            </button>
+            <button
+              onClick={usarEnPlanillaReal}
+              disabled={!conNominasReales || cargando}
+              className="px-6 py-3 bg-brand-rust text-white rounded-lg font-bold shadow-sm hover:bg-brand-brown transition-colors disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed"
+              title={conNominasReales ? 'Deja los datos listos para aplicarlos en la planilla del Anotador' : 'Disponible solo cuando el simulador se abre con un partido real'}
+            >
+              Usar en la planilla real
+            </button>
+          </div>
         </div>
 
         {cargando ? (
@@ -208,12 +285,28 @@ export default function SimuladorPartidos() {
             </div>
 
             <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm p-4 sm:p-6">
-              <h2 className="text-lg font-black text-brand-brown uppercase tracking-wider mb-4">Simulador visual de cancha</h2>
-              <VisualizadorCancha
-                plantillaReglas={reglas}
-                nombreLocal={datosPartido.localNombre}
-                nombreVisita={datosPartido.visitaNombre}
-              />
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <h2 className="text-lg font-black text-brand-brown uppercase tracking-wider">Cancha por mano (datos del acta)</h2>
+                <select
+                  value={manoActual}
+                  onChange={e => setManoSel(Number(e.target.value))}
+                  className="p-2.5 rounded-lg border border-brand-gold/40 bg-brand-cream/20 text-sm font-bold text-brand-brown outline-none cursor-pointer"
+                >
+                  {manosDisponibles.map(m => (
+                    <option key={m} value={m}>Mano {m + 1}</option>
+                  ))}
+                </select>
+              </div>
+              {manosDisponibles.length === 0 ? (
+                <p className="text-sm text-brand-brown/60">Genera un partido para ver el tablero de una mano.</p>
+              ) : (
+                <VisualizadorCancha
+                  plantillaReglas={reglas}
+                  nombreLocal={datosPartido.localNombre}
+                  nombreVisita={datosPartido.visitaNombre}
+                  entrada={entradaCancha}
+                />
+              )}
             </div>
           </>
         )}
