@@ -13,6 +13,7 @@ const SimuladorPartidos = lazy(() => import('./components/dashboards/SimuladorPa
 import PantallaOffline, { useConexion } from './components/PantallaOffline';
 import VerificarCorreo from './components/VerificarCorreo'; // LOTE 6G: aterriza el enlace ?verificar=
 import RestablecerContrasena from './components/RestablecerContrasena'; // LOTE 6H: aterriza el enlace ?restablecer=
+import InicioPublico from './components/InicioPublico'; // PANTALLA DE INICIO PUBLICA CONMINGO
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -397,16 +398,6 @@ export default function App() {
     );
   }
 
-  // Agrupar partidos por Torneo para la Landing Page
-  const partidosPorTorneo = partidos.reduce((acc, partido) => {
-    const torneo = partido.torneo_nombre || 'Encuentros Generales';
-    if (!acc[torneo]) {
-      acc[torneo] = { organizacion: partido.organizacion_nombre || 'Liga Oficial', partidos: [] };
-    }
-    acc[torneo].partidos.push(partido);
-    return acc;
-  }, {});
-
   // Landing Page y Login
   return (
     <div className="min-h-screen font-sans text-brand-brown selection:bg-brand-gold/40">
@@ -414,11 +405,17 @@ export default function App() {
         
         <nav className="flex justify-between items-center mb-10 pb-6 border-b border-brand-gold/30">
           <div className="flex items-center gap-3">
-            <svg className="w-8 h-8 text-brand-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" strokeWidth="2" />
-              <circle cx="12" cy="12" r="4" strokeWidth="2" fill="currentColor" opacity="0.2"/>
+            <svg className="w-9 h-9 shrink-0" viewBox="0 0 64 64" role="img" aria-label="CONMINGO">
+              <circle cx="30" cy="34" r="26" fill="#C89B6E" stroke="#572C19" strokeWidth="3" />
+              <path d="M6 42 C 16 54, 44 54, 54 42" fill="none" stroke="#572C19" strokeWidth="3" strokeLinecap="round" />
+              <path d="M6 26 C 16 14, 44 14, 54 26" fill="none" stroke="#572C19" strokeWidth="3" strokeLinecap="round" opacity="0.6" />
+              <ellipse cx="20" cy="22" rx="6" ry="3.5" fill="#F2EBE0" opacity="0.4" transform="rotate(-25 20 22)" />
+              <circle cx="53" cy="10" r="6" fill="#E7BA67" stroke="#9E7A2E" strokeWidth="2" />
             </svg>
-            <h2 className="text-2xl font-bold text-brand-brown tracking-tight">Portal de Bolas Criollas</h2>
+            <div className="leading-tight">
+              <h2 className="text-2xl font-bold text-brand-brown tracking-tight">CONMINGO</h2>
+              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-brand-rust">Ligas de bolas criollas</p>
+            </div>
           </div>
           
           <button 
@@ -440,87 +437,7 @@ export default function App() {
         </nav>
 
         {vista === 'inicio' && (
-          <div className="animate-slide-up">
-            <div className="bg-brand-blue/10 border-l-4 border-brand-blue rounded-r-xl p-6 mb-12 shadow-sm transform transition-transform hover:translate-x-1 duration-300">
-              <h3 className="text-xl font-bold text-brand-brown mb-3 flex items-center gap-2">
-                <svg className="w-6 h-6 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                Bienvenidos al Campeonato
-              </h3>
-              <p className="text-brand-brown/80 leading-relaxed max-w-4xl">
-                Las <strong className="text-brand-rust">Bolas Criollas</strong> son un deporte tradicional de precisión y estrategia. 
-                Dos equipos compiten lanzando sus esferas metálicas intentando dejarlas lo más cerca posible de una pequeña bola guía llamada mingo. 
-                Explora los torneos activos a continuación y sigue los marcadores en tiempo real.
-              </p>
-            </div>
-
-            <div className="text-center mb-10">
-              <h2 className="text-3xl font-extrabold text-brand-brown mb-3">Torneos y Partidos en Curso</h2>
-              <p className="text-brand-brown/60">Selecciona un encuentro para ver la pizarra de puntajes en directo</p>
-            </div>
-
-            {Object.keys(partidosPorTorneo).length === 0 ? (
-              <div className="text-center p-12 bg-white rounded-2xl border border-brand-gold/30 shadow-sm">
-                <svg className="w-16 h-16 mx-auto text-brand-gold/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                <p className="text-lg text-brand-brown/60 font-medium">No hay partidos activos o programados en este momento.</p>
-              </div>
-            ) : (
-              Object.entries(partidosPorTorneo).map(([nombreTorneo, grupo]) => (
-                <div key={nombreTorneo} className="mb-12 bg-white rounded-2xl overflow-hidden shadow-lg border border-brand-gold/20 hover:shadow-xl transition-shadow duration-300">
-                  <div className="bg-brand-brown text-brand-cream px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <h3 className="text-xl font-bold flex items-center gap-2">
-                      <svg className="w-5 h-5 text-brand-gold" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 2a1 1 0 01.832.445l2 3.111 3.553.517a1 1 0 01.554 1.706l-2.57 2.506.607 3.539a1 1 0 01-1.451 1.054L10 13.18l-3.177 1.67a1 1 0 01-1.451-1.054l.607-3.539-2.57-2.506a1 1 0 01.554-1.706l3.553-.517 2-3.111A1 1 0 0110 2z" clipRule="evenodd" /></svg>
-                      {nombreTorneo}
-                    </h3>
-                    <span className="text-xs font-semibold bg-brand-gold text-brand-brown px-3 py-1 rounded-full uppercase tracking-wider">
-                      {grupo.organizacion}
-                    </span>
-                  </div>
-
-                  <div className="p-6 bg-brand-cream/10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {grupo.partidos.map((p) => (
-                      <div key={p.id} className="group bg-white border border-brand-gold/30 rounded-xl p-5 flex flex-col justify-between hover:border-brand-rust transition-colors duration-300 shadow-sm hover:shadow-md">
-                        <div>
-                          <div className="flex justify-between items-center mb-4">
-                            <span className="text-xs font-bold text-brand-blue uppercase tracking-wide">
-                              {p.fase || 'Fase Regular'}
-                            </span>
-                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${p.estado === 'En Curso' ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-brand-cream text-brand-brown border border-brand-gold/30'}`}>
-                              {p.estado}
-                            </span>
-                          </div>
-
-                          <div className="text-center p-4 bg-brand-cream/30 rounded-lg border border-brand-cream mb-5 group-hover:bg-brand-cream/50 transition-colors">
-                            <div className="text-lg font-bold text-brand-brown">{p.local_nombre || 'Local'}</div>
-                            <div className="text-xs font-bold text-brand-rust my-2">VS</div>
-                            <div className="text-lg font-bold text-brand-brown">{p.visita_nombre || 'Visita'}</div>
-                          </div>
-
-                          <div className="space-y-2 text-sm text-brand-brown/70 mb-6">
-                            <div className="flex items-center gap-2">
-                              <svg className="w-4 h-4 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                              <span>{p.sede_nombre || 'Cancha Principal'}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <svg className="w-4 h-4 text-brand-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                              <span>{new Date(p.fecha_hora).toLocaleString('es-VE')}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <button 
-                          onClick={() => window.open(`/?vista=puntajes&partido_id=${p.uuid_publico || p.id}`, '_blank')}
-                          className="w-full flex items-center justify-center gap-2 bg-brand-blue text-white py-2.5 rounded-lg font-semibold hover:bg-brand-rust transition-colors duration-300 shadow-sm"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                          Ver Puntajes en Vivo
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <InicioPublico partidos={partidos} onIniciarSesion={() => { setVista('login'); setPaso(1); setMostrarOlvide(false); setMensaje(''); }} />
         )}
 
         {vista === 'login' && (
