@@ -1,85 +1,103 @@
 import { useEffect, useRef, useState } from 'react';
 
-// PANTALLA DE INICIO PUBLICA (CONMINGO). Vista para jugadores y
-// administradores de ligas que ya conocen el deporte: la propuesta es
-// digitalizar la gestion de la liga (actas, marcador, estadisticas),
-// no explicar las bolas criollas. Solo se listan partidos en vivo o
-// agendados a futuro; los pasados y suspendidos no aparecen.
+// PANTALLA DE INICIO PUBLICA (CONMINGO), revision de Keiko: el fondo ya no
+// demuestra el lance (se decora con circulos, gradientes y lineas generados
+// con codigo que se desplazan al scrollear), el copy va para quien ya
+// conoce el deporte, las tarjetas llevan iconos, hay footer completo y el
+// sistema se presenta como gestion deportiva de bolas criollas. Solo se
+// listan partidos en vivo o agendados a futuro.
 
-// Bola criolla vectorial: esfera de madera tan con las costuras curvas
-// de las bolas reales (recreacion en SVG del arte del sistema).
+// Bola criolla vectorial. Las bolas reales son de madera dura (vera,
+// guayacan) y se identifican con una cruz pintada que las rodea para
+// diferenciar los equipos; aqui esa cruz son dos bandas que se cruzan
+// sobre la esfera, dibujadas como dos elipses perpendiculares.
 const BolaCriolla = ({ tamano = 'h-12 w-12' }) => (
   <svg viewBox="0 0 64 64" className={tamano} role="img" aria-label="Bola criolla">
     <defs>
-      <radialGradient id="grad-bola-criolla" cx="35%" cy="30%" r="75%">
-        <stop offset="0%" stopColor="#E3C39A" />
-        <stop offset="55%" stopColor="#C89B6E" />
-        <stop offset="100%" stopColor="#8F5B33" />
+      <radialGradient id="grad-bola-criolla" cx="38%" cy="32%" r="72%">
+        <stop offset="0%" stopColor="#E9CFA4" />
+        <stop offset="52%" stopColor="#C89B6E" />
+        <stop offset="100%" stopColor="#754625" />
       </radialGradient>
     </defs>
-    <circle cx="32" cy="32" r="30" fill="url(#grad-bola-criolla)" stroke="#572C19" strokeWidth="2" />
-    <path d="M6 40 C 16 54, 48 54, 58 40" fill="none" stroke="#572C19" strokeWidth="3" strokeLinecap="round" />
-    <path d="M6 24 C 16 10, 48 10, 58 24" fill="none" stroke="#572C19" strokeWidth="3" strokeLinecap="round" opacity="0.6" />
-    <ellipse cx="22" cy="18" rx="7" ry="4" fill="#F2EBE0" opacity="0.35" transform="rotate(-25 22 18)" />
-  </svg>
-);
-
-// El mingo: bola pequena y metalica, dorada para combinar con la marca.
-const MingoDorado = ({ tamano = 'h-9 w-9 md:h-12 md:w-12' }) => (
-  <svg viewBox="0 0 32 32" className={tamano} role="img" aria-label="Mingo dorado">
-    <defs>
-      <radialGradient id="grad-mingo-dorado" cx="35%" cy="30%" r="75%">
-        <stop offset="0%" stopColor="#F7E2A8" />
-        <stop offset="60%" stopColor="#E7BA67" />
-        <stop offset="100%" stopColor="#9E7A2E" />
-      </radialGradient>
-    </defs>
-    <circle cx="16" cy="16" r="14" fill="url(#grad-mingo-dorado)" stroke="#8A6D2F" strokeWidth="1.5" />
-    <circle cx="11" cy="10" r="3" fill="#FFF7DF" opacity="0.85" />
+    <ellipse cx="33" cy="58" rx="21" ry="3.5" fill="#572C19" opacity="0.18" />
+    <circle cx="32" cy="32" r="29" fill="url(#grad-bola-criolla)" />
+    <path d="M13 40 C 21 44, 43 44, 51 40" fill="none" stroke="#8F5B33" strokeWidth="1" opacity="0.35" />
+    <path d="M15 22 C 23 18, 41 18, 49 22" fill="none" stroke="#E9CFA4" strokeWidth="1" opacity="0.3" />
+    <g fill="none" stroke="#4A2313" strokeWidth="5" strokeLinecap="round">
+      <ellipse cx="32" cy="32" rx="26" ry="8.5" transform="rotate(-14 32 32)" />
+      <ellipse cx="32" cy="32" rx="8.5" ry="26" transform="rotate(-14 32 32)" />
+    </g>
+    <ellipse cx="21" cy="17" rx="7.5" ry="4.5" fill="#FFF7DF" opacity="0.35" transform="rotate(-28 21 17)" />
   </svg>
 );
 
 const VENTAJAS = [
   {
     titulo: 'Acta digital del anotador',
-    texto: 'La planilla se llena en el telefono del anotador, mano por mano. Al finalizar, el acta sale en PDF con las firmas de una vez.'
+    texto: 'La planilla se llena en el telefono del anotador, mano por mano. Al finalizar, el acta sale en PDF con las firmas de una vez.',
+    icono: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    )
   },
   {
     titulo: 'Marcador publico en vivo',
-    texto: 'Un codigo QR en la cancha y el publico sigue los tantos desde su telefono, sin instalar nada.'
+    texto: 'Un codigo QR en la cancha y el publico sigue los tantos desde su telefono, sin instalar nada.',
+    icono: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M4 4h6v6H4V4zm2 2v2h2V6H6zM14 4h6v6h-6V4zm2 2v2h2V6h-2zM4 14h6v6H4v-6zm2 2v2h2v-2H6zM14 14h2v2h-2v-2zm4 0h2v2h-2v-2zm-2 2h2v2h-2v-2zm2 2h2v2h-2v-2zm-4 0h2v2h-2v-2z" />
+      </svg>
+    )
   },
   {
     titulo: 'Estadisticas y premiacion',
-    texto: 'Average, arrimadores y bochadores se calculan solos. La premiacion del torneo sale con diplomas en PDF, sin cuentas en cuadernos.'
+    texto: 'Average, arrimadores y bochadores se calculan solos. La premiacion del torneo sale con diplomas en PDF, sin cuentas en cuadernos.',
+    icono: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    )
   },
   {
     titulo: 'Reglamento y disciplina',
-    texto: 'Sanciones, protestas y votacion al MVP con las reglas de la liga aplicadas por el sistema, no de memoria.'
+    texto: 'Sanciones, protestas y votacion al MVP con las reglas del torneo aplicadas por el sistema, no de memoria.',
+    icono: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+      </svg>
+    )
   }
 ];
 
 export default function InicioPublico({ partidos = [], onIniciarSesion }) {
-  const [animarJugada, setAnimarJugada] = useState(false);
-  const refJugada = useRef(null);
+  const [desplazamiento, setDesplazamiento] = useState(0);
+  const reducirMovimiento = useRef(false);
 
-  // La jugada se anima cuando la seccion entra en pantalla (al scrollear).
+  // El arte de fondo se desplaza a distinta velocidad que el contenido
+  // mientras se scrollea (parallax suave, desactivado si el usuario
+  // prefiere reducir el movimiento).
   useEffect(() => {
-    const nodo = refJugada.current;
-    if (!nodo) return;
-    if (typeof IntersectionObserver === 'undefined') {
-      setAnimarJugada(true);
-      return;
+    if (typeof window === 'undefined') return;
+    if (typeof window.matchMedia === 'function') {
+      reducirMovimiento.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
-    const observador = new IntersectionObserver((entradas) => {
-      entradas.forEach((entrada) => {
-        if (entrada.isIntersecting) {
-          setAnimarJugada(true);
-          observador.disconnect();
-        }
+    if (reducirMovimiento.current) return;
+    let raf = 0;
+    const alScrollear = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setDesplazamiento(window.scrollY || 0);
       });
-    }, { threshold: 0.3 });
-    observador.observe(nodo);
-    return () => observador.disconnect();
+    };
+    window.addEventListener('scroll', alScrollear, { passive: true });
+    alScrollear();
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', alScrollear);
+    };
   }, []);
 
   // Solo partidos en vivo o agendados a futuro (los pasados y
@@ -91,6 +109,9 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
     .sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
 
   const abrirMarcador = (p) => window.open(`/?vista=puntajes&partido_id=${p.uuid_publico || p.id}`, '_blank');
+  const abrirPizarra = () => window.open('/?vista=puntajes', '_blank');
+  const abrirSimulador = () => window.open('/?vista=simulador', '_blank');
+  const parallax = (factor) => `translateY(${(desplazamiento * factor).toFixed(1)}px)`;
 
   const TarjetaPartido = ({ p }) => (
     <article className="group bg-white border border-brand-gold/30 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-brand-rust transition-all">
@@ -110,11 +131,11 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
 
         <div className="space-y-1.5 text-sm text-brand-brown/70 mb-5">
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-brand-blue shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            <svg className="w-4 h-4 text-brand-blue shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             <span>{p.sede_nombre || 'Cancha principal'}</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-brand-blue shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            <svg className="w-4 h-4 text-brand-blue shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             <span>{new Date(p.fecha_hora).toLocaleString('es-VE')}</span>
           </div>
         </div>
@@ -131,91 +152,120 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
   );
 
   return (
-    <div className="animate-slide-up">
+    <div className="relative animate-slide-up">
 
-      {/* HERO: la propuesta para las ligas que ya conocen la cancha */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center mb-16">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-brand-rust mb-3">Sistema de gestion de ligas de bolas criollas</p>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-brand-brown leading-tight mb-4">
-            La cancha es suya.
-            <br />El papeleo, nuestro.
-          </h1>
-          <p className="text-lg text-brand-brown/80 leading-relaxed mb-8 max-w-xl">
-            CONMINGO lleva las planillas, las actas, el marcador publico y las estadisticas de su liga.
-            Usted solo se ocupa de arrimar.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              type="button"
-              onClick={onIniciarSesion}
-              className="rounded-lg bg-brand-rust text-white px-8 py-3 font-bold shadow-md hover:bg-brand-brown transition-colors"
-            >
-              Entrar al sistema
-            </button>
-            <a
-              href="#partidos"
-              className="rounded-lg bg-white border border-brand-gold/40 text-brand-brown px-8 py-3 font-bold text-center hover:bg-brand-cream transition-colors"
-            >
-              Ver partidos
-            </a>
-          </div>
+      {/* ARTE DE FONDO: circulos con gradientes y lineas generados con codigo; decoran y se desplazan con el scroll */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="absolute -top-48 -right-40 w-[34rem] h-[34rem] rounded-full" style={{ transform: parallax(0.08), background: 'radial-gradient(circle at 40% 40%, rgba(231,186,103,0.4), rgba(231,186,103,0.12) 45%, rgba(231,186,103,0) 70%)' }}></div>
+        <div className="absolute -bottom-56 -left-40 w-[36rem] h-[36rem] rounded-full" style={{ transform: parallax(-0.06), background: 'radial-gradient(circle at 50% 50%, rgba(242,235,224,0.9), rgba(242,235,224,0.25) 50%, rgba(242,235,224,0) 72%)' }}></div>
+
+        <div className="absolute top-24 -right-24" style={{ transform: parallax(0.18) }}>
+          <svg className="w-80 h-80 arte-orbita" viewBox="0 0 200 200" fill="none">
+            <circle cx="100" cy="100" r="96" stroke="#9E3F23" strokeOpacity="0.14" strokeWidth="1" strokeDasharray="2 10" />
+            <circle cx="100" cy="100" r="64" stroke="#572C19" strokeOpacity="0.1" strokeWidth="1" strokeDasharray="14 10" />
+          </svg>
         </div>
 
-        <div className="relative hidden lg:flex items-center justify-center h-72" aria-hidden="true">
-          <div className="flotar-suave"><BolaCriolla tamano="h-36 w-36" /></div>
-          <div className="flotar-suave-lento -ml-4 -mb-14"><BolaCriolla tamano="h-20 w-20" /></div>
-          <div className="flotar-suave-lento ml-10 -mt-20"><MingoDorado tamano="h-12 w-12" /></div>
-        </div>
-      </section>
-
-      {/* LA JUGADA: animacion 2D del lance hacia el mingo, al entrar en pantalla */}
-      <section className="mb-16">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-brown mb-2">Primero el mingo, despues la arrimada</h2>
-          <p className="text-brand-brown/60">Asi de simple es llevar las cuentas con CONMINGO: el sistema anota cada mano y usted decide el lance.</p>
+        <div className="absolute -bottom-10 -left-16" style={{ transform: parallax(-0.12) }}>
+          <svg className="w-64 h-64 arte-orbita-lenta" viewBox="0 0 160 160" fill="none">
+            <circle cx="80" cy="80" r="76" stroke="#8AB0BC" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="4 8" />
+            <circle cx="80" cy="80" r="50" stroke="#572C19" strokeOpacity="0.12" strokeWidth="1" />
+          </svg>
         </div>
 
-        <div
-          ref={refJugada}
-          className={`jugada-cancha relative h-56 md:h-64 rounded-2xl bg-white border border-brand-gold/30 shadow-sm overflow-hidden ${animarJugada ? 'jugada-animar' : ''}`}
-          role="img"
-          aria-label="Animacion de una jugada de bolas criollas: tres bolas ruedan hacia el mingo dorado y la mas arrimada queda marcada"
-        >
-          {/* calle de la cancha */}
-          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[55%] bg-brand-cream/40 border-y border-brand-gold/20"></div>
-
-          {/* zona del mingo */}
-          <div className="absolute right-[2%] top-[26%] w-20 h-20 rounded-full border-2 border-dashed border-brand-gold/50"></div>
-
-          {/* mingo dorado */}
-          <div className="mingo-jugada"><MingoDorado /></div>
-
-          {/* bolas que se lanzan */}
-          <div className="bola-jugada bola-jugada-2"><div className="bola-gira bola-gira-2"><BolaCriolla tamano="h-12 w-12 md:h-16 md:w-16" /></div></div>
-          <div className="bola-jugada bola-jugada-3"><div className="bola-gira bola-gira-3"><BolaCriolla tamano="h-12 w-12 md:h-16 md:w-16" /></div></div>
-          <div className="bola-jugada bola-jugada-1">
-            <div className="relative">
-              <div className="bola-gira bola-gira-1"><BolaCriolla tamano="h-12 w-12 md:h-20 md:w-20" /></div>
-              <div className="anillo-arrimada absolute -inset-2 rounded-full border-4 border-brand-gold pointer-events-none"></div>
-              <div className="etiqueta-arrimada absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-[0.65rem] font-bold uppercase tracking-wider text-brand-brown bg-brand-gold px-2.5 py-0.5 rounded-full">Arrimador</div>
-            </div>
-          </div>
+        <div className="absolute left-[6%] top-[16%]" style={{ transform: parallax(0.3) }}>
+          <svg className="w-28 h-28 arte-flotar" viewBox="0 0 64 64" fill="none">
+            <defs>
+              <radialGradient id="arte-disco-rust" cx="38%" cy="32%" r="72%">
+                <stop offset="0%" stopColor="#B9552F" />
+                <stop offset="60%" stopColor="#9E3F23" />
+                <stop offset="100%" stopColor="#5C2413" />
+              </radialGradient>
+            </defs>
+            <circle cx="32" cy="32" r="30" fill="url(#arte-disco-rust)" opacity="0.55" />
+            <ellipse cx="32" cy="32" rx="27" ry="9" transform="rotate(-14 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+            <ellipse cx="32" cy="32" rx="9" ry="27" transform="rotate(-14 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+          </svg>
         </div>
 
-        <p className="text-center text-sm text-brand-brown/60 mt-4">La bola arrimada queda marcada; los tantos de cada mano, en el acta del anotador.</p>
+        <div className="absolute right-[10%] top-[52%]" style={{ transform: parallax(0.45) }}>
+          <svg className="w-16 h-16 arte-flotar-lento" viewBox="0 0 64 64" fill="none">
+            <defs>
+              <radialGradient id="arte-disco-blue" cx="38%" cy="32%" r="72%">
+                <stop offset="0%" stopColor="#A9C6D0" />
+                <stop offset="60%" stopColor="#8AB0BC" />
+                <stop offset="100%" stopColor="#4F6E7A" />
+              </radialGradient>
+            </defs>
+            <circle cx="32" cy="32" r="30" fill="url(#arte-disco-blue)" opacity="0.45" />
+            <ellipse cx="32" cy="32" rx="27" ry="9" transform="rotate(-14 32 32)" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="2.5" />
+          </svg>
+        </div>
+
+        <div className="absolute right-[22%] top-[12%]" style={{ transform: parallax(0.24) }}>
+          <svg className="w-10 h-10 arte-brillo" viewBox="0 0 32 32">
+            <defs>
+              <radialGradient id="arte-mingo" cx="38%" cy="32%" r="72%">
+                <stop offset="0%" stopColor="#FFF3C9" />
+                <stop offset="45%" stopColor="#E7BA67" />
+                <stop offset="100%" stopColor="#8A6524" />
+              </radialGradient>
+            </defs>
+            <circle cx="16" cy="16" r="14" fill="url(#arte-mingo)" />
+            <circle cx="11" cy="10" r="2.6" fill="#FFF7DF" opacity="0.9" />
+          </svg>
+        </div>
+
+        <div className="absolute left-[-4rem] top-[38%] w-72 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * 0.15).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(158,63,35,0.25), transparent)' }}></div>
+        <div className="absolute right-[-3rem] top-[76%] w-80 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * -0.1).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(138,176,188,0.35), transparent)' }}></div>
+
+        <div className="absolute -bottom-24 right-[28%]" style={{ transform: parallax(-0.08) }}>
+          <svg className="w-96 h-48" viewBox="0 0 200 100" fill="none">
+            <path d="M4 96 A 96 96 0 0 1 196 96" stroke="#572C19" strokeOpacity="0.1" strokeWidth="1.5" />
+          </svg>
+        </div>
+      </div>
+
+      <div className="relative">
+
+      {/* HERO: la propuesta para quienes ya conocen la cancha */}
+      <section className="text-center pt-14 pb-20 max-w-3xl mx-auto">
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-brand-rust mb-4">Sistema de gestion deportiva de bolas criollas</p>
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-brand-brown leading-tight mb-6">
+          La cancha es suya.
+          <br />El papeleo, nuestro.
+        </h1>
+        <p className="text-lg text-brand-brown/80 leading-relaxed mb-10">
+          CONMINGO lleva las planillas, las actas, el marcador publico y las estadisticas de cada encuentro.
+          Usted solo se ocupa de arrimar.
+        </p>
+        <div className="flex flex-col sm:flex-row justify-center gap-3">
+          <button
+            type="button"
+            onClick={onIniciarSesion}
+            className="rounded-lg bg-brand-rust text-white px-8 py-3 font-bold shadow-md hover:bg-brand-brown transition-colors"
+          >
+            Entrar al sistema
+          </button>
+          <a
+            href="#partidos"
+            className="rounded-lg bg-white border border-brand-gold/40 text-brand-brown px-8 py-3 font-bold text-center hover:bg-brand-cream transition-colors"
+          >
+            Ver partidos
+          </a>
+        </div>
       </section>
 
       {/* PARTIDOS: solo en vivo y agendados a futuro */}
-      <section id="partidos" className="mb-16 scroll-mt-8">
+      <section id="partidos" className="mb-16 scroll-mt-8 max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-brown mb-2">Partidos</h2>
-          <p className="text-brand-brown/60">En vivo y agendados de las ligas en CONMINGO</p>
+          <p className="text-brand-brown/60">En vivo y agendados de los torneos en CONMINGO</p>
         </div>
 
         {enVivo.length === 0 && agendados.length === 0 ? (
           <div className="text-center p-12 bg-white rounded-2xl border border-brand-gold/30 shadow-sm">
-            <svg className="w-14 h-14 mx-auto text-brand-gold/60 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            <svg className="w-14 h-14 mx-auto text-brand-gold/60 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             <p className="text-lg text-brand-brown/60 font-medium">No hay partidos en vivo ni agendados por ahora.</p>
             <p className="text-sm text-brand-brown/50 mt-2">Cuando la liga agende un encuentro aparecera aqui.</p>
           </div>
@@ -227,17 +277,17 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
         )}
       </section>
 
-      {/* POR QUE CONMINGO: el argumento para digitalizar la liga */}
-      <section className="mb-16">
+      {/* EL ARGUMENTO PARA DIGITALIZARSE: tarjetas con iconos de linea */}
+      <section className="mb-16 max-w-6xl mx-auto">
         <div className="text-center mb-8">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-brown mb-2">Su liga, sin cuadernos</h2>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-brown mb-2">La cancha, sin cuadernos</h2>
           <p className="text-brand-brown/60">Lo que hoy se resuelve a mano, en CONMINGO queda registrado al momento</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {VENTAJAS.map((tarjeta) => (
             <div key={tarjeta.titulo} className="bg-white border border-brand-gold/30 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-10 h-10 rounded-lg bg-brand-cream flex items-center justify-center mb-4">
-                <BolaCriolla tamano="h-6 w-6" />
+              <div className="w-11 h-11 rounded-lg bg-brand-cream flex items-center justify-center mb-4 text-brand-rust">
+                {tarjeta.icono}
               </div>
               <h3 className="font-bold text-brand-brown mb-2">{tarjeta.titulo}</h3>
               <p className="text-sm text-brand-brown/70 leading-relaxed">{tarjeta.texto}</p>
@@ -246,10 +296,47 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
         </div>
       </section>
 
-      <footer className="border-t border-brand-gold/30 pt-8 pb-4 text-center">
-        <p className="font-bold text-brand-brown tracking-tight">CONMINGO</p>
-        <p className="text-sm text-brand-brown/60 mt-1">Sistema de gestion de ligas de bolas criollas.</p>
+      {/* FOOTER DE MARCA */}
+      <footer className="relative overflow-hidden rounded-2xl bg-brand-brown text-brand-cream max-w-7xl mx-auto">
+        <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(231,186,103,0.18), transparent 70%)' }} aria-hidden="true"></div>
+        <div className="absolute -left-10 -bottom-16 w-56 h-56 rounded-full border border-brand-gold/15 pointer-events-none" aria-hidden="true"></div>
+
+        <div className="relative grid grid-cols-1 md:grid-cols-3 gap-10 p-8 sm:p-12">
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <BolaCriolla tamano="h-11 w-11" />
+              <p className="text-2xl font-extrabold tracking-tight text-brand-cream">CONMINGO</p>
+            </div>
+            <p className="text-sm text-brand-cream/70 leading-relaxed">Sistema de gestion deportiva de bolas criollas: actas, marcadores, estadisticas y disciplina en un solo lugar.</p>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-gold mb-4">El sistema</h3>
+            <ul className="space-y-2.5 text-sm">
+              <li><button type="button" onClick={onIniciarSesion} className="hover:text-brand-gold transition-colors">Entrar al sistema</button></li>
+              <li><button type="button" onClick={abrirPizarra} className="hover:text-brand-gold transition-colors">Pizarra publica</button></li>
+              <li><button type="button" onClick={abrirSimulador} className="hover:text-brand-gold transition-colors">Simulador de partidos</button></li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-gold mb-4">De la cancha</h3>
+            <ul className="space-y-2.5 text-sm text-brand-cream/70">
+              <li>Acta digital del anotador</li>
+              <li>Marcador publico por codigo QR</li>
+              <li>Estadisticas y premiacion del torneo</li>
+              <li>Sanciones, protestas y votacion al MVP</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="relative border-t border-brand-cream/10 px-8 sm:px-12 py-5 flex flex-col sm:flex-row justify-between gap-2 text-xs text-brand-cream/60">
+          <p>CONMINGO. Todos los derechos reservados.</p>
+          <p>Sistema de gestion deportiva de bolas criollas.</p>
+        </div>
       </footer>
+
+      </div>
     </div>
   );
 }
