@@ -75,8 +75,9 @@ router.get('/partidos-activos', async (req, res) => {
       LEFT JOIN public.torneos t ON p.torneo_id = t.id
       LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id
       LEFT JOIN public.sedes s ON p.sede_id = s.id
-      WHERE p.estado IN ('En Curso', 'Agendado')
-      ORDER BY t.nombre ASC, p.fecha_hora ASC
+      WHERE p.estado = 'En Curso'
+         OR (p.estado = 'Agendado' AND p.fecha_hora::timestamp >= (NOW() AT TIME ZONE 'America/Caracas'))
+      ORDER BY (p.estado = 'En Curso') DESC, t.nombre ASC, p.fecha_hora ASC
     `);
     res.json(resDb.rows);
   } catch (error) { 
