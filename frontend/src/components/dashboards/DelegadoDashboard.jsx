@@ -393,6 +393,8 @@ const exportarPlanillaBase = async (partidoId, formato) => {
         logoUrl={miEquipo?.logo_url || null}
         titulo={miEquipo ? miEquipo.nombre : 'Cargando...'}
         subtitulo="Panel Delegado"
+        onCerrarSesion={cerrarSesion}
+
         grupos={[
           { etiqueta: 'Mi Equipo', items: [
             { id: 'equipo', label: 'Mi Equipo' },
@@ -425,7 +427,6 @@ const exportarPlanillaBase = async (partidoId, formato) => {
         <HeaderPanel
           titulo={pestana === 'equipo' ? 'Mi Equipo' : pestana === 'calendario' ? 'Calendario y Puntajes' : pestana === 'documentos' ? 'Documentos de la Liga' : pestana === 'pagos' ? 'Pagos del Equipo' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Analítica y Scouting'}
           onAbrirMenu={() => setMenuAbierto(true)}
-          onCerrarSesion={cerrarSesion}
           acciones={miEquipo ? <span className="hidden sm:block text-sm font-semibold text-brand-brown/70">{miEquipo.categoria} - {miEquipo.tipo_genero}</span> : null}
         />
 

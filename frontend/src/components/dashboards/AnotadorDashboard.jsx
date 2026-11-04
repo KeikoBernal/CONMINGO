@@ -688,6 +688,20 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       <Sidebar
         titulo="Anotador Oficial"
         subtitulo="Mesa Técnica"
+        onCerrarSesion={cerrarSesion}
+        extras={<>
+          <BotonModoSolar className="w-full" />
+          {ligas.length > 0 && (
+            <select
+              value={ligaFiltro}
+              onChange={(e) => setLigaFiltro(e.target.value)}
+              className="w-full p-2 bg-brand-cream/10 border border-brand-gold/30 rounded-lg text-xs font-bold text-brand-cream focus:ring-2 focus:ring-brand-rust outline-none shadow-sm cursor-pointer"
+            >
+              {ligas.map(l => <option key={l.id} value={l.id}>Liga: {l.nombre}</option>)}
+            </select>
+          )}
+        </>}
+
         grupos={[
           { etiqueta: 'Panel', items: [
             { id: 'inicio', label: 'Inicio' },
@@ -720,19 +734,6 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
           tituloMovil
           titulo={partidoActivo ? `Planilla Oficial: ${partidoActivo.local_nombre} vs ${partidoActivo.visita_nombre}` : (pestana === 'inicio' ? 'Inicio' : pestana === 'hoy' ? 'Partidos de Hoy' : pestana === 'proximos' ? 'Próximos Partidos' : pestana === 'calendario' ? 'Calendario de Partidos' : pestana === 'votacion' ? 'Votación MVP' : pestana === 'protestas' ? 'Protestas' : 'Historial Reciente')}
           onAbrirMenu={() => setMenuAbierto(true)}
-          onCerrarSesion={cerrarSesion}
-          acciones={<div className="flex items-center gap-3">
-            <BotonModoSolar />
-            {ligas.length > 0 && (
-              <select
-                value={ligaFiltro}
-                onChange={(e) => setLigaFiltro(e.target.value)}
-                className="p-2 bg-brand-cream/30 border border-brand-gold/40 rounded-lg text-sm font-bold text-brand-brown focus:ring-2 focus:ring-brand-rust outline-none shadow-sm cursor-pointer"
-              >
-                {ligas.map(l => <option key={l.id} value={l.id}>Liga: {l.nombre}</option>)}
-              </select>
-            )}
-          </div>}
         />
 
         {/* CONTENIDO DE LAS PESTAÑAS O PARTIDO ACTIVO */}

@@ -862,6 +862,12 @@ const ejecutarEliminacionBase = async (e) => {
       <Sidebar
         titulo="Superadmin"
         subtitulo="Control Global"
+        onCerrarSesion={ejecutarCerrarSesion}
+        extras={<div className="flex gap-2">
+          <button onClick={() => exportarRespaldoBD('sql')} disabled={generandoRespaldo} className="flex-1 px-3 py-2 bg-brand-cream/10 text-brand-cream border border-brand-gold/30 rounded-lg hover:bg-brand-rust text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'Respaldo SQL'}</button>
+          <button onClick={() => exportarRespaldoBD('json')} disabled={generandoRespaldo} className="flex-1 px-3 py-2 bg-brand-cream/10 text-brand-cream border border-brand-gold/30 rounded-lg hover:bg-brand-rust text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'Respaldo JSON'}</button>
+        </div>}
+
         grupos={[
           { etiqueta: 'Panel', items: [
             { id: 'inicio', label: 'Inicio' },
@@ -897,15 +903,6 @@ const ejecutarEliminacionBase = async (e) => {
           claseTitulo="text-xl font-bold text-brand-brown capitalize flex items-center gap-2"
           titulo={<><NavIcon nombre={ICONOS_PESTANA[pestana]} /> {TITULOS_PESTANA[pestana] || pestana}</>}
           onAbrirMenu={() => setMenuAbierto(true)}
-          onCerrarSesion={ejecutarCerrarSesion}
-          acciones={<div className="flex items-center gap-2 bg-brand-cream/30 p-1.5 rounded-lg border border-brand-gold/40 w-full sm:w-auto overflow-x-auto">
-            <span className="text-xs font-bold text-brand-brown/70 ml-2 mr-1 flex items-center gap-1">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
-              Respaldo BD:
-            </span>
-            <button onClick={() => exportarRespaldoBD('sql')} disabled={generandoRespaldo} className="px-3 py-1.5 bg-brand-brown text-brand-cream rounded-lg hover:bg-brand-brown/80 transition-colors text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'SQL'}</button>
-            <button onClick={() => exportarRespaldoBD('json')} disabled={generandoRespaldo} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed">{generandoRespaldo ? 'Generando...' : 'JSON'}</button>
-          </div>}
         />
 
         {/* CONTENIDO PRINCIPAL */}
