@@ -406,15 +406,24 @@ export default function App() {
         <nav className="flex justify-between items-center mb-10 pb-6 border-b border-brand-gold/30">
           <div className="flex items-center gap-3">
             <svg className="w-9 h-9 shrink-0" viewBox="0 0 64 64" role="img" aria-label="CONMINGO">
-              <circle cx="30" cy="34" r="26" fill="#C89B6E" stroke="#572C19" strokeWidth="3" />
-              <path d="M6 42 C 16 54, 44 54, 54 42" fill="none" stroke="#572C19" strokeWidth="3" strokeLinecap="round" />
-              <path d="M6 26 C 16 14, 44 14, 54 26" fill="none" stroke="#572C19" strokeWidth="3" strokeLinecap="round" opacity="0.6" />
-              <ellipse cx="20" cy="22" rx="6" ry="3.5" fill="#F2EBE0" opacity="0.4" transform="rotate(-25 20 22)" />
+              <defs>
+                <radialGradient id="grad-bola-nav" cx="38%" cy="32%" r="72%">
+                  <stop offset="0%" stopColor="#E9CFA4" />
+                  <stop offset="52%" stopColor="#C89B6E" />
+                  <stop offset="100%" stopColor="#754625" />
+                </radialGradient>
+              </defs>
+              <circle cx="30" cy="34" r="26" fill="url(#grad-bola-nav)" />
+              <g fill="none" stroke="#4A2313" strokeWidth="4.5" strokeLinecap="round">
+                <ellipse cx="30" cy="34" rx="23" ry="7.5" transform="rotate(-14 30 34)" />
+                <ellipse cx="30" cy="34" rx="7.5" ry="23" transform="rotate(-14 30 34)" />
+              </g>
+              <ellipse cx="20" cy="24" rx="6" ry="3.5" fill="#FFF7DF" opacity="0.35" transform="rotate(-28 20 24)" />
               <circle cx="53" cy="10" r="6" fill="#E7BA67" stroke="#9E7A2E" strokeWidth="2" />
             </svg>
             <div className="leading-tight">
               <h2 className="text-2xl font-bold text-brand-brown tracking-tight">CONMINGO</h2>
-              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-brand-rust">Ligas de bolas criollas</p>
+              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-brand-rust">Gestion deportiva de bolas criollas</p>
             </div>
           </div>
           
