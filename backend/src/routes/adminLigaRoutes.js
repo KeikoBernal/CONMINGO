@@ -1944,6 +1944,11 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = COALESCE($1, fecha_hora), arbitro_id = $2, anotador_id = $3, sede_id = COALESCE($4, sede_id) WHERE id = $5`, [fecha_hora, arbitro_id || null, anotador_id || null, sede_id, id]);
+    // FIX (revision de seguridad, hallazgo bajo): la reasignacion de oficiales invalida
+    // de inmediato el cache de permisos del servidor; un oficial desasignado deja de
+    // poder operar el partido en su siguiente accion y no hasta 60 segundos despues.
+    const invalidarPermisoPartido = req.app.get('invalidarPermisoPartido');
+    if (typeof invalidarPermisoPartido === 'function') invalidarPermisoPartido(id);
     // LOTE 5 (N4): aviso a los oficiales asignados
     try {
       const oficialesNuevos = [arbitro_id, anotador_id].filter(Boolean);
