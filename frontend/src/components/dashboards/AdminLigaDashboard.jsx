@@ -10,6 +10,7 @@ import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmac
 import CalendarioPartidos from '../CalendarioPartidos';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CampoTexto from '../CampoTexto';
+import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, fechaHoy } from '../fechas'; // LOTE FECHAS: fechas en dd/mm/aaaa y horas 12h de Venezuela
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
 import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
@@ -245,8 +246,8 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [creandoFlash, setCreandoFlash] = useState(false);
   const temporizadorAutocomplete = useRef(null);
 
-  const hoyStr = new Date().toISOString().split('T')[0];
-  const ahora = new Date();
+  const ahora = new Date(); // LOTE FECHAS: fecha local de Venezuela, sin desfase UTC
+  const hoyStr = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`; // LOTE FECHAS: hoy en YYYY-MM-DD local para inputs date y comparaciones
   const ahoraIsoLocal = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}T${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
   
   const fetchConToken = async (endpoint, options = {}) => {
@@ -1020,7 +1021,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
         pdf.setTextColor(70, 45, 30); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
         pdf.text(`${partidoData.local_nombre || 'Por definir'} vs ${partidoData.visita_nombre || 'Por definir'}`, 14, 32);
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
-        pdf.text(`Fecha: ${partidoData.fecha_hora}   |   Generado: ${new Date().toLocaleString('es-VE')}`, 14, 38);
+        pdf.text(`Fecha: ${partidoData.fecha_hora}   |   Generado: ${formatearFechaHora(new Date())}`, 14, 38);
         autoTable(pdf, { startY: 44, head: [['Cédula', 'Nombre', 'Apellido', 'Dorsal', 'Equipo']], body: nominaData.map(j => [j.cedula ?? '—', j.nombre ?? '—', j.apellido ?? '—', j.numero_dorsal ?? '—', j.equipo_nombre || 'N/A']), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
                 // LOTE 6D: firmas digitales del acta. Se consultan las firmas registradas
         // y cada una se incrusta sobre su linea; los slots sin firma quedan en blanco.
@@ -1098,7 +1099,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
       }
       pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · REPORTE OFICIAL', margenTexto, 10); pdf.setFontSize(9); pdf.text('Estadísticas de la liga', margenTexto, 17);
       pdf.setTextColor(70, 45, 30); pdf.setFontSize(8);
-      pdf.text(`Usuario: ${usuario?.email || usuario?.nombre || usuario?.username}   |   Generado: ${new Date().toLocaleString('es-VE')}   |   Temporada: ${temporadaFiltro}`, 14, 30);
+      pdf.text(`Usuario: ${usuario?.email || usuario?.nombre || usuario?.username}   |   Generado: ${formatearFechaHora(new Date())}   |   Temporada: ${temporadaFiltro}`, 14, 30);
       autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
       if (estadisticas.mejores_jugadores?.length) {
         autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
@@ -1252,8 +1253,8 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
   // FASE 2 UX: los iconos viven en el catalogo compartido; cada pestana mapea a un nombre
   const ICONOS_PESTANA = { inicio: 'inicio', equipos: 'equipos', sedes: 'sedes', credenciales: 'credencial', reglas: 'reglas', torneos: 'torneo', estadisticas: 'estadisticas', historial: 'reloj', bitacora: 'bitacora', documentos: 'documentos', sanciones: 'sancion', protestas: 'protesta', pagos: 'pagos', disciplina: 'sancion', resultados: 'estadisticas', configuracion: 'configuracion' };
   // FASE B1 UX: resumen de la pestana Inicio (partidos del dia, sanciones activas, pagos y equipos).
-  const hoyFechaAdmin = new Date().toLocaleDateString('es-VE');
-  const partidosHoyAdmin = partidos.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFechaAdmin && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
+  const hoyFechaAdmin = fechaHoy();
+  const partidosHoyAdmin = partidos.filter(p => formatearFecha(p.fecha_hora) === hoyFechaAdmin && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
   const partidosEnCursoAdmin = partidos.filter(p => p.estado === 'En Curso');
   const sancionesActivas = sanciones.filter(s => s.estado === 'Activa');
 
@@ -1498,7 +1499,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       {partidosHoyAdmin.slice(0, 3).map(p => (
                         <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-brand-brown/80 font-medium">
                           <span>{p.local_nombre} vs {p.visita_nombre}</span>
-                          <span>{new Date(p.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })} - {p.sede_nombre}</span>
+                          <span>{formatearHoraDeFecha(p.fecha_hora)} - {p.sede_nombre}</span>
                         </div>
                       ))}
                     </div>
@@ -2130,7 +2131,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <label className="text-xs font-bold text-brand-brown/70 uppercase">Partido</label>
                       <select value={formJugadasAdmin.partido_id} onChange={e => setFormJugadasAdmin({ ...formJugadasAdmin, partido_id: e.target.value })} className="w-full p-2 border border-brand-gold/30 rounded-lg">
                         <option value="">-- Partido finalizado --</option>
-                        {partidos.filter(p => p.estado === 'Finalizado').map(p => <option key={p.id} value={p.id}>{p.local_nombre} vs {p.visita_nombre} — {String(p.fecha_hora || '').slice(0, 10)}</option>)}
+                        {partidos.filter(p => p.estado === 'Finalizado').map(p => <option key={p.id} value={p.id}>{p.local_nombre} vs {p.visita_nombre} — {p.fecha_hora ? formatearFecha(p.fecha_hora) : ''}</option>)}
                       </select>
                     </div>
                     <CampoTexto etiqueta="Mano #" tipo="number" min="1" valor={formJugadasAdmin.numero_mano} onChange={e => setFormJugadasAdmin({ ...formJugadasAdmin, numero_mano: e.target.value })} requerido />
@@ -2429,7 +2430,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           { etiqueta: 'Marcador', valor: (p) => (p.marcador_local !== null ? p.marcador_local + ' - ' + p.marcador_visita : 'N/A') }
                         ]}
                         detalle={[
-                          { etiqueta: 'Fecha', valor: (p) => new Date(p.fecha_hora).toLocaleString('es-VE') },
+                          { etiqueta: 'Fecha', valor: (p) => formatearFechaHora(p.fecha_hora) },
                           { etiqueta: 'Torneo', valor: (p) => p.torneo_nombre }
                         ]}
                         acciones={(p) => (
@@ -2463,7 +2464,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           <tr><td colSpan={5} className="p-0 border-0"><EmptyState icono="reloj" titulo="Sin partidos finalizados todavía" descripcion="Cuando cierres actas de partidos aparecerán aquí." /></td></tr>
                         ) : pagHistorial.filasPagina.map(p => (
                           <tr key={p.id}>
-                            <td className="text-brand-brown/80">{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
+                            <td className="text-brand-brown/80">{formatearFechaHora(p.fecha_hora)}</td>
                             <td className="font-semibold">{p.torneo_nombre}</td>
                             <td className="text-center"><strong>{p.local_nombre}</strong> <span className="text-brand-rust mx-1">vs</span> <strong>{p.visita_nombre}</strong></td>
                             <td className="text-center font-black text-lg">{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'N/A'}</td>
@@ -2565,7 +2566,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <td>{s.tipo}</td>
                             <td>{s.motivo || '—'}</td>
                             <td>{s.alcance === 'Liga' ? 'Liga completa' : 'Equipo'}</td>
-                            <td className="text-xs">{s.modo_cumplimiento === 'Dias' ? `${s.partidos_suspension} día(s) desde ${String(s.fecha_inicio || '').slice(0, 10)}` : `${s.partidos_suspension} partido(s) — ${s.modo_cumplimiento}`}</td>
+                            <td className="text-xs">{s.modo_cumplimiento === 'Dias' ? `${s.partidos_suspension} día(s) desde ${s.fecha_inicio ? formatearFecha(s.fecha_inicio) : ''}` : `${s.partidos_suspension} partido(s) — ${s.modo_cumplimiento}`}</td>
                             <td>{s.modo_cumplimiento === 'Dias' ? 'Por fecha' : `${s.partidos_cumplidos || 0}/${s.partidos_suspension}`}</td>
                             <td><span className={(s.estado === 'Activa' ? 'bg-red-100 text-red-800' : s.estado === 'Cumplida' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') + ' px-3 py-1 rounded-full text-xs font-bold'}>{s.estado}</span></td>
                             <td className="text-center">{s.estado !== 'Levantada' && <button onClick={() => levantarSancion(s.id)} className="bg-brand-cream text-brand-brown px-3 py-1 rounded-lg text-xs font-bold hover:bg-brand-gold/40 transition-colors">Levantar</button>}</td>
@@ -2602,7 +2603,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <table className="tabla-admin min-w-[760px] whitespace-nowrap">
                       <thead><tr><th scope="col">Fecha y hora</th><th scope="col">Usuario</th><th scope="col">Rol</th><th scope="col">Qué hizo</th><th scope="col">Recurso consultado</th><th scope="col">IP</th></tr></thead>
                       <tbody>
-                        {cargando && bitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={6} columnas={6} compacto /></td></tr>) : filasBitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="acta" titulo="Sin eventos para mostrar" descripcion={bitacora.length === 0 ? 'Aún no hay eventos registrados en la bitácora.' : 'Ningún evento coincide con los filtros aplicados.'} /></td></tr>) : pagBitacora.filasPagina.map(evento => <tr key={evento.id}><td>{new Date(evento.fecha_hora).toLocaleString('es-VE')}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
+                        {cargando && bitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><SkeletonTabla filas={6} columnas={6} compacto /></td></tr>) : filasBitacora.length === 0 ? (<tr><td colSpan={6} className="p-0 border-0"><EmptyState icono="acta" titulo="Sin eventos para mostrar" descripcion={bitacora.length === 0 ? 'Aún no hay eventos registrados en la bitácora.' : 'Ningún evento coincide con los filtros aplicados.'} /></td></tr>) : pagBitacora.filasPagina.map(evento => <tr key={evento.id}><td>{formatearFechaHora(evento.fecha_hora)}</td><td className="font-semibold">{evento.usuario}</td><td>{evento.usuario_rol || '—'}</td><td className="max-w-[360px] whitespace-normal font-semibold leading-snug text-brand-rust" title={evento.accion}>{evento.accion_legible}</td><td>{evento.recurso_legible}</td><td>{evento.ip || '—'}</td></tr>)}
                       </tbody>
                     </table>
                   </div>
@@ -2655,7 +2656,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                               <tbody className="divide-y divide-red-50">
                                 {pagSuspendidos.filasPagina.map(p => (
                                   <tr key={p.id}>
-                                    <td className="p-3 text-brand-brown/80">{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
+                                    <td className="p-3 text-brand-brown/80">{formatearFechaHora(p.fecha_hora)}</td>
                                     <td className="p-3 font-semibold text-brand-brown">{p.torneo_nombre}</td>
                                     <td className="p-3 font-bold text-brand-brown">{p.local_nombre || 'Por definir'} vs {p.visita_nombre || 'Por definir'}</td>
                                     <td className="p-3 text-center">
@@ -2700,7 +2701,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                       <tr key={p.id}>
                                         <td className="font-semibold text-brand-rust">{p.fase}</td>
                                         <td className="font-bold">{p.local_nombre || '?'} vs {p.visita_nombre || '?'}</td>
-                                        <td className="text-brand-brown/80">{new Date(p.fecha_hora).toLocaleString('es-VE')}</td>
+                                        <td className="text-brand-brown/80">{formatearFechaHora(p.fecha_hora)}</td>
                                         <td className="text-brand-brown/80">{p.sede_nombre || 'Principal'}</td>
                                         <td className="text-center">
                                           <button onClick={() => setModalEditarPartido({ visible: true, partido: p, fecha_hora: p.fecha_hora.slice(0, 16), arbitro_id: p.arbitro_id || '', anotador_id: p.anotador_id || '', sede_id: p.sede_id || '' })} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1 rounded text-xs font-bold transition-colors">Modificar</button>
@@ -3174,7 +3175,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     {fr.firmada && fr.url_firmada ? (
                       <>
                         <img src={fr.url_firmada} alt={'Firma ' + fr.rol_firma} className="w-full h-20 object-contain bg-white rounded border border-brand-gold/20" />
-                        <div className="text-[0.65rem] text-brand-brown/60 mt-1">Firmada{fr.registrada_por_nombre ? ' por ' + fr.registrada_por_nombre : ''}{fr.firmado_en ? ' el ' + new Date(fr.firmado_en).toLocaleString('es-VE') : ''}</div>
+                        <div className="text-[0.65rem] text-brand-brown/60 mt-1">Firmada{fr.registrada_por_nombre ? ' por ' + fr.registrada_por_nombre : ''}{fr.firmado_en ? ' el ' + formatearFechaHora(fr.firmado_en) : ''}</div>
                       </>
                     ) : (
                       <div className="text-[0.7rem] text-brand-brown/50">{fr.exigible ? 'Pendiente (obligatoria)' : 'No aplica a este partido'}</div>

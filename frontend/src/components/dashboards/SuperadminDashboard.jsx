@@ -15,6 +15,7 @@ import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import { tecladoModal } from '../Accesibilidad';
+import { formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y bitacora en dd/mm/aaaa, 12 horas
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -277,7 +278,7 @@ const exportarRespaldoBDBase = async (formato) => {
       doc.setFontSize(16);
       doc.text(`Reporte de ${titulo} - Sistema CONMINGO`, 14, 20);
       doc.setFontSize(10);
-      doc.text(`Fecha de generación: ${new Date().toLocaleString()}`, 14, 28);
+      doc.text(`Fecha de generación: ${formatearFechaHora(new Date())}`, 14, 28);
       const filasPDF = datos.map(item => pdfColumnas.map(col => item[col.key] || 'N/A'));
       const cabecerasPDF = pdfColumnas.map(col => col.label);
       autoTable(doc, {
@@ -303,7 +304,7 @@ const exportarRespaldoBDBase = async (formato) => {
       ];
       generarReporte(usuariosList, 'Usuarios_Sistema', formato, configPDF);
     } else if (pestana === 'bitacora') {
-      const datosBitacora = bitacora.map(b => ({ Fecha: new Date(b.fecha).toLocaleString(), Usuario: b.usuario_email, Rol: b.usuario_rol, Accion: b.accion, Tabla: b.tabla }));
+      const datosBitacora = bitacora.map(b => ({ Fecha: formatearFechaHora(b.fecha), Usuario: b.usuario_email, Rol: b.usuario_rol, Accion: b.accion, Tabla: b.tabla }));
       const configPDF = [{ label: 'Fecha', key: 'Fecha' }, { label: 'Usuario', key: 'Usuario' }, { label: 'Rol', key: 'Rol' }, { label: 'Acción', key: 'Accion' }, { label: 'Tabla', key: 'Tabla' }];
       generarReporte(datosBitacora, 'Auditoria_Bitacora', formato, configPDF);
     } else if (pestana === 'metricas') {
@@ -566,11 +567,7 @@ const ejecutarEliminacionBase = async (e) => {
   const isBuscando = busquedaUsuario.trim().length > 0;
   const usuariosMatchBusqueda = usuariosList.filter(u => `${u.nombre || ''} ${u.apellido || ''} ${u.email} ${u.cedula}`.toLowerCase().includes(busquedaUsuario.trim().toLowerCase()));
 
-  const formatearFecha = (fechaIso) => {
-    if (!fechaIso) return 'N/A';
-    const fecha = new Date(fechaIso);
-    return fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute:'2-digit' });
-  };
+  const formatearFecha = (fechaIso) => fechaIso ? formatearFechaHora(fechaIso) : 'N/A'; // LOTE FECHAS: delega en el kit compartido (dd/mm/aaaa, 12 horas)
 
   const renderTablaUsuarios = (arregloUsuarios) => {
     const filasUsuariosVista = filtrarTabla('usuarios', arregloUsuarios, ['rol', 'estado']);
@@ -1300,7 +1297,7 @@ const ejecutarEliminacionBase = async (e) => {
                     ) : (
                       bitacora.map(b => (
                         <tr key={b.id} className="hover:bg-brand-cream/5 transition-colors">
-                          <td className="p-4 text-xs text-brand-brown/70">{new Date(b.fecha).toLocaleString('es-VE')}</td>
+                          <td className="p-4 text-xs text-brand-brown/70">{formatearFechaHora(b.fecha)}</td>
                           <td className="p-4">{b.usuario_email}</td>
                           <td className="p-4"><span className="bg-brand-cream/50 px-2 py-0.5 rounded text-[0.7rem] font-bold border border-brand-gold/20">{b.usuario_rol}</span></td>
                           <td className="p-4 font-bold text-brand-blue">{b.accion_descripcion || b.accion}</td>
