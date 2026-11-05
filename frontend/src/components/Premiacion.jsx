@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '../supabaseClient';
+import { fechaHoy } from './fechas'; // LOTE FECHAS: sello de emision en dd/mm/aaaa
 
 import EmptyState from './EmptyState';
 import NavIcon from './NavIcon';
@@ -106,7 +107,7 @@ const generarDiploma = (datos, clave, campeon) => {
   pdf.setFontSize(9);
   const fechas = rangoFechas(datos.torneo);
   pdf.text(fechas ? 'Celebrado del ' + fechas : '', 148.5, 133, { align: 'center' });
-  pdf.text('Emitido el ' + new Date().toLocaleDateString('es-VE'), 148.5, 139, { align: 'center' });
+  pdf.text('Emitido el ' + fechaHoy(), 148.5, 139, { align: 'center' });
   pdf.setDrawColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
   pdf.setLineWidth(0.4);
   pdf.line(90, 168, 207, 168);
@@ -135,7 +136,7 @@ const generarActaPremiacion = (datos) => {
   pdf.setFontSize(9);
   const fechas = rangoFechas(datos.torneo);
   pdf.text(fechas ? 'Celebrado del ' + fechas : '', 14, 39.5);
-  pdf.text('Emitida el ' + new Date().toLocaleDateString('es-VE'), 196, 39.5, { align: 'right' });
+  pdf.text('Emitida el ' + fechaHoy(), 196, 39.5, { align: 'right' });
 
   const filasCampeones = ESPECIALIDADES.map(e => {
     const c = datos.campeones[e.clave];
