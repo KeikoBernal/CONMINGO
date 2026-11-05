@@ -12,17 +12,7 @@ const firmasActa = require('../utilidades/firmasActa'); // LOTE 6D: firmas digit
 const { enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo, enviarRestablecerPassword } = require('../utilidades/correo'); // LOTE 6G: correo saliente SMTP y tokens de verificacion
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // LOTE 6G
 
-const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
-  try {
-    await db.query(
-      `INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip, organizacion_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip, organizacionId]
-    );
-  } catch (error) {
-    // FIX #15: la auditoría no debe fallar en silencio; se registra el error con contexto.
-    console.error('[auditoría] No se pudo registrar en la bitácora:', { usuarioId, accion, tabla, error: error?.message || error });
-  }
-};
+const { registrarAuditoria } = require('../utilidades/auditoria');
 
 const formatearTexto = (texto) => {
   if (!texto) return '';
@@ -1954,6 +1944,11 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = COALESCE($1, fecha_hora), arbitro_id = $2, anotador_id = $3, sede_id = COALESCE($4, sede_id) WHERE id = $5`, [fecha_hora, arbitro_id || null, anotador_id || null, sede_id, id]);
+    // FIX (revision de seguridad, hallazgo bajo): la reasignacion de oficiales invalida
+    // de inmediato el cache de permisos del servidor; un oficial desasignado deja de
+    // poder operar el partido en su siguiente accion y no hasta 60 segundos despues.
+    const invalidarPermisoPartido = req.app.get('invalidarPermisoPartido');
+    if (typeof invalidarPermisoPartido === 'function') invalidarPermisoPartido(id);
     // LOTE 5 (N4): aviso a los oficiales asignados
     try {
       const oficialesNuevos = [arbitro_id, anotador_id].filter(Boolean);

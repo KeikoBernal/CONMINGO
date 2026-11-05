@@ -269,6 +269,21 @@ const puedeOperarPartidoEnBD = async (usuario, rolNorm, partidoId) => {
   return ok;
 };
 
+// FIX (revision de seguridad, hallazgo bajo): el cache de permisos duraba 60 s
+// y un oficial desasignado podia seguir operando el partido hasta un minuto
+// despues. Las rutas que cambian la asignacion de un partido llaman a este
+// invalidador (via req.app.get) para que la revocacion sea inmediata.
+// Acepta el id entero o el uuid_publico (resolverIdPartido).
+const invalidarPermisoPartido = async (partidoId) => {
+  const pid = await resolverIdPartido(partidoId);
+  if (!pid) return;
+  const sufijo = ':' + pid;
+  for (const clave of cachePermisoPartido.keys()) {
+    if (clave.endsWith(sufijo)) cachePermisoPartido.delete(clave);
+  }
+};
+app.set('invalidarPermisoPartido', invalidarPermisoPartido);
+
 // ============================================================
 // LOTE F: mensajería multi-liga. Las salas de rol dejan de ser globales:
 // ahora son "rol_<rol>__org_<uuid de la organización>" para que los
