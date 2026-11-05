@@ -50,6 +50,17 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     new Promise((resolver) => setConfirmacion({ titulo, mensaje, tipo, resolver }));
 
   const [partidos, setPartidos] = useState([]);
+  // LOTE PDF MARCA: organizacion (nombre y logo) para los encabezados de los PDF.
+  const [orgLiga, setOrgLiga] = useState(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${API_URL}/operativo/mi-organizacion`, { headers: { Authorization: 'Bearer ' + (session ? session.access_token : '') } });
+        if (res.ok) setOrgLiga(await res.json());
+      } catch (e) { /* sin organizacion los PDF salen con la marca base */ }
+    })();
+  }, []);
   const [partidoActivo, setPartidoActivo] = useState(null);
   const [jugadoresLocal, setJugadoresLocal] = useState([]);
   const [jugadoresVisita, setJugadoresVisita] = useState([]);
@@ -807,7 +818,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     Encuentros Programados para Hoy
                   </h3>
-                  <TableTools rows={partidosHoyBase} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="anotador_partidos_hoy" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                  <TableTools rows={partidosHoyBase} logoUrl={orgLiga?.logo_url || null} nombreLiga={orgLiga?.nombre || ''} filteredRows={partidosHoy} filter={getFilter('hoy')} setFilter={setTableFilter('hoy')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} filename="anotador_partidos_hoy" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {cargando && partidosHoy.length === 0 ? (
                     <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
                   ) : partidosHoy.length === 0 ? (
@@ -852,7 +863,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     Próximos Partidos Agendados
                   </h3>
-                  <TableTools rows={partidosAgendadosBase} filteredRows={partidosAgendados} filter={getFilter('proximos')} setFilter={setTableFilter('proximos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} dateFields={['fecha_hora']} filename="anotador_proximos_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                  <TableTools rows={partidosAgendadosBase} logoUrl={orgLiga?.logo_url || null} nombreLiga={orgLiga?.nombre || ''} filteredRows={partidosAgendados} filter={getFilter('proximos')} setFilter={setTableFilter('proximos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} dateFields={['fecha_hora']} filename="anotador_proximos_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {cargando && partidosAgendados.length === 0 ? (
                     <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
                   ) : partidosAgendados.length === 0 ? (
@@ -922,7 +933,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     Historial Reciente y Archivo
                   </h3>
-                  <TableTools rows={partidosFinalizadosBase} filteredRows={partidosFinalizados} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado']} dateFields={['fecha_hora']} filename="anotador_historial_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                  <TableTools rows={partidosFinalizadosBase} logoUrl={orgLiga?.logo_url || null} nombreLiga={orgLiga?.nombre || ''} filteredRows={partidosFinalizados} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado']} dateFields={['fecha_hora']} filename="anotador_historial_partidos" modulo="Anotador oficial" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   {cargando && partidosFinalizados.length === 0 ? (
                     <SkeletonTarjetas cantidad={4} clasesGrid="grid grid-cols-1 md:grid-cols-2 gap-4" />
                   ) : partidosFinalizados.length === 0 ? (
@@ -1054,6 +1065,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                 <div id="acta-planilla-pdf">
                   <PlanillaUniversal
                     rol={partidoActivo.estado === 'Finalizado' ? 'espectador' : 'anotador'}
+                    nombreLiga={orgLiga?.nombre || ''}
+                    logoLiga={orgLiga?.logo_url || null}
                     estadoPartido={partidoActivo.estado}
                     partidoId={partidoActivo.id}
                     datosPartido={{ arbitro: partidoActivo.arbitro_nombre, anotador: partidoActivo.anotador_nombre, capitanLocal: partidoActivo.capitan_local_nombre, capitanVisita: partidoActivo.capitan_visita_nombre, localNombre: partidoActivo.local_nombre, visitaNombre: partidoActivo.visita_nombre, fecha: formatearFecha(partidoActivo.fecha_hora), horaInicio: partidoActivo.hora_inicio, horaFinal: partidoActivo.hora_final }}

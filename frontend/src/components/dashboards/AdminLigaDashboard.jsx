@@ -11,6 +11,7 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CampoTexto from '../CampoTexto';
 import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, fechaHoy } from '../fechas'; // LOTE FECHAS: fechas en dd/mm/aaaa y horas 12h de Venezuela
+import { encabezadoMarca, MARCA_PDF } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca (logo y nombre de la liga) en los PDF
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
 import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
@@ -1007,22 +1008,13 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
         descargarBlob(blob, `${nombreArchivo}.xls`);
       } else if (formato === 'pdf') {
         const pdf = new jsPDF();
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        pdf.setFillColor(34, 78, 105); pdf.rect(0, 0, pageWidth, 22, 'F');
-        let margenTexto = 14;
-        if (orgData.logo_url && !orgData.logo_url.startsWith('data:image/webp')) {
-          try {
-            pdf.setFillColor(255, 255, 255); pdf.rect(6, 2.5, 18, 17, 'F');
-            pdf.addImage(orgData.logo_url, orgData.logo_url.startsWith('data:image/png') ? 'PNG' : 'JPEG', 7, 3.5, 16, 15);
-            margenTexto = 28;
-          } catch (e) { margenTexto = 14; }
-        }
-        pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · PLANILLA OFICIAL', margenTexto, 10); pdf.setFontSize(9); pdf.text('Documento pre-impreso del encuentro', margenTexto, 17);
+        // LOTE PDF MARCA: banda de marca con logo y nombre de la liga.
+        encabezadoMarca(pdf, { nombreLiga: orgData.nombre, logoUrl: orgData.logo_url, titulo: 'PLANILLA OFICIAL', subtitulo: 'Documento pre-impreso del encuentro' });
         pdf.setTextColor(70, 45, 30); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
         pdf.text(`${partidoData.local_nombre || 'Por definir'} vs ${partidoData.visita_nombre || 'Por definir'}`, 14, 32);
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
         pdf.text(`Fecha: ${partidoData.fecha_hora}   |   Generado: ${formatearFechaHora(new Date())}`, 14, 38);
-        autoTable(pdf, { startY: 44, head: [['Cédula', 'Nombre', 'Apellido', 'Dorsal', 'Equipo']], body: nominaData.map(j => [j.cedula ?? '—', j.nombre ?? '—', j.apellido ?? '—', j.numero_dorsal ?? '—', j.equipo_nombre || 'N/A']), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
+        autoTable(pdf, { startY: 44, head: [['Cédula', 'Nombre', 'Apellido', 'Dorsal', 'Equipo']], body: nominaData.map(j => [j.cedula ?? '—', j.nombre ?? '—', j.apellido ?? '—', j.numero_dorsal ?? '—', j.equipo_nombre || 'N/A']), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream } });
                 // LOTE 6D: firmas digitales del acta. Se consultan las firmas registradas
         // y cada una se incrusta sobre su linea; los slots sin firma quedan en blanco.
         let estadoFirmasPdf = null;
@@ -1087,22 +1079,13 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
       descargarBlob(blob, `${nombreArchivo}.xls`);
     } else if (formato === 'pdf') {
       const pdf = new jsPDF();
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      pdf.setFillColor(34, 78, 105); pdf.rect(0, 0, pageWidth, 22, 'F');
-      let margenTexto = 14;
-      if (orgData.logo_url && !orgData.logo_url.startsWith('data:image/webp')) {
-        try {
-          pdf.setFillColor(255, 255, 255); pdf.rect(6, 2.5, 18, 17, 'F');
-          pdf.addImage(orgData.logo_url, orgData.logo_url.startsWith('data:image/png') ? 'PNG' : 'JPEG', 7, 3.5, 16, 15);
-          margenTexto = 28;
-        } catch (e) { margenTexto = 14; }
-      }
-      pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · REPORTE OFICIAL', margenTexto, 10); pdf.setFontSize(9); pdf.text('Estadísticas de la liga', margenTexto, 17);
+      // LOTE PDF MARCA: banda de marca con logo y nombre de la liga.
+      encabezadoMarca(pdf, { nombreLiga: orgData.nombre, logoUrl: orgData.logo_url, titulo: 'REPORTE OFICIAL', subtitulo: 'Estadísticas de la liga' });
       pdf.setTextColor(70, 45, 30); pdf.setFontSize(8);
       pdf.text(`Usuario: ${usuario?.email || usuario?.nombre || usuario?.username}   |   Generado: ${formatearFechaHora(new Date())}   |   Temporada: ${temporadaFiltro}`, 14, 30);
-      autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
+      autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream } });
       if (estadisticas.mejores_jugadores?.length) {
-        autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] } });
+        autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream } });
       }
       pdf.save(`${nombreArchivo}.pdf`);
     }
@@ -1546,7 +1529,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <EncabezadoTabla titulo="Listado de Sedes" total={filasSedes.length} />
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={sedes} filteredRows={filasSedes} filter={getFilter('sedes')} setFilter={setTableFilter('sedes')} columns={[{ key: 'nombre', label: 'Sede' }, { key: 'direccion', label: 'Dirección' }]} filename="sedes_filtradas" />
                       <div className="overflow-x-auto">
                         <table className="tabla-admin">
                       <thead>
@@ -1626,7 +1609,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4">Plantillas Registradas</h3>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={plantillasReglas} filteredRows={filasReglas} filter={getFilter('reglas')} setFilter={setTableFilter('reglas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'descripcion', label: 'Descripción' }, { key: 'creado_en', label: 'Creado' }]} dateFields={["creado_en"]} filename="plantillas_reglas_filtradas" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={plantillasReglas} filteredRows={filasReglas} filter={getFilter('reglas')} setFilter={setTableFilter('reglas')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'descripcion', label: 'Descripción' }, { key: 'creado_en', label: 'Creado' }]} dateFields={["creado_en"]} filename="plantillas_reglas_filtradas" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {cargando && plantillasReglas.length === 0 ? (
                       <div className="col-span-full"><SkeletonTarjetas cantidad={4} clasesGrid="grid-cols-1 md:grid-cols-2" /></div>
@@ -1681,7 +1664,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <EncabezadoTabla titulo="Listado de Equipos" total={filasEquipos.length} />
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
                   
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {cargando && filasEquipos.length === 0 ? (
@@ -1741,7 +1724,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </div>
                       </div>
 
-                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename="nomina_filtrada" />
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'genero', label: 'Género' }, { key: 'fecha_nacimiento', label: 'Fecha de nacimiento' }]} categoryFields={["genero", "sexo", "tipo_genero", "categoria"]} dateFields={["fecha_nacimiento"]} filename="nomina_filtrada" />
                       <form onSubmit={guardarJugador} className="bg-white p-5 rounded-lg border border-brand-gold/30 shadow-sm mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <CampoTexto etiqueta="Cédula (5-8 dígitos)" pattern="\d{5,8}" valor={formJugador.cedula} onChange={e => setFormJugador({...formJugador, cedula: e.target.value})} requerido />
                         <CampoTexto etiqueta="Nombre" valor={formJugador.nombre} onChange={e => setFormJugador({...formJugador, nombre: e.target.value})} requerido />
@@ -1920,7 +1903,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                   <div className="lg:w-2/3">
                     <EncabezadoTabla titulo="Usuarios Operativos en la Liga" total={filasCredenciales.length} />
 
-                    <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }, { key: 'equipo_filtro', label: 'Equipo' }]} categoryFields={["rol", "equipo_filtro"]} filename="credenciales_filtradas" />
+                    <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={usuariosOperativos} filteredRows={filasCredenciales} filter={getFilter('credenciales')} setFilter={setTableFilter('credenciales')} columns={[{ key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'email', label: 'Correo' }, { key: 'rol', label: 'Rol' }, { key: 'equipo_filtro', label: 'Equipo' }]} categoryFields={["rol", "equipo_filtro"]} filename="credenciales_filtradas" />
                     <div className="overflow-x-auto border border-brand-gold/20 rounded-lg">
                       <table className="w-full text-left text-sm min-w-[640px]">
                         <thead className="bg-brand-cream text-brand-brown uppercase tracking-wider text-xs">
@@ -2247,7 +2230,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                       <p className="text-sm text-brand-brown/70 mt-1">Los documentos con distintivo Global los comparte el Superadmin con todas las ligas y solo él puede eliminarlos.</p>
                     </div>
                   </div>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={documentos} filteredRows={filasDocumentos} filter={getFilter('documentos')} setFilter={setTableFilter('documentos')} columns={[{ key: 'titulo', label: 'Título' }, { key: 'tipo', label: 'Tipo' }, { key: 'torneo_nombre', label: 'Torneo' }]} filename="documentos_filtrados" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={documentos} filteredRows={filasDocumentos} filter={getFilter('documentos')} setFilter={setTableFilter('documentos')} columns={[{ key: 'titulo', label: 'Título' }, { key: 'tipo', label: 'Tipo' }, { key: 'torneo_nombre', label: 'Torneo' }]} filename="documentos_filtrados" />
                   <div className="overflow-x-auto">
                     <table className="tabla-admin">
                       <thead>
@@ -2337,7 +2320,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <h3 className="text-lg font-bold text-brand-brown mb-4">Pagos de Inscripción Registrados</h3>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={pagosConTexto} filteredRows={filasPagos} filter={getFilter('pagos')} setFilter={setTableFilter('pagos')} columns={[{ key: 'torneo_nombre', label: 'Torneo' }, { key: 'inscrito', label: 'Inscrito' }, { key: 'monto', label: 'Monto' }, { key: 'metodo', label: 'Metodo' }]} filename="pagos_filtrados" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={pagosConTexto} filteredRows={filasPagos} filter={getFilter('pagos')} setFilter={setTableFilter('pagos')} columns={[{ key: 'torneo_nombre', label: 'Torneo' }, { key: 'inscrito', label: 'Inscrito' }, { key: 'monto', label: 'Monto' }, { key: 'metodo', label: 'Metodo' }]} filename="pagos_filtrados" />
                   <div className="md:hidden">
                     {cargando && pagos.length === 0 ? (
                       <SkeletonTarjetas cantidad={4} />
@@ -2415,7 +2398,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     <NavIcon nombre="reloj" />
                     Archivo Documental y Resultados Finalizados
                   </h3>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }, { key: 'resultado_filtro', label: 'Resultado' }]} categoryFields={["torneo_nombre", "local_nombre", "visita_nombre", "resultado_filtro"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={partidos.filter(p => p.estado === 'Finalizado')} filteredRows={filasHistorial} filter={getFilter('historial')} setFilter={setTableFilter('historial')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'marcador_local', label: 'Marcador local' }, { key: 'marcador_visita', label: 'Marcador visitante' }, { key: 'resultado_filtro', label: 'Resultado' }]} categoryFields={["torneo_nombre", "local_nombre", "visita_nombre", "resultado_filtro"]} dateFields={["fecha_hora"]} filename="historial_filtrado" />
                   <div className="md:hidden">
                     {cargando && partidos.length === 0 ? (
                       <SkeletonTarjetas cantidad={5} />
@@ -2598,7 +2581,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                     </div>
                     <span className="rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-brown">Máximo 500 eventos recientes</span>
                   </div>
-                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={bitacoraConTexto} filteredRows={filasBitacora} filter={getFilter('bitacora')} setFilter={setTableFilter('bitacora')} columns={[{ key: 'fecha_hora', label: 'Fecha y hora' }, { key: 'usuario', label: 'Usuario' }, { key: 'usuario_rol', label: 'Rol' }, { key: 'accion', label: 'Acción' }, { key: 'tabla', label: 'Recurso' }, { key: 'ip', label: 'IP' }]} categoryFields={["accion", "tabla", "usuario_rol", "usuario"]} dateFields={["fecha_hora"]} filename="bitacora_organizacion" />
+                  <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={bitacoraConTexto} filteredRows={filasBitacora} filter={getFilter('bitacora')} setFilter={setTableFilter('bitacora')} columns={[{ key: 'fecha_hora', label: 'Fecha y hora' }, { key: 'usuario', label: 'Usuario' }, { key: 'usuario_rol', label: 'Rol' }, { key: 'accion', label: 'Acción' }, { key: 'tabla', label: 'Recurso' }, { key: 'ip', label: 'IP' }]} categoryFields={["accion", "tabla", "usuario_rol", "usuario"]} dateFields={["fecha_hora"]} filename="bitacora_organizacion" />
                   <div className="overflow-x-auto rounded-lg border border-brand-gold/15">
                     <table className="tabla-admin min-w-[760px] whitespace-nowrap">
                       <thead><tr><th scope="col">Fecha y hora</th><th scope="col">Usuario</th><th scope="col">Rol</th><th scope="col">Qué hizo</th><th scope="col">Recurso consultado</th><th scope="col">IP</th></tr></thead>
@@ -2647,7 +2630,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                             Partidos Suspendidos (Requieren Acción)
                           </h3>
-                          <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={partidos.filter(p => p.estado === 'Suspendido')} filteredRows={filasSuspendidos} filter={getFilter('suspendidos')} setFilter={setTableFilter('suspendidos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'fase', label: 'Fase' }]} categoryFields={["fase", "estado"]} dateFields={["fecha_hora"]} filename="partidos_suspendidos_filtrados" />
+                          <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={partidos.filter(p => p.estado === 'Suspendido')} filteredRows={filasSuspendidos} filter={getFilter('suspendidos')} setFilter={setTableFilter('suspendidos')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'torneo_nombre', label: 'Torneo' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'fase', label: 'Fase' }]} categoryFields={["fase", "estado"]} dateFields={["fecha_hora"]} filename="partidos_suspendidos_filtrados" />
                           <div className="overflow-x-auto bg-white rounded-lg border border-red-100">
                             <table className="w-full text-left text-sm min-w-[640px]">
                               <thead className="bg-red-100 text-red-800">
@@ -2671,7 +2654,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         </div>
                       )}
 
-                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'equipos_filtro', label: 'Equipos participantes' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada", "equipos_filtro"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
+                      <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={torneosList} filteredRows={filasTorneos} filter={getFilter('torneos')} setFilter={setTableFilter('torneos')} columns={[{ key: 'nombre', label: 'Torneo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }, { key: 'temporada', label: 'Temporada' }, { key: 'equipos_filtro', label: 'Equipos participantes' }, { key: 'fecha_inicio', label: 'Inicio' }, { key: 'fecha_fin', label: 'Fin' }]} categoryFields={["categoria", "tipo_genero", "temporada", "equipos_filtro"]} dateFields={["fecha_inicio", "fecha_fin"]} filename="torneos_filtrados" />
                       {cargando && torneosList.length === 0 ? (<div className="py-8"><SkeletonTarjetas cantidad={4} /></div>) : filasTorneos.filter(t => t.fecha_fin >= hoyStr && t.reglas?.estado !== 'Suspendido').length === 0 ? (
                         <div className="text-center py-12 bg-brand-cream/10 rounded-xl border border-brand-gold/20">
                           <svg className="w-16 h-16 mx-auto text-brand-gold/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>

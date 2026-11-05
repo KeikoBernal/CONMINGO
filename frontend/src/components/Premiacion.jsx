@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '../supabaseClient';
 import { fechaHoy } from './fechas'; // LOTE FECHAS: sello de emision en dd/mm/aaaa
+import { MARCA_PDF as MARCA, encabezadoMarca, dibujarLogoLiga, ajustarTexto } from './pdfMarca'; // LOTE PDF MARCA: kit compartido de marca para los PDF
 
 import EmptyState from './EmptyState';
 import NavIcon from './NavIcon';
@@ -16,15 +17,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // el AdminLiga (Resultados > Premiacion) y los delegados (Premiacion de la
 // Liga). Genera el acta de premiacion del torneo y el diploma individual de
 // cada campeon en PDF, con la paleta de marca.
-
-// Paleta de marca en RGB para los PDF (mismos valores del tema de index.css).
-const MARCA = {
-  rust: [158, 63, 35],
-  brown: [87, 44, 25],
-  blue: [138, 176, 188],
-  cream: [242, 235, 224],
-  gold: [231, 186, 103]
-};
 
 const ESPECIALIDADES = [
   { clave: 'arrimador', titulo: 'Campeón Arrimador', subtitulo: 'Mejor average de arrime', detalle: (c) => 'Average ' + c.average_arrime + ' con ' + c.lances_arrime + ' lances y ' + c.buenos_arrime + ' buenos' },
@@ -57,7 +49,7 @@ const rangoFechas = (torneo) => {
 };
 
 // Diploma individual de un campeon: hoja horizontal con doble marco de marca.
-const generarDiploma = (datos, clave, campeon) => {
+const generarDiploma = (datos, clave, campeon, orgLiga) => {
   const esMvp = clave === 'mvp';
   const esp = esMvp
     ? { titulo: 'Jugador Más Valioso del Torneo', subtitulo: 'MVP por votación de la liga' }
@@ -75,6 +67,14 @@ const generarDiploma = (datos, clave, campeon) => {
   pdf.setDrawColor(MARCA.gold[0], MARCA.gold[1], MARCA.gold[2]);
   pdf.setLineWidth(0.5);
   pdf.rect(14, 14, 269, 182);
+  // LOTE PDF MARCA: logo y nombre de la liga en el encabezado del diploma.
+  dibujarLogoLiga(pdf, orgLiga?.logo_url || null, 20, 18, 15, false);
+  if (orgLiga?.nombre) {
+    pdf.setTextColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
+    pdf.setFont('helvetica', 'bold');
+    ajustarTexto(pdf, orgLiga.nombre, 95, 12);
+    pdf.text(String(orgLiga.nombre), 38, 26.5);
+  }
   pdf.setTextColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(15);
@@ -118,17 +118,9 @@ const generarDiploma = (datos, clave, campeon) => {
 
 // Acta de premiacion del torneo: los 4 campeones del acta, el MVP y el
 // ranking por average global, con linea de firma del AdminLiga.
-const generarActaPremiacion = (datos) => {
+const generarActaPremiacion = (datos, orgLiga) => {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  pdf.setFillColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
-  pdf.rect(0, 0, 210, 24, 'F');
-  pdf.setTextColor(MARCA.cream[0], MARCA.cream[1], MARCA.cream[2]);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(14);
-  pdf.text('CONMINGO', 105, 11, { align: 'center' });
-  pdf.setFontSize(9);
-  pdf.setTextColor(MARCA.gold[0], MARCA.gold[1], MARCA.gold[2]);
-  pdf.text('ACTA DE PREMIACIÓN DEL TORNEO', 105, 17.5, { align: 'center' });
+  encabezadoMarca(pdf, { nombreLiga: orgLiga?.nombre || '', logoUrl: orgLiga?.logo_url || null, titulo: 'ACTA DE PREMIACIÓN DEL TORNEO' });
   pdf.setTextColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
   pdf.setFontSize(13);
   pdf.text(String(datos.torneo.nombre), 14, 34);
@@ -198,6 +190,7 @@ export default function Premiacion() {
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [mensaje, setMensaje] = useState('');
+  const [orgLiga, setOrgLiga] = useState(null); // LOTE PDF MARCA: liga del usuario para el encabezado de los PDF
 
   const fetchOperativo = async (endpoint) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -212,6 +205,14 @@ export default function Premiacion() {
       const { ok, data } = await fetchOperativo('/torneos-premiacion');
       if (ok && Array.isArray(data)) setTorneos(data);
       setCargandoTorneos(false);
+    })();
+  }, []);
+
+  // LOTE PDF MARCA: organizacion del usuario (nombre y logo) para los PDF.
+  useEffect(() => {
+    (async () => {
+      const { ok, data } = await fetchOperativo('/mi-organizacion');
+      if (ok) setOrgLiga(data);
     })();
   }, []);
 
@@ -259,7 +260,7 @@ export default function Premiacion() {
               Premiación del torneo
             </h3>
             <button
-              onClick={() => generarActaPremiacion(datos)}
+              onClick={() => generarActaPremiacion(datos, orgLiga)}
               className="w-full sm:w-auto px-5 py-2.5 rounded-lg font-bold text-sm bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white transition-colors"
             >
               Descargar acta de premiación
@@ -287,7 +288,7 @@ export default function Premiacion() {
                       <p className="text-sm font-semibold text-brand-brown/70">{c.equipo_nombre}</p>
                       <p className="text-xs text-brand-brown/60">{e.detalle(c)}</p>
                       <button
-                        onClick={() => generarDiploma(datos, e.clave, c)}
+                        onClick={() => generarDiploma(datos, e.clave, c, orgLiga)}
                         className="mt-auto self-start px-4 py-2 rounded-lg font-bold text-sm bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white transition-colors"
                       >
                         Descargar diploma
@@ -317,7 +318,7 @@ export default function Premiacion() {
                   <p className="text-sm font-semibold text-brand-brown/70">{datos.mvp.equipo_nombre}</p>
                   <p className="text-xs text-brand-brown/60">{datos.mvp.votos} voto{datos.mvp.votos === 1 ? '' : 's'} de {datos.mvp.total_votos} emitido{datos.mvp.total_votos === 1 ? '' : 's'}</p>
                   <button
-                    onClick={() => generarDiploma(datos, 'mvp', datos.mvp)}
+                    onClick={() => generarDiploma(datos, 'mvp', datos.mvp, orgLiga)}
                     className="mt-auto self-start px-4 py-2 rounded-lg font-bold text-sm bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white transition-colors"
                   >
                     Descargar diploma

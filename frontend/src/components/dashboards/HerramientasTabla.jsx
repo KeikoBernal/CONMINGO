@@ -4,6 +4,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import CampoTexto from '../CampoTexto';
 import { formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y columnas de fecha de los reportes en dd/mm/aaaa
+import { encabezadoMarca, MARCA_PDF } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca (logo y nombre de la liga) en los PDF
 
 // Componente compartido de filtrado, busqueda y descargas para las tablas del
 // sistema (Administrador de liga, Delegado, Arbitro y Anotador). El modulo se
@@ -26,7 +27,7 @@ export const rowMatchesFilter = (row, filter, categoryFields = [], dateFields = 
   return matchesSearch && matchesCategory && matchesDate;
 };
 
-export function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFields = [], dateFields = [], filename, modulo = 'Administrador de liga', reportContext = {}, logoUrl }) {
+export function TableTools({ rows, filteredRows, filter, setFilter, columns, categoryFields = [], dateFields = [], filename, modulo = 'Administrador de liga', reportContext = {}, logoUrl, nombreLiga = '' }) {
   const categoryOptions = [...new Set(rows.flatMap(row => categoryFields.flatMap(field => {
     const value = row[field];
     return Array.isArray(value) ? value : [value];
@@ -54,20 +55,10 @@ export function TableTools({ rows, filteredRows, filter, setFilter, columns, cat
       XLSX.writeFile(workbook, `${safeName}.xlsx`);
     } else {
       const pdf = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      pdf.setFillColor(34, 78, 105); pdf.rect(0, 0, pageWidth, 22, 'F');
-      // LOTE L: logo de la organización en el encabezado del PDF (fallback si no hay o es WEBP).
-      let margenTexto = 14;
-      if (logoUrl && !logoUrl.startsWith('data:image/webp')) {
-        try {
-          pdf.setFillColor(255, 255, 255); pdf.rect(6, 2.5, 18, 17, 'F');
-          pdf.addImage(logoUrl, logoUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG', 7, 3.5, 16, 15);
-          margenTexto = 28;
-        } catch (e) { margenTexto = 14; }
-      }
-      pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.text('CONMINGO · REPORTE OFICIAL', margenTexto, 10); pdf.setFontSize(9); pdf.text(context.modulo, margenTexto, 17);
+      // LOTE PDF MARCA: banda de marca con logo y nombre de la liga (si el panel los pasa).
+      encabezadoMarca(pdf, { nombreLiga, logoUrl, titulo: 'REPORTE OFICIAL', subtitulo: context.modulo });
       pdf.setTextColor(70, 45, 30); pdf.setFontSize(8); pdf.text(`Usuario: ${context.usuario}   |   Generado: ${context.generado}`, 14, 30); pdf.text(`Filtros: ${Object.values(context.filtros).join(' · ')}`, 14, 35);
-      autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: [34, 78, 105] }, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text(`Documento generado desde el módulo ${modulo} · CONMINGO`, 14, pdf.internal.pageSize.getHeight() - 10); } });
+      autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream }, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text(`Documento generado desde el módulo ${modulo} · CONMINGO`, 14, pdf.internal.pageSize.getHeight() - 10); } });
       pdf.save(`${safeName}.pdf`);
     }
   };

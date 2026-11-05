@@ -23,6 +23,28 @@ const horaCanonicaCaracas = () => {
 router.use(verificarToken);
 
 // ============================================================
+// LOTE PDF MARCA: datos de la organizacion del usuario (nombre y
+// logo) para el encabezado de marca de los PDF de los roles
+// operativos (delegado, arbitro y anotador no tienen endpoint
+// propio de organizacion). Si el usuario no tiene organizacion_id
+// se intenta la primera de sus organizaciones asociadas.
+// ============================================================
+router.get('/mi-organizacion', async (req, res) => {
+  try {
+    let resDb = await db.query('SELECT o.id, o.nombre, o.logo_url FROM public.organizaciones o WHERE o.id = $1', [req.usuario.organizacion_id]);
+    if (resDb.rows.length === 0) {
+      resDb = await db.query('SELECT o.id, o.nombre, o.logo_url FROM public.usuario_organizaciones uo JOIN public.organizaciones o ON uo.organizacion_id = o.id WHERE uo.usuario_id = $1 ORDER BY o.nombre ASC LIMIT 1', [req.usuario.id]);
+    }
+    if (resDb.rows.length === 0) return res.status(404).json({ error: 'No perteneces a una organizacion.' });
+    res.json(resDb.rows[0]);
+  } catch (error) {
+    console.error('Error al obtener la organizacion del usuario:', error);
+    res.status(500).json({ error: 'Error al obtener la organizacion.' });
+  }
+});
+
+
+// ============================================================
 // LOTE 4D (P1): RESULTADO OFICIAL DE PARTIDO
 // El marcador final de un partido se calcula desde las manos
 // registradas y se persiste en public.resultados (la tabla de

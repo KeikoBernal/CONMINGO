@@ -62,6 +62,17 @@ export default function DelegadoDashboard({ usuario, cerrarSesion }) {
   const [exportandoPlanilla, setExportandoPlanilla] = useState(false);
 
   const [token, setToken] = useState(null);
+  // LOTE PDF MARCA: organizacion (nombre y logo) para los encabezados de los PDF.
+  const [orgLiga, setOrgLiga] = useState(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${API_URL}/operativo/mi-organizacion`, { headers: { Authorization: 'Bearer ' + (session ? session.access_token : '') } });
+        if (res.ok) setOrgLiga(await res.json());
+      } catch (e) { /* sin organizacion los PDF salen con la marca base */ }
+    })();
+  }, []);
 
   // Filtrado, busqueda y descargas de las tablas del modulo
   const [filtrosTablas, setFiltrosTablas] = useState({});
@@ -496,7 +507,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   <NavIcon nombre="usuarios" />
                   Nómina Oficial del Equipo
                 </h3>
-                <TableTools rows={jugadores} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'posicion', label: 'Rol' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'posicion']} filename="nomina_filtrada_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                <TableTools rows={jugadores} logoUrl={orgLiga?.logo_url || null} nombreLiga={orgLiga?.nombre || ''} filteredRows={filasNomina} filter={getFilter('nomina')} setFilter={setTableFilter('nomina')} columns={[{ key: 'numero_dorsal', label: 'Dorsal' }, { key: 'nombre', label: 'Nombre' }, { key: 'apellido', label: 'Apellido' }, { key: 'cedula', label: 'Cédula' }, { key: 'posicion', label: 'Rol' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'posicion']} filename="nomina_filtrada_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="md:hidden">
                   {cargando && filasNomina.length === 0 ? (
                     <SkeletonTarjetas cantidad={6} />
@@ -594,6 +605,8 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   </div>
                   <PlanillaUniversal
                     rol="espectador"
+                    nombreLiga={orgLiga?.nombre || ''}
+                    logoLiga={orgLiga?.logo_url || null}
                     estadoPartido={datosPlanillaPartido.estado}
                     partidoId={datosPlanillaPartido.id}
                     datosPartido={{
@@ -621,7 +634,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                     <NavIcon nombre="calendario" />
                     Encuentros y Planillas de Puntajes
                   </h3>
-                  <TableTools rows={partidos} filteredRows={filasPartidos} filter={getFilter('calendario')} setFilter={setTableFilter('calendario')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'fase', label: 'Fase' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'fase']} dateFields={['fecha_hora']} filename="calendario_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                  <TableTools rows={partidos} logoUrl={orgLiga?.logo_url || null} nombreLiga={orgLiga?.nombre || ''} filteredRows={filasPartidos} filter={getFilter('calendario')} setFilter={setTableFilter('calendario')} columns={[{ key: 'fecha_hora', label: 'Fecha' }, { key: 'fase', label: 'Fase' }, { key: 'local_nombre', label: 'Local' }, { key: 'visita_nombre', label: 'Visitante' }, { key: 'sede_nombre', label: 'Sede' }, { key: 'estado', label: 'Estado' }]} categoryFields={['estado', 'fase']} dateFields={['fecha_hora']} filename="calendario_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                   <div className="mb-4">
                     <CalendarioPartidos partidos={filasPartidos} sedesPorPartido={sedesDelegado} />
                   </div>
@@ -702,7 +715,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
 
               <div className="bg-white p-6 rounded-xl border border-brand-gold/20 shadow-sm">
                 <h3 className="text-lg font-bold text-brand-brown mb-4">Scouting de Jugadores (Perfiles Tácticos)</h3>
-                <TableTools rows={estadisticas.individual || []} filteredRows={filasScouting} filter={getFilter('scouting')} setFilter={setTableFilter('scouting')} columns={[{ key: 'dorsal', label: 'Dorsal' }, { key: 'apellido', label: 'Apellido' }, { key: 'nombre', label: 'Nombre' }, { key: 'efectividad_arrime', label: '% Arrime' }, { key: 'efectividad_boche', label: '% Boche' }, { key: 'tasa_error', label: 'Tasa de error' }, { key: 'pts_promedio', label: 'Pts/Juego' }, { key: 'clutch', label: 'Clutch %' }, { key: 'perfil_tactico', label: 'Perfil sugerido' }]} categoryFields={['perfil_tactico']} filename="scouting_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                <TableTools rows={estadisticas.individual || []} logoUrl={orgLiga?.logo_url || null} nombreLiga={orgLiga?.nombre || ''} filteredRows={filasScouting} filter={getFilter('scouting')} setFilter={setTableFilter('scouting')} columns={[{ key: 'dorsal', label: 'Dorsal' }, { key: 'apellido', label: 'Apellido' }, { key: 'nombre', label: 'Nombre' }, { key: 'efectividad_arrime', label: '% Arrime' }, { key: 'efectividad_boche', label: '% Boche' }, { key: 'tasa_error', label: 'Tasa de error' }, { key: 'pts_promedio', label: 'Pts/Juego' }, { key: 'clutch', label: 'Clutch %' }, { key: 'perfil_tactico', label: 'Perfil sugerido' }]} categoryFields={['perfil_tactico']} filename="scouting_filtrado_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto">
                   <table className="tabla-admin">
                     <thead>
@@ -802,7 +815,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   Pagos de Inscripción del Equipo
                 </h3>
                 <p className="text-sm text-brand-brown/70 mb-4">Pagos de inscripción a torneos registrados por la administración de la liga para tu equipo y sus jugadores.</p>
-                <TableTools rows={pagosEquipo} filteredRows={filasPagosEquipo} filter={getFilter('pagos')} setFilter={setTableFilter('pagos')} columns={[{ key: 'torneo_nombre', label: 'Torneo' }, { key: 'equipo_nombre', label: 'Equipo' }, { key: 'jugador_nombre', label: 'Jugador' }, { key: 'monto', label: 'Monto' }, { key: 'metodo', label: 'Metodo' }]} categoryFields={['metodo']} filename="pagos_filtrados_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
+                <TableTools rows={pagosEquipo} logoUrl={orgLiga?.logo_url || null} nombreLiga={orgLiga?.nombre || ''} filteredRows={filasPagosEquipo} filter={getFilter('pagos')} setFilter={setTableFilter('pagos')} columns={[{ key: 'torneo_nombre', label: 'Torneo' }, { key: 'equipo_nombre', label: 'Equipo' }, { key: 'jugador_nombre', label: 'Jugador' }, { key: 'monto', label: 'Monto' }, { key: 'metodo', label: 'Metodo' }]} categoryFields={['metodo']} filename="pagos_filtrados_delegado" modulo="Delegado de equipo" reportContext={{ usuario: usuario?.nombre || usuario?.email || '' }} />
                 <div className="overflow-x-auto">
                   <table className="tabla-admin">
                     <thead>

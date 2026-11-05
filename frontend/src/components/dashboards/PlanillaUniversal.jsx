@@ -2,6 +2,7 @@ import React from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatearHora } from '../fechas'; // LOTE FECHAS: normaliza hora_inicio/hora_final legado (03:45 p. m., 15:45 o ISO)
+import { encabezadoMarca, MARCA_PDF } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca del acta
 
 export default function PlanillaUniversal({
   rol = 'espectador',
@@ -16,7 +17,9 @@ export default function PlanillaUniversal({
   puntosPorManoVisita = Array(20).fill(''),
   alHacerClicCelda = () => {},
   alHacerClicPuntuacion = () => {},
-  alSeleccionarStatCell = () => {}
+  alSeleccionarStatCell = () => {},
+  nombreLiga = '',
+  logoLiga = null
 }) {
   const manoIndices = Array.from({ length: 20 }, (_, i) => i + 1);
 
@@ -40,15 +43,14 @@ export default function PlanillaUniversal({
       try {
         const doc = new jsPDF('landscape');
 
-        doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text("LIGA DE BOLAS CRIOLLAS - PLANILLA OFICIAL DE ANOTACIÓN", 14, 15);
+        // LOTE PDF MARCA: encabezado con logo y nombre de la liga en el acta oficial.
+        encabezadoMarca(doc, { nombreLiga, logoUrl: logoLiga, titulo: 'PLANILLA OFICIAL DE ANOTACIÓN' });
     
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Encuentro: ${datosPartido.localNombre || 'Local'} vs ${datosPartido.visitaNombre || 'Visita'}`, 14, 22);
-    doc.text(`Fecha: ${datosPartido.fecha || '---'} | H. Inicio: ${formatearHora(datosPartido.horaInicio) || '--:--'} | H. Final: ${formatearHora(datosPartido.horaFinal) || '--:--'}`, 14, 28);
-    doc.text(`Marcador Final: ${datosPartido.localNombre} (${totalLocal}) - (${totalVisita}) ${datosPartido.visitaNombre}`, 14, 34);
+    doc.text(`Encuentro: ${datosPartido.localNombre || 'Local'} vs ${datosPartido.visitaNombre || 'Visita'}`, 14, 30);
+    doc.text(`Fecha: ${datosPartido.fecha || '---'} | H. Inicio: ${formatearHora(datosPartido.horaInicio) || '--:--'} | H. Final: ${formatearHora(datosPartido.horaFinal) || '--:--'}`, 14, 36);
+    doc.text(`Marcador Final: ${datosPartido.localNombre} (${totalLocal}) - (${totalVisita}) ${datosPartido.visitaNombre}`, 14, 42);
 
     const headBase = ['N°', 'JUGADORES', ...Array.from({length: 20}, (_, i) => (i + 1).toString()), 'AL', 'AB', 'BL', 'BB'];
 
@@ -72,19 +74,19 @@ export default function PlanillaUniversal({
 
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(`EQUIPO LOCAL: ${datosPartido.localNombre} (Capitán: ${datosPartido.capitanLocal || 'N/R'})`, 14, 43);
+    doc.text(`EQUIPO LOCAL: ${datosPartido.localNombre} (Capitán: ${datosPartido.capitanLocal || 'N/R'})`, 14, 49);
     
     autoTable(doc, {
-      startY: 46,
+      startY: 51,
       head: [headBase],
       body: bodyLocal,
       theme: 'grid',
       styles: { fontSize: 7, halign: 'center', cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1 },
       columnStyles: { 1: { halign: 'left', cellWidth: 50 } }, 
-      headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0] },
+      headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream },
       didParseCell: function (data) {
         if (data.row.index === bodyLocal.length - 1) {
-          data.cell.styles.fillColor = [240, 240, 240]; 
+          data.cell.styles.fillColor = MARCA_PDF.cream; 
           data.cell.styles.fontStyle = 'bold';
         }
       }
@@ -111,19 +113,19 @@ export default function PlanillaUniversal({
     const finalYLocal = doc.lastAutoTable.finalY || 46;
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(`EQUIPO VISITANTE: ${datosPartido.visitaNombre} (Capitán: ${datosPartido.capitanVisita || 'N/R'})`, 14, finalYLocal + 10);
+    doc.text(`EQUIPO VISITANTE: ${datosPartido.visitaNombre} (Capitán: ${datosPartido.capitanVisita || 'N/R'})`, 14, finalYLocal + 12);
 
     autoTable(doc, {
-      startY: finalYLocal + 13,
+      startY: finalYLocal + 15,
       head: [headBase],
       body: bodyVisita,
       theme: 'grid',
       styles: { fontSize: 7, halign: 'center', cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1 },
       columnStyles: { 1: { halign: 'left', cellWidth: 50 } },
-      headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0] },
+      headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream },
       didParseCell: function (data) {
         if (data.row.index === bodyVisita.length - 1) {
-          data.cell.styles.fillColor = [240, 240, 240];
+          data.cell.styles.fillColor = MARCA_PDF.cream;
           data.cell.styles.fontStyle = 'bold';
         }
       }

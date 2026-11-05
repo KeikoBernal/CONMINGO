@@ -16,6 +16,7 @@ import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en tod
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import { tecladoModal } from '../Accesibilidad';
 import { formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y bitacora en dd/mm/aaaa, 12 horas
+import { MARCA_PDF, encabezadoMarca } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca en los reportes PDF
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -274,16 +275,15 @@ const exportarRespaldoBDBase = async (formato) => {
       const a = document.createElement('a'); a.href = url; a.download = `${nombreArchivo}.csv`; a.click();
     } 
     else if (formato === 'pdf') {
-      const doc = new jsPDF('landscape'); 
-      doc.setFontSize(16);
-      doc.text(`Reporte de ${titulo} - Sistema CONMINGO`, 14, 20);
+      const doc = new jsPDF('landscape');
+      encabezadoMarca(doc, { titulo: 'REPORTE OFICIAL', subtitulo: `Reporte de ${titulo}` });
       doc.setFontSize(10);
-      doc.text(`Fecha de generación: ${formatearFechaHora(new Date())}`, 14, 28);
+      doc.text(`Fecha de generación: ${formatearFechaHora(new Date())}`, 14, 30);
       const filasPDF = datos.map(item => pdfColumnas.map(col => item[col.key] || 'N/A'));
       const cabecerasPDF = pdfColumnas.map(col => col.label);
       autoTable(doc, {
-        startY: 35, head: [cabecerasPDF], body: filasPDF, theme: 'grid',
-        headStyles: { fillColor: [43, 108, 176] }, styles: { fontSize: 8 }
+        startY: 36, head: [cabecerasPDF], body: filasPDF, theme: 'grid',
+        headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream }, styles: { fontSize: 8 }
       });
       doc.save(`${nombreArchivo}.pdf`);
     }
