@@ -6,6 +6,20 @@ const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddle
 const { notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4): notificaciones web push
 const firmasActa = require('../utilidades/firmasActa'); // LOTE 6D: firmas digitales del acta
 
+// ============================================================
+// LOTE FECHAS: hora canonica HH:MM (24 horas) de Venezuela.
+// El cierre por meta de puntos escribia antes un ISO UTC en
+// partidos.hora_final (texto) y esa cadena cruda llegaba a las
+// vistas con 4 horas de desfase. Desde este lote se guarda la
+// hora local de Caracas en formato corto y las vistas la
+// normalizan con el kit de fechas del frontend.
+// ============================================================
+const horaCanonicaCaracas = () => {
+  const partes = {};
+  for (const parte of new Intl.DateTimeFormat('es-VE', { timeZone: 'America/Caracas', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())) partes[parte.type] = parte.value;
+  return partes.hour + ':' + partes.minute;
+};
+
 router.use(verificarToken);
 
 // ============================================================
@@ -487,7 +501,7 @@ router.post('/partidos/:id/manos', async (req, res) => {
            firmasPendientes = true;
            break;
          }
-         const horaFinal = new Date().toISOString();
+         const horaFinal = horaCanonicaCaracas();
          await db.query(`UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2`, [horaFinal, partidoId]);
          partidoFinalizado = true;
          // LOTE 4D (P1): el cierre por meta tambien deja resultado oficial.
