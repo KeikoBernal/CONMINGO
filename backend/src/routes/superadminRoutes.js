@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 const { createClient } = require('@supabase/supabase-js');
 const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware');
+const crypto = require('crypto'); // FIX seguridad: comparacion en tiempo constante del secret del respaldo
 
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 // LOTE 6G: utilidad de correo saliente (SMTP) y tokens de verificacion
@@ -31,12 +32,30 @@ const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = nul
 // no hay usuario con sesión; se autentica con el header x-backup-secret,
 // que debe coincidir con la variable de entorno BACKUP_SECRET del backend.
 // ==========================================
+// FIX (revision de seguridad): el secret del respaldo se compara en tiempo constante.
+// Se comparan los sha256 de ambos valores para que la longitud del secret no
+// filtre informacion por el tiempo de ejecucion de la comparacion.
+const secretRespaldosValido = (recibido) => {
+  const esperado = process.env.BACKUP_SECRET;
+  if (!esperado || !recibido || typeof recibido !== 'string') return false;
+  const hashRecibido = crypto.createHash('sha256').update(recibido, 'utf8').digest();
+  const hashEsperado = crypto.createHash('sha256').update(esperado, 'utf8').digest();
+  return crypto.timingSafeEqual(hashRecibido, hashEsperado);
+};
+
 router.post('/respaldo-programado', async (req, res) => {
   try {
-    const secret = req.get('x-backup-secret') || (req.body && req.body.secret) || null;
-    if (!process.env.BACKUP_SECRET || !secret || secret !== process.env.BACKUP_SECRET) {
+    // FIX (revision de seguridad): el secret solo se acepta en el header
+    // x-backup-secret (nunca en el body) y la comparacion es de tiempo constante.
+    const secret = req.get('x-backup-secret') || null;
+    if (!secretRespaldosValido(secret)) {
       console.warn('Intento de respaldo programado rechazado: secret inválido.');
       return res.status(401).json({ error: 'No autorizado: secret de respaldo inválido.' });
+    }
+    // FIX (revision de seguridad): aviso accionable si el secret es corto. No
+    // bloquea el respaldo, pero debe ser aleatorio y de al menos 32 caracteres.
+    if ((process.env.BACKUP_SECRET || '').length < 32) {
+      console.warn('BACKUP_SECRET es corto: genera uno aleatorio de al menos 32 caracteres (ej. openssl rand -hex 32) y actualizalo en Render y en los secrets del repositorio.');
     }
 
     // Cada tabla se lee de forma independiente: si una falla, el respaldo se
