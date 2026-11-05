@@ -72,8 +72,9 @@ router.get('/partidos/:id/nomina-publica', async (req, res) => {
 // ============================================================
 // LOGIN PROXY (hallazgo #18): el frontend ya NO llama a Supabase
 // Auth directamente para iniciar sesión. Este es el único punto que
-// verifica credenciales y aplica bloqueo persistente:
-// 5 intentos fallidos → 15 minutos (tabla public.login_intentos).
+// verifica credenciales y aplica bloqueo persistente por (correo, IP):
+// 5 intentos fallidos desde una misma IP → 15 minutos para esa combinacion
+// (tabla public.login_intentos, unicidad email+ip; migracion 020).
 // ============================================================
 const rateLimit = require('express-rate-limit');
 // LOTE 6C: ipKeyGenerator normaliza la IP (una IPv6 se trunca a su subred
@@ -145,7 +146,7 @@ const olvideLimiter = rateLimit({
   message: { error: 'Demasiadas solicitudes de restablecimiento. Espera unos minutos antes de reintentar.' }
 });
 
-// Paso 1: verificación de email + contraseña (bloqueo persistente por correo)
+// Paso 1: verificación de email + contraseña (bloqueo persistente por correo e IP)
 // FIX #12: el dashboard ya NO consulta la tabla usuarios desde el navegador (eso dependía
 // del RLS de Supabase y exponía la lectura al cliente). El rol se resuelve aquí,
 // con el token verificado, igual que en el resto de la API.
@@ -165,6 +166,11 @@ router.get('/mi-perfil', verificarToken, async (req, res) => {
 router.post('/login-proxy', loginLimiter, async (req, res) => {
   const email = normalizarEmailLogin(req.body?.email);
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  // FIX (revision de seguridad): el bloqueo persistente se cuenta por (correo, IP)
+  // en vez de solo por correo. Antes, cualquiera podia bloquear la cuenta de un
+  // oficial con 5 claves erradas (DoS el dia de un partido); ahora los intentos
+  // fallidos de una IP no afectan a la persona que entra desde otra IP.
+  const ipLogin = ipKeyGenerator(req.ip || 'desconocida');
 
   if (!REGEX_EMAIL_LOGIN.test(email) || password.length < 6) {
     return res.status(400).json({ error: 'Correo o contraseña con formato inválido.' });
@@ -173,8 +179,8 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
   try {
     // 1) Bloqueo persistente por correo (5 intentos → 15 minutos)
     const estadoRes = await db.query(
-      'SELECT intentos, bloqueado_hasta FROM public.login_intentos WHERE email = $1',
-      [email]
+      'SELECT intentos, bloqueado_hasta FROM public.login_intentos WHERE email = $1 AND ip = $2',
+      [email, ipLogin]
     );
     let estado = estadoRes.rows[0] || null;
 
@@ -183,12 +189,12 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
       if (hasta > new Date()) {
         const minutos = Math.max(1, Math.ceil((hasta - new Date()) / 60000));
         return res.status(429).json({
-          error: `Cuenta temporalmente bloqueada por seguridad. Intenta de nuevo en ${minutos} minuto(s).`,
+          error: `Acceso temporalmente bloqueado por seguridad desde esta conexión. Intenta de nuevo en ${minutos} minuto(s).`,
           bloqueado_hasta: hasta.toISOString()
         });
       }
       // Bloqueo expirado: reiniciar el contador
-      await db.query('UPDATE public.login_intentos SET intentos = 0, bloqueado_hasta = NULL WHERE email = $1', [email]);
+      await db.query('UPDATE public.login_intentos SET intentos = 0, bloqueado_hasta = NULL WHERE email = $1 AND ip = $2', [email, ipLogin]);
       estado = { ...estado, intentos: 0, bloqueado_hasta: null };
     }
 
@@ -202,18 +208,18 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
       await db.query(
         `INSERT INTO public.login_intentos (email, ip, intentos, ultimo_intento, bloqueado_hasta)
          VALUES ($1, $2, $3, now(), CASE WHEN $4 THEN now() + ($5 || ' minutes')::interval ELSE NULL END)
-         ON CONFLICT (email) DO UPDATE SET
+         ON CONFLICT (email, ip) DO UPDATE SET
            ip = EXCLUDED.ip,
            intentos = EXCLUDED.intentos,
            ultimo_intento = now(),
            bloqueado_hasta = CASE WHEN $4 THEN now() + ($5 || ' minutes')::interval ELSE NULL END,
            updated_at = now()`,
-        [email, req.ip || 'desconocida', nuevosIntentos, excede, MINUTOS_BLOQUEO_LOGIN]
+        [email, ipLogin, nuevosIntentos, excede, MINUTOS_BLOQUEO_LOGIN]
       );
 
       if (excede) {
         return res.status(429).json({
-          error: `Demasiados intentos fallidos. Por seguridad, la cuenta queda bloqueada por ${MINUTOS_BLOQUEO_LOGIN} minutos.`,
+          error: `Demasiados intentos fallidos desde esta conexión. Por seguridad, los accesos desde esta conexión quedan bloqueados por ${MINUTOS_BLOQUEO_LOGIN} minutos.`,
           bloqueado_hasta: new Date(Date.now() + MINUTOS_BLOQUEO_LOGIN * 60000).toISOString()
         });
       }
@@ -224,8 +230,8 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
       });
     }
 
-    // 3) Credenciales válidas: limpiar el historial de intentos
-    await db.query('DELETE FROM public.login_intentos WHERE email = $1', [email]);
+    // 3) Credenciales válidas: limpiar el historial de intentos de esta IP
+    await db.query('DELETE FROM public.login_intentos WHERE email = $1 AND ip = $2', [email, ipLogin]);
 
     // 4) Validar registro y estado en la tabla usuarios
     // LOTE 6G: incluye correo_verificado para bloquear el acceso sin verificar

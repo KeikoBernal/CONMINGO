@@ -41,8 +41,32 @@ app.use(cors({
   maxAge: 7200, // LOTE H: el navegador cachea los preflights 2 horas
   exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'] // LOTE H: el frontend puede leer el cupo restante
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// FIX (revision de seguridad): el limite global del cuerpo de las peticiones baja
+// de 50mb a 2mb. Un JSON de 50mb por peticion tumba la RAM limitada de Render y
+// era una negacion de servicio trivial sin autenticar. Solo las rutas que
+// reciben archivos en base64 (fotos de jugadores, logos de ligas y equipos y
+// firmas del acta) conservan el limite amplio; los documentos no lo necesitan
+// porque el archivo sube directo a Supabase Storage y el backend solo recibe
+// la ruta en el JSON.
+const jsonEstandar = express.json({ limit: '2mb' });
+const jsonAmplio = express.json({ limit: '50mb' });
+const RUTAS_CUERPO_GRANDE = [
+  /^\/api\/admin-liga\/jugadores$/,
+  /^\/api\/admin-liga\/jugadores\/[^/]+$/,
+  /^\/api\/admin-liga\/jugadores\/batch-fotos$/,
+  /^\/api\/admin-liga\/mi-organizacion\/logo$/,
+  /^\/api\/admin-liga\/equipos$/,
+  /^\/api\/superadmin\/ligas$/,
+  /^\/api\/superadmin\/ligas\/[^/]+$/,
+  /^\/api\/operativo\/partidos\/[^/]+\/firmas$/
+];
+const elegirParserCuerpo = (req, res, next) => {
+  const usaLimiteAmplio = RUTAS_CUERPO_GRANDE.some((re) => re.test(req.path));
+  const parser = usaLimiteAmplio ? jsonAmplio : jsonEstandar;
+  return parser(req, res, next);
+};
+app.use(elegirParserCuerpo);
+app.use(express.urlencoded({ limit: '2mb', extended: true }));
 
 // FIX #17: límite general ampliado (600 por IP / 10 min) para que un dashboard que carga
 // varias peticiones no agote el cupo. El blindaje estricto contra fuerza bruta sigue en

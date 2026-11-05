@@ -1,9 +1,9 @@
 name: Respaldo programado
 
 # LOTE O: cada madrugada llama al endpoint POST /api/superadmin/respaldo-programado
-# del backend y guarda la respuesta JSON como artefacto (30 días de retención).
+# del backend y guarda la respuesta JSON como artefacto (30 dias de retencion).
 # IMPORTANTE: los eventos schedule solo corren en la rama por defecto (main),
-# así que este respaldo se activa cuando el lote esté fusionado.
+# asi que este respaldo se activa cuando el lote este fusionado.
 on:
   schedule:
     - cron: '0 8 * * *' # 08:00 UTC = 04:00 am en Venezuela (UTC-4)
@@ -24,12 +24,14 @@ jobs:
             exit 1
           fi
           # Preflight: la URL base del backend debe responder en /api/health con 200.
-          # Si falla, el secret BACKUP_URL no es la raíz del backend (sobra /api o una barra).
+          # Si falla, el secret BACKUP_URL no es la raiz del backend (sobra /api o una barra).
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$BACKUP_URL/api/health" || echo ERR)
           if [ "$code" != "200" ]; then
-            echo "::error::BACKUP_URL no responde en /api/health (HTTP $code). El secret debe ser la URL pública del backend SIN /api y SIN barra final (ej. https://conmingo.onrender.com)."
+            echo "::error::BACKUP_URL no responde en /api/health (HTTP $code). El secret debe ser la URL publica del backend SIN /api y SIN barra final (ej. https://conmingo.onrender.com)."
             exit 1
           fi
+          # Revision de seguridad: el secret solo viaja en el header x-backup-secret
+          # (el backend ya no lo acepta en el body) y la comparacion es de tiempo constante.
           if ! curl -sS --fail-with-body -X POST \
             -H "x-backup-secret: $BACKUP_SECRET" \
             -H 'Content-Type: application/json' \
@@ -37,15 +39,33 @@ jobs:
             --max-time 300 \
             -o respaldo.json \
             "$BACKUP_URL/api/superadmin/respaldo-programado"; then
-            echo '::error::El backend rechazó el respaldo. Cuerpo de la respuesta:'
+            echo '::error::El backend rechazo el respaldo. Cuerpo de la respuesta:'
             cat respaldo.json || true
             exit 1
           fi
           echo "Respaldo descargado: $(wc -c < respaldo.json) bytes"
+
+      - name: Cifrar el respaldo antes de subirlo
+        env:
+          BACKUP_ENC_KEY: ${{ secrets.BACKUP_ENC_KEY }}
+        run: |
+          # Revision de seguridad: el artefacto contiene datos personales (correos y
+          # cedulas). Se sube CIFRADO con AES-256: sin BACKUP_ENC_KEY no se puede abrir,
+          # ni siquiera para quien tenga acceso de lectura al repositorio.
+          if [ -z "$BACKUP_ENC_KEY" ]; then
+            echo '::error::Falta el secret BACKUP_ENC_KEY en el repositorio (genera uno con: openssl rand -hex 32). Guardalo: sin esa clave un respaldo no se puede restaurar.'
+            exit 1
+          fi
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
+            -in respaldo.json -out respaldo.json.enc -pass env:BACKUP_ENC_KEY
+          rm respaldo.json
+          echo "Respaldo cifrado: $(wc -c < respaldo.json.enc) bytes"
+          echo 'Para restaurar un artefacto: descargalo y ejecuta:'
+          echo 'openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in respaldo.json.enc -out respaldo.json -pass env:BACKUP_ENC_KEY'
 
       - name: Subir respaldo como artefacto
         uses: actions/upload-artifact@v7
         with:
           name: respaldo-conmingo
           retention-days: 30
-          path: respaldo.json
+          path: respaldo.json.enc
