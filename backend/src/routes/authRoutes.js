@@ -95,6 +95,20 @@ const olvideLimiter = rateLimit({
   message: { error: 'Demasiadas solicitudes de restablecimiento. Espera unos minutos antes de reintentar.' }
 });
 
+// FIX (revision de seguridad, hallazgo bajo): los endpoints que aterrizan los
+// enlaces de verificacion de correo no tenian rate limit propio (solo el
+// global de 600/10 min). El token de 256 bits vuelve inviable la fuerza
+// bruta, pero cada peticion recorre la base de datos; se frena la carga
+// por IP (10 cada 15 minutos).
+const ipVerificacionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => ipKeyGenerator(req.ip || 'desconocida'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas verificaciones en poco tiempo. Espera unos minutos antes de reintentar.' }
+});
+
 // Paso 1: verificación de email + contraseña (bloqueo persistente por correo e IP)
 // FIX #12: el dashboard ya NO consulta la tabla usuarios desde el navegador (eso dependía
 // del RLS de Supabase y exponía la lectura al cliente). El rol se resuelve aquí,
@@ -278,7 +292,7 @@ router.post('/login-proxy/verificar-otp', otpLimiter, async (req, res) => {
 // ============================================================
 
 // Aterriza el enlace de verificacion que llega por correo (?verificar=token)
-router.post('/verificar-correo', async (req, res) => {
+router.post('/verificar-correo', ipVerificacionLimiter, async (req, res) => {
   const token = String(req.body?.token || '').trim();
   if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'Enlace de verificación inválido.' });
   try {
@@ -352,7 +366,7 @@ router.post('/reenviar-verificacion', reenvioLimiter, async (req, res) => {
 });
 
 // Aterriza la confirmacion del cambio de correo (?verificar=token de cambio)
-router.post('/confirmar-cambio-correo', async (req, res) => {
+router.post('/confirmar-cambio-correo', ipVerificacionLimiter, async (req, res) => {
   const token = String(req.body?.token || '').trim();
   if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'Enlace de confirmación inválido.' });
   try {
