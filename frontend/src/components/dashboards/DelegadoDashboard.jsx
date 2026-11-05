@@ -17,6 +17,7 @@ import { useToasts, ToastContainer } from '../Toast'; // FASE 1 UX: notificacion
 import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 import TarjetasMovil from '../TarjetasMovil'; // FASE A2 UX: tarjetas apiladas en pantallas chicas
+import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, fechaHoy } from '../fechas'; // LOTE FECHAS: fechas en dd/mm/aaaa y horas 12h de Venezuela
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -302,7 +303,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
         const blob = new Blob([JSON.stringify({ partido: partidoData, nomina: nominaData }, null, 2)], { type: 'application/json' });
         descargarBlob(blob, `${nombreArchivo}.json`);
       } else if (formato === 'csv') {
-        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${new Date(partidoData.fecha_hora).toLocaleString('es-VE')}\n\nCedula,Nombre,Apellido,Dorsal,Equipo\n`;
+        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${formatearFechaHora(partidoData.fecha_hora)}\n\nCedula,Nombre,Apellido,Dorsal,Equipo\n`;
         nominaData.forEach(j => {
           csv += `${j.cedula},"${j.nombre}","${j.apellido}",${j.numero_dorsal},"${j.equipo_nombre}"\n`;
         });
@@ -310,7 +311,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
         descargarBlob(blob, `${nombreArchivo}.csv`);
       } else if (formato === 'excel') {
         let html = `<table border="1"><tr><th>Encuentro</th><th>${partidoData.local_nombre} vs ${partidoData.visita_nombre}</th></tr>`;
-        html += `<tr><th>Fecha</th><th>${new Date(partidoData.fecha_hora).toLocaleString('es-VE')}</th></tr></table><br/>`;
+        html += `<tr><th>Fecha</th><th>${formatearFechaHora(partidoData.fecha_hora)}</th></tr></table><br/>`;
         html += `<table border="1"><tr><th>Cédula</th><th>Nombre</th><th>Apellido</th><th>Dorsal</th><th>Equipo</th></tr>`;
         nominaData.forEach(j => {
           html += `<tr><td>${j.cedula}</td><td>${j.nombre}</td><td>${j.apellido}</td><td>${j.numero_dorsal}</td><td>${j.equipo_nombre}</td></tr>`;
@@ -337,8 +338,8 @@ const exportarPlanillaBase = async (partidoId, formato) => {
 
   // FASE 3C UX: bloque Hoy del panel. Destaca el encuentro en juego o el proximo
   // partido del equipo; en movil es lo primero que el delegado necesita ver.
-  const hoyFechaDelegado = new Date().toLocaleDateString('es-VE');
-  const partidosDeHoy = partidos.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFechaDelegado && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
+  const hoyFechaDelegado = fechaHoy();
+  const partidosDeHoy = partidos.filter(p => formatearFecha(p.fecha_hora) === hoyFechaDelegado && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
   const partidoEnVivo = partidosDeHoy.find(p => p.estado === 'En Curso') || null;
   const partidoDeHoy = partidoEnVivo || partidosDeHoy[0] || null;
   const proximoPartido = !partidoDeHoy ? partidos.filter(p => p.estado !== 'Finalizado' && p.estado !== 'Suspendido' && new Date(p.fecha_hora) > new Date()).sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora))[0] || null : null;
@@ -462,7 +463,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   <div className={`flex flex-wrap items-center gap-4 text-sm font-medium ${partidoEnVivo ? 'text-brand-cream/80' : 'text-brand-brown/70'}`}>
                     <span className="flex items-center gap-1">
                       <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      {new Date(partidoDeHoy.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                      {formatearHoraDeFecha(partidoDeHoy.fecha_hora)}
                     </span>
                     <span className="flex items-center gap-1">
                       <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -479,7 +480,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                   <h4 className="text-lg font-black text-brand-brown mt-3 mb-2">{proximoPartido.local_nombre} <span className="text-brand-rust font-normal mx-1 text-sm">vs</span> {proximoPartido.visita_nombre}</h4>
                   <p className="text-sm text-brand-brown/70 font-medium flex items-center gap-1">
                     <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    {new Date(proximoPartido.fecha_hora).toLocaleString('es-VE', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {formatearFechaHora(proximoPartido.fecha_hora)}
                   </p>
                   <p className="text-sm text-brand-brown/70 font-medium flex items-center gap-1 mt-1">
                     <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -604,7 +605,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                       visitaNombre: datosPlanillaPartido.visita_nombre,
                       horaInicio: datosPlanillaPartido.hora_inicio,
                       horaFinal: datosPlanillaPartido.hora_final,
-                      fecha: datosPlanillaPartido.fecha_hora ? new Date(datosPlanillaPartido.fecha_hora).toLocaleDateString('es-VE') : ''
+                      fecha: datosPlanillaPartido.fecha_hora ? formatearFecha(datosPlanillaPartido.fecha_hora) : ''
                     }}
                     jugadoresLocal={jugadoresLocalPlanilla}
                     jugadoresVisita={jugadoresVisitaPlanilla}
@@ -638,7 +639,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
                               <span className="text-xs font-semibold bg-brand-cream text-brand-brown px-2 py-1 rounded border border-brand-gold/20">{p.estado}</span>
                             </div>
                             <h4 className="font-bold text-brand-brown text-lg mb-1">{p.local_nombre} <span className="text-brand-rust font-normal mx-1">vs</span> {p.visita_nombre}</h4>
-                            <p className="text-sm text-brand-brown/70 mb-1 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> {new Date(p.fecha_hora).toLocaleString('es-VE')}</p>
+                            <p className="text-sm text-brand-brown/70 mb-1 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> {formatearFechaHora(p.fecha_hora)}</p>
                             <p className="text-sm text-brand-brown/70 mb-4 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg> {p.sede_nombre}</p>
                           </div>
                           
