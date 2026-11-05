@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import CampoTexto from '../CampoTexto';
+import { formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y columnas de fecha de los reportes en dd/mm/aaaa
 
 // Componente compartido de filtrado, busqueda y descargas para las tablas del
 // sistema (Administrador de liga, Delegado, Arbitro y Anotador). El modulo se
@@ -34,12 +35,12 @@ export function TableTools({ rows, filteredRows, filter, setFilter, columns, cat
   const context = {
     modulo,
     usuario: reportContext.usuario || 'Administrador de liga',
-    generado: new Date().toLocaleString('es-VE'),
+    generado: formatearFechaHora(new Date()),
     filtros: { busqueda: filter.search || 'Todas', categorias: filter.categories?.length ? filter.categories.join(', ') : 'Todas', desde: filter.dateFrom || 'Sin límite', hasta: filter.dateTo || 'Sin límite' },
   };
   const exportRows = (format) => {
     const safeName = filename.replace(/[^a-z0-9áéíóúñ_-]+/gi, '_');
-    const data = filteredRows.map(row => Object.fromEntries(columns.map(({ key, label }) => [label, row[key] ?? ''])));
+    const data = filteredRows.map(row => Object.fromEntries(columns.map(({ key, label }) => [label, dateFields.includes(key) ? (row[key] ? formatearFechaHora(row[key]) : '') : row[key] ?? ''])));
     const csvCell = value => `"${String(value).replaceAll('"', '""')}"`;
     if (format === 'json') {
       descargarBlob(new Blob([JSON.stringify({ contexto: context, registros: data }, null, 2)], { type: 'application/json' }), `${safeName}.json`);
