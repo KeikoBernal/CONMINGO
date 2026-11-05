@@ -22,6 +22,7 @@ import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmac
 import ModoCancha from '../ModoCancha'; // FASE 3 UX: modo cancha para anotar a pie de cancha
 import { SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import { tecladoModal } from '../Accesibilidad';
+import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, formatearHora, horaCanonica, fechaHoy } from '../fechas'; // LOTE FECHAS: formato unico dd/mm/aaaa y horas de 12 horas
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -424,8 +425,8 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     if (!msgLimpio) return;
     
     const esParaDelegado = destinatarioMsg.includes('delegado');
-    socketRef.current.emit('enviar_mensaje', { destinatario_sala: destinatarioMsg, cc_admin: esParaDelegado, remitente: `${usuario?.nombre || ''} (Anotador)`, mensaje: msgLimpio, timestamp: new Date().toLocaleTimeString('es-VE') });
-    setMensajes(prev => [...prev, { destinatario_sala: destinatarioMsg, remitente: 'Anotador (Tú)', mensaje: msgLimpio, timestamp: new Date().toLocaleTimeString('es-VE'), propio: true }]);
+    socketRef.current.emit('enviar_mensaje', { destinatario_sala: destinatarioMsg, cc_admin: esParaDelegado, remitente: `${usuario?.nombre || ''} (Anotador)`, mensaje: msgLimpio, timestamp: formatearHoraDeFecha(new Date()) });
+    setMensajes(prev => [...prev, { destinatario_sala: destinatarioMsg, remitente: 'Anotador (Tú)', mensaje: msgLimpio, timestamp: formatearHoraDeFecha(new Date()), propio: true }]);
     setNuevoMensaje('');
   };
 
@@ -433,7 +434,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     if (isSubmitting) return; // INSERCIÓN: Idempotencia
     setIsSubmitting(true);
     
-    const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const hora = horaCanonica();
     if (!enLinea) {
       encolar('anotador', { metodo: 'PUT', ruta: `/partidos/${partidoActivo.id}/iniciar`, cuerpo: JSON.stringify({ hora_inicio: hora }), etiqueta: 'Iniciar partido' });
       refrescarCola();
@@ -532,7 +533,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     // LOTE 4C (N3): se persisten las manos del acta (jugadas y tantos) antes
     // de cerrar el partido; es lo que alimenta las estadisticas individuales.
     const manosPersistidas = await guardarManosPersistidas();
-    const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const hora = horaCanonica();
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/finalizar`, { method: 'PUT', body: JSON.stringify({ hora_final: hora }) });
     // LOTE 6D: el backend rechaza el cierre si faltan firmas exigibles del acta.
     const dataFinal = await res.json().catch(() => ({}));
@@ -618,10 +619,10 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   };
 
   const partidosFiltrados = partidos.filter(p => !ligaFiltro || p.organizacion_id === ligaFiltro);
-  const hoyFecha = new Date().toLocaleDateString('es-VE');
+  const hoyFecha = fechaHoy();
   
-  const partidosHoyBase = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') === hoyFecha && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
-  const partidosAgendadosBase = partidosFiltrados.filter(p => new Date(p.fecha_hora).toLocaleDateString('es-VE') !== hoyFecha && p.estado !== 'Finalizado');
+  const partidosHoyBase = partidosFiltrados.filter(p => formatearFecha(p.fecha_hora) === hoyFecha && p.estado !== 'Finalizado' && p.estado !== 'Suspendido');
+  const partidosAgendadosBase = partidosFiltrados.filter(p => formatearFecha(p.fecha_hora) !== hoyFecha && p.estado !== 'Finalizado');
   const partidosFinalizadosBase = partidosFiltrados.filter(p => p.estado === 'Finalizado' || p.estado === 'Suspendido');
   const partidosHoy = filtrarTabla('hoy', partidosHoyBase);
   const partidosAgendados = filtrarTabla('proximos', partidosAgendadosBase, [], ['fecha_hora']);
@@ -779,7 +780,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                       <div className="text-xs font-bold uppercase tracking-wide text-brand-brown/60 mb-2">{partidoEnCurso ? 'Partido en juego ahora' : 'Tu proximo compromiso'}</div>
                       <div className="text-lg font-black text-brand-brown leading-tight">{proximoCompromiso.local_nombre} <span className="text-brand-rust mx-1 text-sm">vs</span> {proximoCompromiso.visita_nombre}</div>
                       <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-brand-brown/70 font-medium">
-                        <span>{new Date(proximoCompromiso.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{formatearHoraDeFecha(proximoCompromiso.fecha_hora)}</span>
                         <span>{proximoCompromiso.sede_nombre}</span>
                         {proximoCompromiso.estado ? <span className="bg-brand-cream/60 text-brand-brown px-2 py-0.5 rounded-full text-xs font-bold uppercase">{proximoCompromiso.estado}</span> : null}
                       </div>
@@ -825,7 +826,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                           <div className="space-y-1.5 mb-5">
                             <div className="flex items-center gap-2 text-sm text-brand-brown/70 font-medium">
                               <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                              {new Date(p.fecha_hora).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})}
+                              {formatearHoraDeFecha(p.fecha_hora)}
                             </div>
                             <div className="flex items-center gap-2 text-sm text-brand-brown/70 font-medium">
                               <svg className="w-4 h-4 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -867,7 +868,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                           <div className="font-bold text-brand-brown mb-1.5 leading-tight">{p.local_nombre} <span className="text-brand-rust mx-1 text-xs">vs</span> {p.visita_nombre}</div>
                           <div className="flex items-center gap-2 text-xs font-semibold text-brand-brown/60">
                             <svg className="w-3.5 h-3.5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            {new Date(p.fecha_hora).toLocaleDateString('es-VE', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}
+                            {formatearFechaHora(p.fecha_hora)}
                           </div>
                         </div>
                       ))}
@@ -939,7 +940,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                             <span className={`px-2 py-0.5 rounded-full text-[0.65rem] uppercase tracking-wider text-white ${p.estado === 'Finalizado' ? 'bg-brand-blue' : 'bg-red-500'}`}>
                               {p.estado}
                             </span>
-                            • {p.hora_final ? p.hora_final : 'Sin hora'}
+                            • {p.hora_final ? formatearHora(p.hora_final) : 'Sin hora'}
                           </div>
                           <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="w-full bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -1055,7 +1056,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     rol={partidoActivo.estado === 'Finalizado' ? 'espectador' : 'anotador'}
                     estadoPartido={partidoActivo.estado}
                     partidoId={partidoActivo.id}
-                    datosPartido={{ arbitro: partidoActivo.arbitro_nombre, anotador: partidoActivo.anotador_nombre, capitanLocal: partidoActivo.capitan_local_nombre, capitanVisita: partidoActivo.capitan_visita_nombre, localNombre: partidoActivo.local_nombre, visitaNombre: partidoActivo.visita_nombre, horaInicio: partidoActivo.hora_inicio, horaFinal: partidoActivo.hora_final }}
+                    datosPartido={{ arbitro: partidoActivo.arbitro_nombre, anotador: partidoActivo.anotador_nombre, capitanLocal: partidoActivo.capitan_local_nombre, capitanVisita: partidoActivo.capitan_visita_nombre, localNombre: partidoActivo.local_nombre, visitaNombre: partidoActivo.visita_nombre, fecha: formatearFecha(partidoActivo.fecha_hora), horaInicio: partidoActivo.hora_inicio, horaFinal: partidoActivo.hora_final }}
                     jugadoresLocal={jugadoresLocal} jugadoresVisita={jugadoresVisita}
                     efectividadJugadores={efectividadJugadores}
                     manualStats={manualStats}

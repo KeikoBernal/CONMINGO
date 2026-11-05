@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import PlanillaUniversal from './PlanillaUniversal';
+import { formatearFecha } from '../fechas'; // LOTE FECHAS: fecha del acta en dd/mm/aaaa
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // LOTE 6B: VITE_SOCKET_URL puede llegar con el sufijo /api (la URL del REST, no la del
@@ -162,7 +163,7 @@ export default function PantallaPuntajes() {
                 capitanLocal: partidoSeleccionado.capitan_local_nombre, capitanVisita: partidoSeleccionado.capitan_visita_nombre,
                 localNombre: partidoSeleccionado.local_nombre, visitaNombre: partidoSeleccionado.visita_nombre,
                 horaInicio: partidoSeleccionado.hora_inicio, horaFinal: partidoSeleccionado.hora_final,
-                fecha: partidoSeleccionado.fecha_hora ? new Date(partidoSeleccionado.fecha_hora).toLocaleDateString('es-VE') : ''
+                fecha: partidoSeleccionado.fecha_hora ? formatearFecha(partidoSeleccionado.fecha_hora) : ''
               }}
               jugadoresLocal={jugadoresLocal} jugadoresVisita={jugadoresVisita}
               efectividadJugadores={efectividadJugadores} manualStats={manualStats}

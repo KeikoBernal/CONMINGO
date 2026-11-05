@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react';
+import { formatearFecha as formatearFechaKit } from './fechas'; // LOTE FECHAS: fecha unificada dd/mm/aaaa
 
-const formatearFecha = (iso) => {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
+const formatearFecha = (iso) => iso ? formatearFechaKit(iso) : '—'; // LOTE FECHAS: delega en el kit compartido (dd/mm/aaaa)
 
 export default function ConfirmarProtestas({ fetchConToken }) {
   const [protestas, setProtestas] = useState([]);

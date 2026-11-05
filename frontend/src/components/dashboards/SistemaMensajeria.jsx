@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { formatearHoraDeFecha } from '../fechas'; // LOTE FECHAS: hora del mensaje en 12 horas
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // LOTE 6B: VITE_SOCKET_URL puede llegar con el sufijo /api (la URL del REST, no la del
@@ -269,7 +270,7 @@ const seleccionarContacto = (contacto) => {
                             <div className="flex justify-between items-center mb-0.5">
                               <strong className="text-brand-brown font-bold text-[0.9rem] truncate pr-2">{b.nombre} {b.apellido}</strong>
                               <span className={`text-[0.65rem] shrink-0 ${noLeido ? 'text-brand-rust font-bold' : 'text-brand-brown/50 font-medium'}`}>
-                                {new Date(b.hora_envio).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})}
+                                {formatearHoraDeFecha(b.hora_envio)}
                               </span>
                             </div>
                             
@@ -380,7 +381,7 @@ const seleccionarContacto = (contacto) => {
                       <div key={m.id} className={`max-w-[85%] p-3 shadow-sm ${mio ? 'self-end bg-brand-blue text-white rounded-2xl rounded-tr-none' : 'self-start bg-white border border-brand-gold/40 text-brand-brown rounded-2xl rounded-tl-none'}`}>
                         <div className="text-[0.9rem] leading-relaxed wrap-break-word">{m.mensaje}</div>
                         <div className={`text-[0.65rem] text-right mt-1.5 font-medium flex items-center justify-end gap-1 ${mio ? 'text-white/80' : 'text-brand-brown/50'}`}>
-                          {new Date(m.hora_envio).toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'})}
+                          {formatearHoraDeFecha(m.hora_envio)}
                           {mio && m.hora_lectura && !chatActivo.isMasivo && <span className="text-white">✓✓</span>}
                         </div>
                       </div>

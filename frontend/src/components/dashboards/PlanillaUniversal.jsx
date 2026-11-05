@@ -1,6 +1,7 @@
 import React from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatearHora } from '../fechas'; // LOTE FECHAS: normaliza hora_inicio/hora_final legado (03:45 p. m., 15:45 o ISO)
 
 export default function PlanillaUniversal({
   rol = 'espectador',
@@ -46,7 +47,7 @@ export default function PlanillaUniversal({
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text(`Encuentro: ${datosPartido.localNombre || 'Local'} vs ${datosPartido.visitaNombre || 'Visita'}`, 14, 22);
-    doc.text(`Fecha: ${datosPartido.fecha || '---'} | H. Inicio: ${datosPartido.horaInicio || '--:--'} | H. Final: ${datosPartido.horaFinal || '--:--'}`, 14, 28);
+    doc.text(`Fecha: ${datosPartido.fecha || '---'} | H. Inicio: ${formatearHora(datosPartido.horaInicio) || '--:--'} | H. Final: ${formatearHora(datosPartido.horaFinal) || '--:--'}`, 14, 28);
     doc.text(`Marcador Final: ${datosPartido.localNombre} (${totalLocal}) - (${totalVisita}) ${datosPartido.visitaNombre}`, 14, 34);
 
     const headBase = ['N°', 'JUGADORES', ...Array.from({length: 20}, (_, i) => (i + 1).toString()), 'AL', 'AB', 'BL', 'BB'];
@@ -290,7 +291,7 @@ export default function PlanillaUniversal({
           <div className={`text-xs uppercase tracking-[0.2em] text-brand-cream/50 mb-2 font-bold ${String(estadoPartido).toLowerCase() === 'en curso' ? 'animate-pulse' : ''}`}>{estadoPartido}</div>
           <div className="flex items-center gap-2 mb-3">
             <svg className="w-5 h-5 text-brand-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            <div className="text-sm font-medium text-brand-cream/80">{datosPartido.horaInicio || '--:--'} - {datosPartido.horaFinal || '--:--'}</div>
+            <div className="text-sm font-medium text-brand-cream/80">{formatearHora(datosPartido.horaInicio) || '--:--'} - {formatearHora(datosPartido.horaFinal) || '--:--'}</div>
           </div>
           <div key={textoMarcador} className="px-4 py-1.5 bg-brand-gold/20 border border-brand-gold/40 rounded-full text-brand-gold font-bold text-sm tracking-wider uppercase anim-marcador-pop">
             {textoMarcador}

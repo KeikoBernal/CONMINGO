@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import PlanillaUniversal from './PlanillaUniversal';
 import VisualizadorCancha from '../VisualizadorCancha';
+import { formatearFecha, fechaHoy } from '../fechas'; // LOTE FECHAS: fechas en dd/mm/aaaa
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -74,7 +75,7 @@ export default function SimuladorPartidos() {
   const [datosPartido, setDatosPartido] = useState({
     localNombre: 'Equipo Local',
     visitaNombre: 'Equipo Visita',
-    fecha: new Date().toLocaleDateString('es-VE')
+    fecha: fechaHoy()
   });
   const [reglas, setReglas] = useState({});
   const [semilla, setSemilla] = useState(0);
@@ -99,7 +100,7 @@ export default function SimuladorPartidos() {
           visitaNombre: data.visita_nombre || prev.visitaNombre,
           arbitro: data.arbitro_nombre,
           anotador: data.anotador_nombre,
-          fecha: data.fecha_hora ? new Date(data.fecha_hora).toLocaleDateString('es-VE') : prev.fecha
+          fecha: data.fecha_hora ? formatearFecha(data.fecha_hora) : prev.fecha
         }));
         setReglas(data.torneo_reglas || {});
         return fetch(`${API_URL}/publico/partidos/${id}/nomina`)

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Calendar } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
+import { formatearFechaHora } from './fechas'; // LOTE FECHAS: fecha del detalle en dd/mm/aaaa, 12 horas
 
 // LOTE L: colores institucionales por estado del partido.
 const CONFIG_ESTADO = {
@@ -84,7 +85,7 @@ export default function CalendarioPartidos({ partidos = [], sedesPorPartido = {}
             <h4 className="text-lg font-bold text-brand-brown">
               {detalle.local_nombre || 'Por definir'} <span className="text-brand-rust">vs</span> {detalle.visita_nombre || 'Por definir'}
             </h4>
-            <p className="mt-2 text-sm text-brand-brown/80">Fecha: {new Date(detalle.fecha_hora).toLocaleString('es-VE')}</p>
+            <p className="mt-2 text-sm text-brand-brown/80">Fecha: {formatearFechaHora(detalle.fecha_hora)}</p>
             {detalle.torneo_nombre && <p className="text-sm text-brand-brown/80">Torneo: {detalle.torneo_nombre}</p>}
             {sedesPorPartido[detalle.id] && <p className="text-sm text-brand-brown/80">Sede: {sedesPorPartido[detalle.id]}</p>}
             <span className="mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold text-white" style={{ backgroundColor: colorEstado(detalle.estado) }}>{detalle.estado}</span>

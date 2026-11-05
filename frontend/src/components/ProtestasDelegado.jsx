@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 
 import EmptyState from './EmptyState';
 import { SkeletonTabla } from './SkeletonCarga';
+import { formatearFecha as formatearFechaKit } from './fechas'; // LOTE FECHAS: fecha unificada dd/mm/aaaa
 
 const ESTADOS_PROTESTA = {
   'Pendiente': 'bg-amber-100 text-amber-800 border border-amber-200',
@@ -10,11 +11,7 @@ const ESTADOS_PROTESTA = {
   'Retirada': 'bg-gray-100 text-gray-600 border border-gray-200'
 };
 
-const formatearFecha = (iso) => {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
+const formatearFecha = (iso) => iso ? formatearFechaKit(iso) : '—'; // LOTE FECHAS: delega en el kit compartido (dd/mm/aaaa)
 
 export default function ProtestasDelegado({ fetchConToken }) {
   const [partidos, setPartidos] = useState([]);
