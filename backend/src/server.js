@@ -366,6 +366,26 @@ io.use(async (socket, next) => {
   }
 });
 
+// ============================================================
+// FIX (revision de seguridad, hallazgo #7): validacion de los payloads de
+// los sockets que escriben en la base de datos. La autorizacion ya estaba
+// cubierta (identidad del token en io.use + puedeOperarPartido), pero los
+// valores viajaban crudos desde el cliente y permitian filas
+// inconsistentes: ids sin parsear y colores o tipos fuera del dominio de
+// los CHECK de la base (chk_tarjetas_color y
+// chk_detalle_jugadas_tipo_destreza_valores).
+// ============================================================
+const enteroONull = (v) => {
+  if (typeof v === 'string' && /^-?\d+$/.test(v.trim())) v = Number(v.trim());
+  return Number.isInteger(v) && v > 0 ? v : null;
+};
+const enteroNoNegativo = (v) => {
+  if (typeof v === 'string' && /^-?\d+$/.test(v.trim())) v = Number(v.trim());
+  return Number.isInteger(v) && v >= 0 ? v : null;
+};
+const COLORES_TARJETA = ['Amarilla', 'Azul', 'Roja']; // mismo dominio que chk_tarjetas_color
+const TIPOS_DESTREZA = ['a', 'b', 'r', 'n']; // mismo dominio que chk_detalle_jugadas_tipo_destreza_valores
+
 // ==========================================
 // LÓGICA DE WEBSOCKETS (TIEMPO REAL)
 // ==========================================
@@ -582,12 +602,18 @@ io.on('connection', (socket) => {
   });
 
   socket.on('decision_arbitro', async (data) => {
-    if (!esOficial() || !(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: debe ser oficial asignado a este partido
+    if (!esOficial() || !(await puedeOperarPartido(data?.partido_id))) return; // LOTE C/D: debe ser oficial asignado a este partido
+    // FIX (hallazgo #7): el payload se valida antes de insertar; el minuto de
+    // registro lo estampa la base de datos (DEFAULT now()), no el cliente.
+    const manoId = enteroONull(data?.mano_id);
+    const jugadorId = enteroONull(data?.jugador_id);
+    const tipoDestreza = typeof data?.tipo_destreza === 'string' ? data.tipo_destreza.trim().toLowerCase() : '';
+    if (!manoId || !jugadorId || !TIPOS_DESTREZA.includes(tipoDestreza) || typeof data?.efectividad !== 'boolean') return;
     try {
       await db.query(
-        `INSERT INTO public.detalle_jugadas (mano_id, jugador_id, tipo_destreza, efectividad, minuto_registro)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [data.mano_id, data.jugador_id, data.tipo_destreza, data.efectividad, data.minuto_registro]
+        `INSERT INTO public.detalle_jugadas (mano_id, jugador_id, tipo_destreza, efectividad)
+         VALUES ($1, $2, $3, $4)`,
+        [manoId, jugadorId, tipoDestreza, data.efectividad]
       );
       io.to(`partido_${data.partido_id}`).emit('bola_jugada_notificacion', data);
     } catch (error) {
@@ -596,14 +622,20 @@ io.on('connection', (socket) => {
   });
 
   socket.on('tarjeta_emitida', async (data) => {
-    if (!esOficial() || !(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: debe ser oficial asignado a este partido
+    if (!esOficial() || !(await puedeOperarPartido(data?.partido_id))) return; // LOTE C/D: debe ser oficial asignado a este partido
+    // FIX (hallazgo #7): ids parseados y color dentro del dominio de
+    // chk_tarjetas_color; el minuto de registro lo estampa la base de datos.
+    const partidoId = enteroONull(data?.partido_id);
+    const jugadorId = enteroONull(data?.jugador_id);
+    const color = typeof data?.color === 'string' ? data.color.trim() : '';
+    if (!partidoId || !jugadorId || !COLORES_TARJETA.includes(color)) return;
     try {
       await db.query(
-        `INSERT INTO public.tarjetas (partido_id, jugador_id, color, minuto_registro)
-         VALUES ($1, $2, $3, $4)`,
-        [data.partido_id, data.jugador_id, data.color, data.minuto_registro]
+        `INSERT INTO public.tarjetas (partido_id, jugador_id, color)
+         VALUES ($1, $2, $3)`,
+        [partidoId, jugadorId, color]
       );
-      io.to(`partido_${data.partido_id}`).emit('tarjeta_notificacion', data);
+      io.to(`partido_${partidoId}`).emit('tarjeta_notificacion', data);
     } catch (error) {
       console.error('Error al emitir tarjeta:', error);
     }
@@ -618,23 +650,40 @@ io.on('connection', (socket) => {
   });
 
   socket.on('tantos_asignados', async (data) => {
-    if (!(await puedeOperarPartido(data.partido_id))) return; // LOTE C/D: verificación de asignación al partido
+    if (!(await puedeOperarPartido(data?.partido_id))) return; // LOTE C/D: verificación de asignación al partido
     const { partido_id, tantosLocal, tantosVisita } = data;
-    
+
+    // FIX (hallazgo #7): los arreglos de tantos se validan antes de entrar a la
+    // planilla en vivo (y a planilla_estado): arreglos cortos de numeros enteros
+    // no negativos o cadenas de digitos. Un payload invalido se ignora y se
+    // conserva el valor previo.
+    const esArregloDeTantosValido = (arr) => Array.isArray(arr) && arr.length <= 40 && arr.every((t) =>
+      t === '' || (typeof t === 'number' && Number.isInteger(t) && t >= 0) || (typeof t === 'string' && /^[0-9]{0,3}$/.test(t))
+    );
     if (!partidosEnMemoria[partido_id]) partidosEnMemoria[partido_id] = { efectividad: {} };
-    partidosEnMemoria[partido_id].tantosLocal = tantosLocal;
-    partidosEnMemoria[partido_id].tantosVisita = tantosVisita;
+    if (esArregloDeTantosValido(tantosLocal)) partidosEnMemoria[partido_id].tantosLocal = tantosLocal;
+    if (esArregloDeTantosValido(tantosVisita)) partidosEnMemoria[partido_id].tantosVisita = tantosVisita;
     io.to(`partido_${partido_id}`).emit('actualizar_planilla', partidosEnMemoria[partido_id]); persistirPlanilla(partido_id); // FIX #16
 
-    try {
-      await db.query(
-        `INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (partido_id, numero_mano) DO UPDATE SET equipo_ganador_id = $3, tantos_anotados = $4`,
-        [data.partido_id, data.mano_id, data.equipo_ganador_id, data.tantos_anotados]
-      );
-    } catch (error) {
-      console.error('Error al registrar tantos en BD:', error);
+    // FIX (hallazgo #7): el respaldo en la tabla manos solo procede con el payload
+    // completo y valido. El frontend registra las manos por REST
+    // (/api/operativo/partidos/:id/manos); este insert historico fallaba en cada
+    // emision porque el payload del socket no trae mano_id ni tantos_anotados.
+    const partidoIdManos = enteroONull(data?.partido_id);
+    const numeroMano = enteroONull(data?.mano_id);
+    const tantosAnotados = enteroNoNegativo(data?.tantos_anotados);
+    const equipoGanadorId = enteroONull(data?.equipo_ganador_id); // null permitido en la tabla
+    if (partidoIdManos && numeroMano && tantosAnotados !== null) {
+      try {
+        await db.query(
+          `INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (partido_id, numero_mano) DO UPDATE SET equipo_ganador_id = $3, tantos_anotados = $4`,
+          [partidoIdManos, numeroMano, equipoGanadorId, tantosAnotados]
+        );
+      } catch (error) {
+        console.error('Error al registrar tantos en BD:', error);
+      }
     }
   });
 

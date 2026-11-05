@@ -230,6 +230,7 @@ router.put('/ligas/:id', async (req, res) => {
   const { nombre, responsable_nombre, responsable_telefono, responsable_email, estado_activa } = req.body;
   try {
     const previa = await db.query('SELECT * FROM public.organizaciones WHERE id = $1', [id]);
+    if (previa.rows.length === 0) return res.status(404).json({ error: 'Liga no encontrada.' }); // FIX (hallazgo #5): un id inexistente causaba TypeError y 500
     const nombreLigaCap = capitalizarTexto(nombre);
     const respNombreCap = capitalizarTexto(responsable_nombre);
 
@@ -366,6 +367,7 @@ router.put('/usuarios/:id', async (req, res) => {
 
   try {
     const previa = await db.query('SELECT * FROM public.usuarios WHERE id = $1', [id]);
+    if (previa.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' }); // FIX (hallazgo #5, mismo patron): un id inexistente causaba TypeError y 500
     const resDb = await db.query(`UPDATE public.usuarios SET nombre = $1, apellido = $2, cedula = $3, rol = $4, organizacion_id = $5, debe_cambiar_password = $6 WHERE id = $7 RETURNING *`, [nombreCap, apellidoCap, cedulaLimpia, rol, organizacion_id || null, debe_cambiar_password ?? previa.rows[0].debe_cambiar_password, id]);
     await supabaseAdmin.auth.admin.updateUserById(id, { user_metadata: { rol, nombre: nombreCap, apellido: apellidoCap, cedula: cedulaLimpia, debe_cambiar_password } });
     await registrarAuditoria(req.usuario.id, 'EDITAR_USUARIO', 'usuarios', previa.rows[0], resDb.rows[0], req.ip, resDb.rows[0].organizacion_id || null);

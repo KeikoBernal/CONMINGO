@@ -57,7 +57,7 @@ export default function App() {
 
   useEffect(() => {
     if (vista === 'inicio') {
-      fetch(`${API_URL}/partidos-activos`)
+      fetch(`${API_URL}/publico/partidos-activos`)
         .then((res) => res.json())
         .then((data) => setPartidos(Array.isArray(data) ? data : []))
         .catch((err) => console.error('Error cargando partidos:', err));
