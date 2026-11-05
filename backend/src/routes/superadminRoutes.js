@@ -16,15 +16,7 @@ const capitalizarTexto = (texto) => {
   return texto.trim().toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
-const registrarAuditoria = async (usuarioId, accion, tabla, valoresPrevios = null, nuevosValores = null, ip = null, organizacionId = null) => {
-  try {
-    await db.query(
-      `INSERT INTO public.audit_logs (usuario_id, accion, tabla, valores_previos, nuevos_valores, ip, organizacion_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [usuarioId, accion, tabla, valoresPrevios ? JSON.stringify(valoresPrevios) : null, nuevosValores ? JSON.stringify(nuevosValores) : null, ip, organizacionId]
-    );
-  } catch (error) { console.error('Error escribiendo en audit_logs:', error); }
-};
+const { registrarAuditoria } = require('../utilidades/auditoria');
 
 // ==========================================
 // LOTE O: RESPALDO PROGRAMADO (lo llama el GitHub Action .github/workflows/respaldo.yml)
