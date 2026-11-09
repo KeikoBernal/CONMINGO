@@ -7,7 +7,7 @@ const { verificarToken, autorizarRoles } = require('../middleware/authMiddleware
 
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4B (M1)
-const { enviarPush, notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4): notificaciones web push
+const { notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4) + LOTE 8C: bandeja interna + web push
 const firmasActa = require('../utilidades/firmasActa'); // LOTE 6D: firmas digitales del acta
 const { enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo, enviarRestablecerPassword } = require('../utilidades/correo'); // LOTE 6G: correo saliente SMTP y tokens de verificacion
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // LOTE 6G
@@ -257,35 +257,45 @@ router.post('/cambiar-password-obligatorio', async (req, res) => {
   }
 });
 
-const notificarInvolucrados = async (partidos, orgId, adminId) => {
+// LOTE 8C: delegados y capitanes de los equipos involucrados. El capitan es
+// un jugador (equipos.capitan_id -> jugadores); se le notifica a su cuenta de
+// usuario si existe (mismo puente por cedula que gestionarDelegadoPorCapitan).
+const usuariosDeEquipos = async (equipoLocalId, equipoVisitaId) => {
   try {
-    const notificaciones = [];
+    const res = await db.query(
+      `SELECT DISTINCT e.delegado_id, u.id AS capitan_usuario_id
+       FROM public.equipos e
+       LEFT JOIN public.jugadores j ON e.capitan_id = j.id
+       LEFT JOIN public.usuarios u ON TRIM(u.cedula) = TRIM(j.cedula)
+       WHERE e.id IN ($1, $2)`,
+      [equipoLocalId, equipoVisitaId]
+    );
+    const ids = new Set();
+    res.rows.forEach(r => {
+      if (r.delegado_id) ids.add(r.delegado_id);
+      if (r.capitan_usuario_id) ids.add(r.capitan_usuario_id);
+    });
+    return [...ids];
+  } catch (error) {
+    console.error('Error al consultar delegados y capitanes:', error?.message || error);
+    return [];
+  }
+};
+
+const notificarInvolucrados = async (partidos, orgId, adminId, titulo = 'Aviso de Programación') => {
+  try {
     for (const p of partidos) {
       const usuariosAnotificar = new Set();
       if (p.arbitro_id) usuariosAnotificar.add(p.arbitro_id);
       if (p.anotador_id) usuariosAnotificar.add(p.anotador_id);
       
-      // Obtener delegados de los equipos involucrados
-      const delDb = await db.query(
-        'SELECT delegado_id FROM public.equipos WHERE id IN ($1, $2)', 
-        [p.local_id || p.equipo_local_id, p.visita_id || p.equipo_visita_id]
-      );
-      delDb.rows.forEach(r => { if(r.delegado_id) usuariosAnotificar.add(r.delegado_id) });
+      // LOTE 8C: delegados y capitanes con cuenta de los equipos involucrados
+      for (const uid of await usuariosDeEquipos(p.local_id || p.equipo_local_id, p.visita_id || p.equipo_visita_id)) usuariosAnotificar.add(uid);
 
       const msj = `Has sido programado para un encuentro el ${formatearFechaLocal(p.fecha_hora)}. Fase: ${p.fase || 'Regular'}`;
-      
-      for(let uid of usuariosAnotificar) {
-        notificaciones.push(
-          db.query(
-            `INSERT INTO public.notificaciones (organizacion_id, remitente_id, destinatario_id, titulo, mensaje) VALUES ($1, $2, $3, 'Aviso de Programación', $4)`,
-            [orgId, adminId, uid, msj]
-          )
-        );
-      }
-      // LOTE 5 (N4): ademas del aviso interno, push a quien tenga suscripcion activa
-      notificaciones.push(enviarPush([...usuariosAnotificar], 'Aviso de Programación', msj));
+      // LOTE 8C: un solo punto de envio (bandeja interna + push) con la utileria del Lote 5
+      await notificarUsuarios({ organizacionId: orgId, remitenteId: adminId, destinatarios: [...usuariosAnotificar], titulo, mensaje: msj });
     }
-    await Promise.all(notificaciones);
   } catch (error) { console.error("Error al enviar notificaciones:", error); }
 };
 
@@ -1900,8 +1910,8 @@ router.put('/partidos/:id/reagendar', async (req, res) => {
       const involucradosReagenda = new Set();
       if (pInfo.arbitro_id) involucradosReagenda.add(pInfo.arbitro_id);
       if (pInfo.anotador_id) involucradosReagenda.add(pInfo.anotador_id);
-      const delReagenda = await db.query('SELECT delegado_id FROM public.equipos WHERE id IN ($1, $2)', [pInfo.equipo_local_id, pInfo.equipo_visita_id]);
-      delReagenda.rows.forEach(r => { if (r.delegado_id) involucradosReagenda.add(r.delegado_id); });
+      // LOTE 8C: ademas de los delegados, los capitanes con cuenta de ambos equipos
+      for (const uid of await usuariosDeEquipos(pInfo.equipo_local_id, pInfo.equipo_visita_id)) involucradosReagenda.add(uid);
       await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: [...involucradosReagenda], titulo: 'Partido Reagendado', mensaje: 'Un partido en el que participas fue reagendado para el ' + formatearFechaLocal(nueva_fecha_hora) + '.' });
     } catch (errorPush) {
       console.error('[push] No se pudo notificar el cambio de horario:', errorPush?.message || errorPush);
@@ -1936,7 +1946,7 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
       const ofChk = await db.query('SELECT COUNT(*) as n FROM public.usuarios WHERE id::text = ANY($1::text[]) AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))', [idsOf.map(String), orgId]);
       if (parseInt(ofChk.rows[0].n) !== idsOf.length) return res.status(400).json({ error: 'Uno o más oficiales indicados no pertenecen a tu organización.' });
     }
-    const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id FROM public.partidos WHERE id = $1', [id]);
+    const partidoInfo = await db.query('SELECT equipo_local_id, equipo_visita_id, fase FROM public.partidos WHERE id = $1', [id]);
     const pInfo = partidoInfo.rows[0];
 
     if (await validarConflictos(fecha_hora, pInfo.equipo_local_id, pInfo.equipo_visita_id, arbitro_id, anotador_id, id)) {
@@ -1949,14 +1959,20 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     // poder operar el partido en su siguiente accion y no hasta 60 segundos despues.
     const invalidarPermisoPartido = req.app.get('invalidarPermisoPartido');
     if (typeof invalidarPermisoPartido === 'function') invalidarPermisoPartido(id);
-    // LOTE 5 (N4): aviso a los oficiales asignados
+    // LOTE 8C: si cambia la fecha, el aviso del nuevo horario llega a oficiales,
+    // delegados y capitanes; si solo cambian los oficiales, el aviso de asignacion
+    // del Lote 5 va a los recien nombrados.
     try {
-      const oficialesNuevos = [arbitro_id, anotador_id].filter(Boolean);
-      if (oficialesNuevos.length > 0) {
-        await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: oficialesNuevos, titulo: 'Asignación de Partido', mensaje: 'Fuiste asignado como oficial de un partido' + (fecha_hora ? ' para el ' + formatearFechaLocal(fecha_hora) : '') + '.' });
+      if (fecha_hora) {
+        await notificarInvolucrados([{ equipo_local_id: pInfo.equipo_local_id, equipo_visita_id: pInfo.equipo_visita_id, arbitro_id: arbitro_id || null, anotador_id: anotador_id || null, fecha_hora, fase: pInfo.fase }], orgId, req.usuario.id, 'Partido Reagendado');
+      } else {
+        const oficialesNuevos = [arbitro_id, anotador_id].filter(Boolean);
+        if (oficialesNuevos.length > 0) {
+          await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: oficialesNuevos, titulo: 'Asignación de Partido', mensaje: 'Fuiste asignado como oficial de un partido.' });
+        }
       }
     } catch (errorPush) {
-      console.error('[push] No se pudo notificar la asignación de oficiales:', errorPush?.message || errorPush);
+      console.error('[push] No se pudo notificar la edición del partido:', errorPush?.message || errorPush);
     }
     await registrarAuditoria(req.usuario.id, 'EDITAR_OFICIALES_PARTIDO', 'partidos', { id: parseInt(id) }, { arbitro_id: arbitro_id || null, anotador_id: anotador_id || null, sede_id: sede_id || null }, req.ip, await obtenerOrgId(req.usuario));
     res.json({ mensaje: 'Partido modificado exitosamente.' });
