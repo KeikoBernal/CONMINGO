@@ -198,7 +198,8 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
 
     // 4) Validar registro y estado en la tabla usuarios
     // LOTE 6G: incluye correo_verificado para bloquear el acceso sin verificar
-    const usuarioRes = await db.query('SELECT id, rol, estado, correo_verificado FROM public.usuarios WHERE email = $1', [email]);
+    // LOTE 8B: incluye la marca de eliminacion de la liga principal del usuario.
+    const usuarioRes = await db.query('SELECT u.id, u.rol, u.estado, u.correo_verificado, o.eliminado_en AS liga_eliminada_en FROM public.usuarios u LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id WHERE u.email = $1', [email]);
     const usuarioBD = usuarioRes.rows[0];
 
     if (!usuarioBD) {
@@ -206,6 +207,13 @@ router.post('/login-proxy', loginLimiter, async (req, res) => {
     }
     if (usuarioBD.estado === 'Inactivo') {
       return res.status(403).json({ error: 'Tu cuenta está desactivada. Contacta al administrador de tu liga.' });
+    }
+
+    // LOTE 8B: doble puerta — además del ban de Supabase Auth que aplica la
+    // eliminación de la liga, nadie inicia sesión con credenciales de una
+    // liga eliminada aunque el ban se levante por otra vía.
+    if (usuarioBD.liga_eliminada_en) {
+      return res.status(403).json({ error: 'Tu liga fue eliminada del sistema. Contacta al superadmin para solicitar su restauración.' });
     }
 
     // LOTE 6G: login bloqueado hasta verificar el correo. La sesion que Supabase
