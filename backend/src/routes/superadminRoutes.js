@@ -8,6 +8,7 @@ const crypto = require('crypto'); // FIX seguridad: comparacion en tiempo consta
 const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallback silencioso a la anon key
 // LOTE 6G: utilidad de correo saliente (SMTP) y tokens de verificacion
 const { enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo, enviarRestablecerPassword } = require('../utilidades/correo');
+const { notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 8D: avisos de activacion (bandeja interna + web push)
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // LOTE 6G
 const supabaseAuth = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
@@ -639,10 +640,55 @@ router.post('/usuarios/:id/reactivar', async (req, res) => {
     // 3. Registrar auditoría
     await registrarAuditoria(req.usuario.id, 'REACTIVAR_USUARIO', 'usuarios', usuarioAReactivar, { estado: 'Activo' }, req.ip, usuarioAReactivar.organizacion_id || null);
 
+    // LOTE 8D: cierre del ciclo de la solicitud. Se marcan como leidas las
+    // notificaciones pendientes de 'Solicitud de Activación' de este usuario
+    // y se avisa de vuelta a los AdminLigas de su organizacion y al propio
+    // usuario reactivado (bandeja interna + web push).
+    await db.query(`UPDATE public.notificaciones SET hora_lectura = now() WHERE titulo = 'Solicitud de Activación' AND mensaje LIKE '%' || $1 || '%' AND hora_lectura IS NULL`, [id]);
+    try {
+      const avisados = await db.query(`SELECT id FROM public.usuarios WHERE id = $1 OR (organizacion_id = $2 AND LOWER(rol) = 'administrador de liga' AND (estado IS NULL OR estado <> 'Inactivo'))`, [id, usuarioAReactivar.organizacion_id]);
+      if (avisados.rows.length > 0) {
+        const mensajeReactivado = 'Se reactivó el acceso de ' + usuarioAReactivar.nombre + ' ' + usuarioAReactivar.apellido + ' (' + usuarioAReactivar.email + '). Sus credenciales vuelven a ser válidas.';
+        await notificarUsuarios({ organizacionId: usuarioAReactivar.organizacion_id || null, remitenteId: req.usuario.id, destinatarios: avisados.rows.map(r => r.id), titulo: 'Usuario Reactivado', mensaje: mensajeReactivado });
+      }
+    } catch (eNotif) {
+      console.error('LOTE 8D: no se pudo notificar la reactivación:', eNotif?.message || eNotif);
+    }
+
     res.json({ mensaje: 'Usuario reactivado con éxito. Sus credenciales vuelven a ser válidas.' });
   } catch (error) {
     console.error('Error crítico al reactivar usuario:', error);
     res.status(500).json({ error: 'Error interno al intentar reactivar el usuario.' });
+  }
+});
+
+// ==========================================
+// LOTE 8D: RECHAZAR SOLICITUD DE ACTIVACION
+// Inverso administrativo de reactivar: el usuario sigue Inactivo y el
+// AdminLiga que pidio la activacion recibe el aviso de vuelta.
+// ==========================================
+router.post('/usuarios/:id/rechazar-activacion', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const userQuery = await db.query('SELECT id, nombre, apellido, email, estado, organizacion_id FROM public.usuarios WHERE id = $1', [id]);
+    if (userQuery.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    const usuario = userQuery.rows[0];
+    if (usuario.estado !== 'Inactivo') return res.status(400).json({ error: 'El usuario ya se encuentra activo; no hay solicitud que rechazar.' });
+
+    // Cierre de las notificaciones pendientes de este usuario (LOTE 8D)
+    // y aviso de vuelta a los AdminLigas de su organizacion.
+    await db.query(`UPDATE public.notificaciones SET hora_lectura = now() WHERE titulo = 'Solicitud de Activación' AND mensaje LIKE '%' || $1 || '%' AND hora_lectura IS NULL`, [id]);
+    const adminLigas = await db.query(`SELECT id FROM public.usuarios WHERE organizacion_id = $1 AND LOWER(rol) = 'administrador de liga' AND (estado IS NULL OR estado <> 'Inactivo')`, [usuario.organizacion_id]);
+    if (adminLigas.rows.length > 0) {
+      const mensajeRechazo = 'El superadmin rechazó reactivar el acceso de ' + usuario.nombre + ' ' + usuario.apellido + ' (' + usuario.email + '). El usuario sigue desactivado.';
+      await notificarUsuarios({ organizacionId: usuario.organizacion_id || null, remitenteId: req.usuario.id, destinatarios: adminLigas.rows.map(r => r.id), titulo: 'Solicitud Rechazada', mensaje: mensajeRechazo });
+    }
+
+    await registrarAuditoria(req.usuario.id, 'RECHAZAR_ACTIVACION', 'usuarios', { id }, { estado: 'Inactivo' }, req.ip, usuario.organizacion_id || null);
+    res.json({ mensaje: 'Solicitud rechazada. El administrador de la liga recibirá el aviso en sus notificaciones.' });
+  } catch (error) {
+    console.error('Error al rechazar solicitud de activación:', error);
+    res.status(500).json({ error: 'Error interno al rechazar la solicitud.' });
   }
 });
 
@@ -661,6 +707,8 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'RESET_PASSWORD' THEN 'Restableció la contraseña de un usuario.'
         WHEN a.accion = 'DESACTIVAR_USUARIO' THEN 'Desactivó un usuario (baja lógica).'
         WHEN a.accion = 'REACTIVAR_USUARIO' THEN 'Reactivó un usuario.'
+        WHEN a.accion = 'SOLICITAR_ACTIVACION' THEN 'Un administrador de liga solicitó reactivar a un usuario desactivado.'
+        WHEN a.accion = 'RECHAZAR_ACTIVACION' THEN 'Rechazó una solicitud de reactivación de usuario.'
         WHEN a.accion = 'RESPALDO_GLOBAL' THEN 'Descargó un respaldo completo de la base de datos.'
         WHEN a.accion = 'RESPALDO_PROGRAMADO' THEN 'Se ejecutó un respaldo programado del sistema.'
         WHEN a.accion = 'INICIAR_PARTIDO' THEN 'Inició un partido.'

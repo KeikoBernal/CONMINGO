@@ -471,6 +471,7 @@ const enviarRestablecerPassword = async ({ usuarioId, para, nombre }) => conCont
 
 module.exports = {
   enviarCorreo,
+  plantilla, // LOTE 8D: exportada para reutilizar la marca en correos administrativos
   crearTokenCorreo,
   consumirTokenCorreo,
   enviarBienvenidaConVerificacion,
