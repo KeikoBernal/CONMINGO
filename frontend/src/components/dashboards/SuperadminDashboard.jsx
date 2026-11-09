@@ -15,7 +15,7 @@ import { SkeletonTabla, SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX
 import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en todas las vistas
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import { tecladoModal } from '../Accesibilidad';
-import { formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y bitacora en dd/mm/aaaa, 12 horas
+import { formatearFecha, formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y bitacora en dd/mm/aaaa, 12 horas
 import { MARCA_PDF, encabezadoMarca } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca en los reportes PDF
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -48,6 +48,8 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
   const [usuRolSel, setUsuRolSel] = useState(null);
 
   const [ligaDetalle, setLigaDetalle] = useState(null); 
+  const [ligasEliminadas, setLigasEliminadas] = useState([]); // LOTE 8B: ligas con baja logica (restaurables)
+  const [restaurandoLiga, setRestaurandoLiga] = useState(null); // LOTE 8B: id de la liga en restauracion 
   const [ligaEditando, setLigaEditando] = useState(null);
   const [userEditando, setUserEditando] = useState(null);
   const [itemEliminar, setItemEliminar] = useState(null); 
@@ -177,6 +179,9 @@ export default function SuperadminDashboard({ usuario, cerrarSesion }) {
       } else if (pestana === 'ligas') {
         const res = await fetchConToken('/ligas');
         if (res.ok) setLigas(await res.json());
+        // LOTE 8B: directorio de ligas eliminadas (baja logica) para restaurarlas.
+        const resEliminadas = await fetchConToken('/ligas/eliminadas');
+        if (resEliminadas.ok) setLigasEliminadas(await resEliminadas.json());
       } else if (pestana === 'usuarios') {
         const resLigas = await fetchConToken('/ligas');
         if (resLigas.ok) setLigas(await resLigas.json());
@@ -544,6 +549,26 @@ const exportarRespaldoBDBase = async (formato) => {
     }
   };
 
+  // LOTE 8B: restaurar una liga eliminada (inverso del soft delete).
+  const restaurarLiga = async (liga) => {
+    if (restaurandoLiga) return;
+    const confirmado = await pedirConfirmacion('Restaurar Liga', `¿Restaurar "${liga.nombre}"? Volverá al directorio con estado Activa y sus usuarios recuperarán el acceso.`, 'exito');
+    if (!confirmado) return;
+    setRestaurandoLiga(liga.id);
+    try {
+      const res = await fetchConToken(`/ligas/${liga.id}/restaurar`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMensaje({ texto: data.mensaje || 'Liga restaurada con éxito.', tipo: 'exito' });
+        cargarDatosPestana();
+      } else {
+        setMensaje({ texto: data.error || 'No se pudo restaurar la liga.', tipo: 'error' });
+      }
+    } finally {
+      setRestaurandoLiga(null);
+    }
+  };
+
   const ejecutarEliminacion = async (e) => { if (guardandoModal) return; setGuardandoModal(true); try { await ejecutarEliminacionBase(e); } finally { setGuardandoModal(false); } };
 const ejecutarEliminacionBase = async (e) => {
     e.preventDefault();
@@ -833,7 +858,10 @@ const ejecutarEliminacionBase = async (e) => {
               Confirmar Eliminación
             </h3>
             <p className="text-sm text-brand-brown mb-4 leading-relaxed">
-              Estás a punto de eliminar {itemEliminar.tipo === 'liga' ? 'la liga (y en cascada todos sus usuarios, equipos y partidos)' : 'al usuario'}: <strong className="text-red-600">{itemEliminar.nombre}</strong>.
+              {itemEliminar.tipo === 'liga'
+                ? <>Estás a punto de eliminar la liga: <strong className="text-red-600">{itemEliminar.nombre}</strong>. Queda marcada como eliminada (nada se borra en cascada): sus usuarios pierden acceso y sus datos históricos se preservan. Puedes restaurarla luego desde la sección de Ligas Eliminadas.</>
+                : <>Estás a punto de desactivar al usuario: <strong className="text-red-600">{itemEliminar.nombre}</strong>. Sus credenciales pierden validez y podrás reactivarlo después.</>
+              }
             </p>
             <form onSubmit={ejecutarEliminacion} className="flex flex-col gap-4">
               <input 
@@ -847,7 +875,7 @@ const ejecutarEliminacionBase = async (e) => {
               />
               <div className="flex gap-3 mt-2">
                 <button type="button" onClick={() => { setItemEliminar(null); setClaveConfirmacion(''); }} className="flex-1 bg-gray-200 text-brand-brown py-2.5 rounded-lg font-bold hover:bg-gray-300 transition-colors">Cancelar</button>
-                <button type="submit" disabled={guardandoModal} className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-bold hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Eliminando...' : 'Eliminar Definitivamente'}</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-bold hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Eliminando...' : (itemEliminar.tipo === 'liga' ? 'Eliminar Liga' : 'Eliminar Usuario')}</button>
               </div>
             </form>
           </div>
@@ -1175,6 +1203,35 @@ const ejecutarEliminacionBase = async (e) => {
                       </table>
                     </div>
                     <PaginacionTabla {...pagLigas} />
+                  </div>
+
+                  {/* LOTE 8B: ligas eliminadas (baja logica) con opcion de restaurar */}
+                  <div className="bg-white border border-brand-gold/30 rounded-xl overflow-hidden shadow-sm">
+                    <div className="bg-brand-cream/30 px-5 py-4 border-b border-brand-gold/30">
+                      <h3 className="text-sm font-bold text-brand-brown uppercase tracking-wider">Ligas Eliminadas</h3>
+                      <p className="text-xs text-brand-brown/70 mt-1">Las ligas eliminadas conservan sus datos históricos. Restaura una liga para devolverla al directorio con estado Activa y recuperar el acceso de sus usuarios.</p>
+                    </div>
+                    <div className="overflow-x-auto hide-scrollbar">
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-brand-cream/10 text-brand-brown/70 uppercase text-xs font-bold">
+                          <tr><th scope="col" className="p-4">Nombre</th><th scope="col" className="p-4">Administrador</th><th scope="col" className="p-4">Eliminada</th><th scope="col" className="p-4 text-center">Acciones</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-brand-gold/20 text-brand-brown">
+                          {ligasEliminadas.length === 0 ? (
+                            <tr><td colSpan={4} className="p-0 border-0"><EmptyState icono="ligas" titulo="No hay ligas eliminadas" descripcion="Cuando elimines una liga aparecerá aquí con la opción de restaurarla." /></td></tr>
+                          ) : ligasEliminadas.map((l) => (
+                            <tr key={l.id} className="hover:bg-brand-cream/10 transition-colors">
+                              <td className="p-4 font-bold">{l.nombre}</td>
+                              <td className="p-4">{l.responsable_nombre}</td>
+                              <td className="p-4 text-xs text-brand-brown/70">{formatearFecha(l.eliminado_en)}</td>
+                              <td className="p-4 flex gap-2 justify-center">
+                                <button onClick={() => restaurarLiga(l)} disabled={restaurandoLiga === l.id} className="px-3 py-1.5 bg-brand-blue text-white rounded-lg hover:bg-brand-brown transition-colors text-xs font-bold disabled:bg-gray-400 disabled:cursor-not-allowed">{restaurandoLiga === l.id ? 'Restaurando...' : 'Restaurar'}</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </>
               )}
