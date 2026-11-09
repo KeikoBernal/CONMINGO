@@ -190,7 +190,9 @@ router.get('/mis-partidos', async (req, res) => {
     
     const params = [];
     if (rolNorm === 'superadmin') {
-      // El superadmin ve todos los partidos de todas las organizaciones.
+      // LOTE 8B: el superadmin ve todos los partidos menos los de ligas
+      // eliminadas (baja logica; o es NULL en partidos independientes).
+      query += ` WHERE o.eliminado_en IS NULL `;
     } else if (esAdmin && req.usuario.organizacion_id) {
       // LOTE C: el administrador de liga solo ve partidos de SU organización.
       query += ` WHERE t.organizacion_id = $1::uuid `;

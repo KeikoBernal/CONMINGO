@@ -33,7 +33,7 @@ router.get('/partidos/:id', async (req, res) => {
       LEFT JOIN public.usuarios un ON p.anotador_id = un.id
       LEFT JOIN public.jugadores jl ON el.capitan_id = jl.id
       LEFT JOIN public.jugadores jv ON ev.capitan_id = jv.id
-      WHERE p.id = $1
+      WHERE (o.eliminado_en IS NULL) AND p.id = $1 -- LOTE 8B: los partidos de ligas eliminadas no se exponen
     `, [partidoId]); // MODIFICACIÓN: Pasamos la variable parseada en lugar de req.params.id
 
     if (resDb.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado' });
@@ -54,7 +54,13 @@ router.get('/partidos/:id/nomina', async (req, res) => {
       FROM public.jugadores j
       JOIN public.equipos e ON j.equipo_id = e.id
       JOIN public.partidos p ON (p.equipo_local_id = e.id OR p.equipo_visita_id = e.id)
-      WHERE p.id = $1 AND j.estado = 'Activo' ORDER BY e.nombre, j.numero_dorsal ASC
+      WHERE p.id = $1 AND j.estado = 'Activo'
+        AND NOT EXISTS ( -- LOTE 8B: nomina oculta si la liga del partido esta eliminada
+          SELECT 1 FROM public.torneos t2
+          JOIN public.organizaciones o2 ON t2.organizacion_id = o2.id
+          WHERE t2.id = p.torneo_id AND o2.eliminado_en IS NOT NULL
+        )
+      ORDER BY e.nombre, j.numero_dorsal ASC
     `, [partidoId]); // MODIFICACIÓN: Pasamos la variable parseada
     res.json(resDb.rows);
   } catch (error) { res.status(500).json({ error: 'Error al obtener nómina.' }); }
@@ -75,8 +81,9 @@ router.get('/partidos-activos', async (req, res) => {
       LEFT JOIN public.torneos t ON p.torneo_id = t.id
       LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id
       LEFT JOIN public.sedes s ON p.sede_id = s.id
-      WHERE p.estado = 'En Curso'
-         OR (p.estado = 'Agendado' AND p.fecha_hora::timestamp >= (NOW() AT TIME ZONE 'America/Caracas'))
+      WHERE (o.eliminado_en IS NULL) -- LOTE 8B: la cartelera no muestra partidos de ligas eliminadas
+        AND (p.estado = 'En Curso'
+         OR (p.estado = 'Agendado' AND p.fecha_hora::timestamp >= (NOW() AT TIME ZONE 'America/Caracas')))
       ORDER BY (p.estado = 'En Curso') DESC, t.nombre ASC, p.fecha_hora ASC
     `);
     res.json(resDb.rows);
