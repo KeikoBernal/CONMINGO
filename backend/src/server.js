@@ -8,6 +8,10 @@ const { inicializarTelemetria } = require('./utilidades/telemetria');
 inicializarTelemetria();
 // LOTE 7B (uuid publico): resuelve ids opacos (uuid_publico) o enteros en endpoints y sockets.
 const { resolverIdPartido } = require('./utilidades/resolverIds');
+// LOTE 8A: trazabilidad integral. Auditoria automatica de toda escritura autenticada
+// y de los sockets de juego que cambian el estado de un partido.
+const { registrarAuditoria } = require('./utilidades/auditoria');
+const { middlewareAuditoriaAutomatica } = require('./middleware/auditoriaMiddleware');
 const http = require('http'); 
 const { Server } = require('socket.io'); 
 
@@ -189,6 +193,15 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ status: 'error', mensaje: 'No hay conexión con la base de datos' });
   }
 });
+
+// ==========================================
+// LOTE 8A: AUDITORIA AUTOMATICA UNIFICADA
+// Montado en /api para todos los roles: registra en audit_logs toda
+// escritura autenticada y los GETs sensibles (ver middleware). El
+// AdminLiga mantiene su propio middleware de auditoria (rutas
+// relativas que alimentan las traducciones de su bitacora).
+// ==========================================
+app.use('/api', middlewareAuditoriaAutomatica);
 
 // ==========================================
 // RUTAS RESTFUL
@@ -407,6 +420,9 @@ const TIPOS_DESTREZA = ['a', 'b', 'r', 'n']; // mismo dominio que chk_detalle_ju
 io.on('connection', (socket) => {
   const usuario = socket.data.usuario || null; // FIX #6: identidad resuelta en io.use, nunca desde el cliente
   const rolNorm = socket.data.rolNormalizado || null;
+  // LOTE 8A: IP real del socket para la bitacora (Render va tras proxy:
+  // la IP directa es interna; la real viaja en x-forwarded-for).
+  const ipSocket = () => (socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || null);
   const ROLES_OPERATIVOS = ['arbitro', 'anotador', 'arbitro/anotador', 'administrador de liga', 'superadmin'];
   const esOficial = () => !!usuario && ['arbitro', 'anotador', 'arbitro/anotador'].includes(rolNorm);
   // LOTE C/D: además del rol, se verifica en BD que el oficial esté asignado a ESTE
@@ -631,6 +647,7 @@ io.on('connection', (socket) => {
         [manoId, jugadorId, tipoDestreza, data.efectividad]
       );
       io.to(`partido_${data.partido_id}`).emit('bola_jugada_notificacion', data);
+      registrarAuditoria(usuario.id, 'DECISION_ARBITRO_EN_VIVO', 'detalle_jugadas', null, { partido_id: data.partido_id, mano_id: manoId, jugador_id: jugadorId, tipo_destreza, efectividad: data.efectividad }, ipSocket(), usuario.organizacion_id || null); // LOTE 8A
     } catch (error) {
       console.error('Error al registrar decisión del árbitro:', error);
     }
@@ -651,6 +668,7 @@ io.on('connection', (socket) => {
         [partidoId, jugadorId, color]
       );
       io.to(`partido_${partidoId}`).emit('tarjeta_notificacion', data);
+      registrarAuditoria(usuario.id, 'EMITIR_TARJETA_EN_VIVO', 'tarjetas', null, { partido_id: partidoId, jugador_id: jugadorId, color }, ipSocket(), usuario.organizacion_id || null); // LOTE 8A
     } catch (error) {
       console.error('Error al emitir tarjeta:', error);
     }
@@ -700,10 +718,13 @@ io.on('connection', (socket) => {
         console.error('Error al registrar tantos en BD:', error);
       }
     }
+    // LOTE 8A: trazabilidad del tanteo en vivo (partido, mano y tantos ya validados).
+    registrarAuditoria(usuario.id, 'ASIGNAR_TANTOS_EN_VIVO', 'manos', null, { partido_id: partidoIdManos, mano: numeroMano, tantos_anotados: tantosAnotados }, ipSocket(), usuario.organizacion_id || null);
   });
 
   socket.on('partido_iniciado', async (data) => {
     if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
+    registrarAuditoria(usuario.id, 'INICIAR_PARTIDO_EN_VIVO', 'partidos', null, { partido_id: data.partidoId, hora_inicio: data.hora_inicio }, ipSocket(), usuario.organizacion_id || null); // LOTE 8A
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'En Curso';
     partidosEnMemoria[data.partidoId].hora_inicio = data.hora_inicio;
@@ -712,6 +733,7 @@ io.on('connection', (socket) => {
 
   socket.on('partido_finalizado', async (data) => {
     if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
+    registrarAuditoria(usuario.id, 'FINALIZAR_PARTIDO_EN_VIVO', 'partidos', null, { partido_id: data.partidoId, hora_final: data.hora_final }, ipSocket(), usuario.organizacion_id || null); // LOTE 8A
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Finalizado';
     partidosEnMemoria[data.partidoId].hora_final = data.hora_final;
@@ -720,6 +742,7 @@ io.on('connection', (socket) => {
 
   socket.on('partido_suspendido', async (data) => {
     if (!(await puedeOperarPartido(data.partidoId))) return; // LOTE C/D: verificación de asignación al partido
+    registrarAuditoria(usuario.id, 'SUSPENDER_PARTIDO_EN_VIVO', 'partidos', null, { partido_id: data.partidoId }, ipSocket(), usuario.organizacion_id || null); // LOTE 8A
     if (!partidosEnMemoria[data.partidoId]) partidosEnMemoria[data.partidoId] = { efectividad: {} };
     partidosEnMemoria[data.partidoId].estadoPartido = 'Suspendido';
     io.to(`partido_${data.partidoId}`).emit('actualizar_planilla', { estadoPartido: 'Suspendido' }); persistirPlanilla(data.partidoId); // FIX #16
