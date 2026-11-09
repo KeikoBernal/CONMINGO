@@ -105,19 +105,22 @@ router.post('/log-evento', async (req, res) => {
 // ==========================================
 router.get('/metricas', async (req, res) => {
   try {
-    const totalLigas = await db.query('SELECT COUNT(*) FROM public.organizaciones');
-    const ligasActivas = await db.query('SELECT COUNT(*) FROM public.organizaciones WHERE estado_activa = true');
-    const totalUsuarios = await db.query('SELECT COUNT(*) FROM public.usuarios');
-    const totalEquipos = await db.query('SELECT COUNT(*) FROM public.equipos');
-    const totalJugadores = await db.query('SELECT COUNT(*) FROM public.jugadores');
-    const usuariosPorRol = await db.query('SELECT rol, COUNT(*) as cantidad FROM public.usuarios GROUP BY rol');
+    // LOTE 8B: las ligas eliminadas (baja logica) salen de las metricas: sus
+    // usuarios, equipos y jugadores tampoco cuentan mientras este eliminada
+    // (todo se restaura junto a la liga).
+    const totalLigas = await db.query('SELECT COUNT(*) FROM public.organizaciones WHERE eliminado_en IS NULL');
+    const ligasActivas = await db.query('SELECT COUNT(*) FROM public.organizaciones WHERE estado_activa = true AND eliminado_en IS NULL');
+    const totalUsuarios = await db.query(`SELECT COUNT(*) FROM public.usuarios u LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id WHERE u.organizacion_id IS NULL OR o.eliminado_en IS NULL`);
+    const totalEquipos = await db.query('SELECT COUNT(*) FROM public.equipos e JOIN public.organizaciones o ON e.organizacion_id = o.id WHERE o.eliminado_en IS NULL');
+    const totalJugadores = await db.query('SELECT COUNT(*) FROM public.jugadores j JOIN public.equipos e ON j.equipo_id = e.id JOIN public.organizaciones o ON e.organizacion_id = o.id WHERE o.eliminado_en IS NULL');
+    const usuariosPorRol = await db.query(`SELECT u.rol, COUNT(*) as cantidad FROM public.usuarios u LEFT JOIN public.organizaciones o ON u.organizacion_id = o.id WHERE u.organizacion_id IS NULL OR o.eliminado_en IS NULL GROUP BY u.rol`);
 
     const partidosActivos = await db.query(`
       SELECT p.id, p.fecha_hora, p.estado, o.nombre as liga_nombre, t.organizacion_id 
       FROM public.partidos p 
       LEFT JOIN public.torneos t ON p.torneo_id = t.id 
       LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id 
-      WHERE LOWER(TRIM(p.estado)) IN ('en_curso', 'activo', 'en vivo', 'en curso') 
+      WHERE (o.eliminado_en IS NULL) AND LOWER(TRIM(p.estado)) IN ('en_curso', 'activo', 'en vivo', 'en curso') 
       ORDER BY p.fecha_hora DESC
     `).catch((e) => { console.error('Error en partidosActivos:', e); return { rows: [] }; });
 
@@ -126,7 +129,7 @@ router.get('/metricas', async (req, res) => {
       FROM public.partidos p 
       LEFT JOIN public.torneos t ON p.torneo_id = t.id 
       LEFT JOIN public.organizaciones o ON t.organizacion_id = o.id 
-      WHERE p.estado IS NULL OR LOWER(TRIM(p.estado)) IN ('agendado', 'pendiente')
+      WHERE (o.eliminado_en IS NULL) AND (p.estado IS NULL OR LOWER(TRIM(p.estado)) IN ('agendado', 'pendiente'))
       ORDER BY p.fecha_hora ASC
     `).catch((e) => { console.error('Error en partidosAgendados:', e); return { rows: [] }; });
 
@@ -143,9 +146,19 @@ router.get('/metricas', async (req, res) => {
 // ==========================================
 router.get('/ligas', async (req, res) => {
   try {
-    const resultado = await db.query(`SELECT id, nombre, estado_activa, logo_url, responsable_nombre, responsable_telefono, responsable_email, created_at AS creado_en FROM public.organizaciones ORDER BY created_at DESC`);
+    // LOTE 8B: las ligas eliminadas (baja logica) salen del directorio; se
+    // gestionan y restauran desde GET /ligas/eliminadas.
+    const resultado = await db.query(`SELECT id, nombre, estado_activa, logo_url, responsable_nombre, responsable_telefono, responsable_email, created_at AS creado_en FROM public.organizaciones WHERE eliminado_en IS NULL ORDER BY created_at DESC`);
     res.json(resultado.rows);
   } catch (error) { res.status(500).json({ error: 'Error al consultar ligas.' }); }
+});
+
+// LOTE 8B: directorio de ligas eliminadas (baja logica), para restaurarlas.
+router.get('/ligas/eliminadas', async (req, res) => {
+  try {
+    const resultado = await db.query(`SELECT id, nombre, estado_activa, logo_url, responsable_nombre, responsable_telefono, responsable_email, created_at AS creado_en, eliminado_en FROM public.organizaciones WHERE eliminado_en IS NOT NULL ORDER BY eliminado_en DESC`);
+    res.json(resultado.rows);
+  } catch (error) { res.status(500).json({ error: 'Error al consultar ligas eliminadas.' }); }
 });
 
 router.get('/ligas/:id/detalle', async (req, res) => {
@@ -153,6 +166,9 @@ router.get('/ligas/:id/detalle', async (req, res) => {
   try {
     const liga = await db.query('SELECT * FROM public.organizaciones WHERE id = $1', [id]);
     if (liga.rows.length === 0) return res.status(404).json({ error: 'Liga no encontrada.' });
+    // LOTE 8B: el detalle de una liga eliminada no se expone; se consulta de
+    // nuevo cuando se restaura.
+    if (liga.rows[0].eliminado_en) return res.status(404).json({ error: 'Liga eliminada. Restaúrala para consultar su información.' });
 
     const usuarios = await db.query('SELECT id, nombre, apellido, email, rol, cedula FROM public.usuarios WHERE organizacion_id = $1', [id]);
     const equipos = await db.query('SELECT * FROM public.equipos WHERE organizacion_id = $1', [id]);
@@ -223,6 +239,10 @@ router.put('/ligas/:id', async (req, res) => {
   try {
     const previa = await db.query('SELECT * FROM public.organizaciones WHERE id = $1', [id]);
     if (previa.rows.length === 0) return res.status(404).json({ error: 'Liga no encontrada.' }); // FIX (hallazgo #5): un id inexistente causaba TypeError y 500
+    // LOTE 8B: una liga eliminada no se edita ni se reactiva desde aqui (asi
+    // el toggle de estado_activa no puede desbanear a usuarios de una liga
+    // eliminada); primero debe restaurarse.
+    if (previa.rows[0].eliminado_en) return res.status(400).json({ error: 'Esta liga está eliminada. Restaúrala primero desde la sección de ligas eliminadas.' });
     const nombreLigaCap = capitalizarTexto(nombre);
     const respNombreCap = capitalizarTexto(responsable_nombre);
 
@@ -249,15 +269,40 @@ router.delete('/ligas/:id', async (req, res) => {
     const previa = await db.query('SELECT * FROM public.organizaciones WHERE id = $1', [id]);
     if (previa.rows.length === 0) return res.status(404).json({ error: 'Liga no encontrada.' });
 
-    // LOTE E: soft-delete — NO se borra la fila (dejaría huérfanos a sus usuarios,
-    // equipos, sedes, torneos y partidos). Se desactiva la liga y se bloquea en
-    // Supabase Auth a los usuarios cuya organización principal es esta liga.
-    const resDb = await db.query(`UPDATE public.organizaciones SET estado_activa = false WHERE id = $1 RETURNING *`, [id]);
+    // LOTE 8B: soft delete real — la fila nunca se borra y nada se pierde en
+    // cascada. Se estampa eliminado_en (marca de eliminacion): la liga sale del
+    // directorio, de las metricas y del sitio publico, y sus usuarios quedan
+    // bloqueados en Supabase Auth. El login-proxy tambien rechaza a quienes
+    // pertenezcan a una liga eliminada (doble puerta). Se restaura con
+    // POST /ligas/:id/restaurar.
+    if (previa.rows[0].eliminado_en) return res.status(400).json({ error: 'Esta liga ya está eliminada.' });
+    const resDb = await db.query(`UPDATE public.organizaciones SET estado_activa = false, eliminado_en = now() WHERE id = $1 AND eliminado_en IS NULL RETURNING *`, [id]);
+    if (resDb.rows.length === 0) return res.status(409).json({ error: 'La liga acaba de ser eliminada en otra sesión. Refresca el directorio.' });
     const usuariosLiga = await db.query('SELECT id FROM public.usuarios WHERE organizacion_id = $1', [id]);
     for (const u of usuariosLiga.rows) { await supabaseAdmin.auth.admin.updateUserById(u.id, { ban_duration: '876000h' }); }
-    await registrarAuditoria(req.usuario.id, 'DESACTIVAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip, previa.rows[0].id);
-    res.json({ mensaje: 'Liga desactivada con éxito. Sus usuarios pierden acceso y sus datos históricos se preservan.' });
-  } catch (error) { res.status(500).json({ error: 'Error al desactivar la liga.' }); }
+    await registrarAuditoria(req.usuario.id, 'ELIMINAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip, previa.rows[0].id);
+    res.json({ mensaje: 'Liga eliminada con éxito. Sus usuarios pierden acceso y sus datos históricos se preservan. Puedes restaurarla desde la sección de ligas eliminadas.' });
+  } catch (error) { res.status(500).json({ error: 'Error al eliminar la liga.' }); }
+});
+
+// LOTE 8B: restaurar una liga eliminada (inverso del soft delete). Vuelve al
+// directorio con estado activa y sus usuarios (los que no estaban desactivados
+// por su cuenta) recuperan el acceso.
+router.post('/ligas/:id/restaurar', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const previa = await db.query('SELECT * FROM public.organizaciones WHERE id = $1', [id]);
+    if (previa.rows.length === 0) return res.status(404).json({ error: 'Liga no encontrada.' });
+    if (!previa.rows[0].eliminado_en) return res.status(400).json({ error: 'Esta liga no está eliminada.' });
+
+    const resDb = await db.query(`UPDATE public.organizaciones SET estado_activa = true, eliminado_en = NULL WHERE id = $1 RETURNING *`, [id]);
+    // Solo se desbloquea a los usuarios activos: quien estaba desactivado de
+    // forma individual (DESACTIVAR_USUARIO) sigue desactivado tras restaurar.
+    const usuariosLiga = await db.query("SELECT id FROM public.usuarios WHERE organizacion_id = $1 AND estado IS DISTINCT FROM 'Inactivo'", [id]);
+    for (const u of usuariosLiga.rows) { await supabaseAdmin.auth.admin.updateUserById(u.id, { ban_duration: 'none' }); }
+    await registrarAuditoria(req.usuario.id, 'RESTAURAR_LIGA', 'organizaciones', previa.rows[0], resDb.rows[0], req.ip, previa.rows[0].id);
+    res.json({ mensaje: 'Liga restaurada con éxito. Volvió al directorio con estado Activa y sus usuarios recuperan el acceso.' });
+  } catch (error) { res.status(500).json({ error: 'Error al restaurar la liga.' }); }
 });
 
 router.get('/equipos', async (req, res) => {
@@ -571,6 +616,15 @@ router.post('/usuarios/:id/reactivar', async (req, res) => {
     if (usuarioAReactivar.estado !== 'Inactivo') {
       return res.status(400).json({ error: 'El usuario ya se encuentra activo.' });
     }
+    // LOTE 8B: si la liga principal del usuario esta eliminada, no se reactiva
+    // el acceso suelto (su ban fue por eliminacion de la liga); primero debe
+    // restaurarse la liga.
+    if (usuarioAReactivar.organizacion_id) {
+      const ligaUsuario = await db.query('SELECT eliminado_en FROM public.organizaciones WHERE id = $1', [usuarioAReactivar.organizacion_id]);
+      if (ligaUsuario.rows.length > 0 && ligaUsuario.rows[0].eliminado_en) {
+        return res.status(400).json({ error: 'La liga de este usuario está eliminada. Restaura la liga primero (sección de ligas eliminadas).' });
+      }
+    }
 
     // 1. Desbloquear en Supabase Auth (levantar el ban aplicado al desactivar)
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { ban_duration: 'none' });
@@ -600,6 +654,8 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'CREAR_LIGA_Y_ADMIN' THEN 'Creó una liga nueva junto a su administrador.'
         WHEN a.accion = 'EDITAR_LIGA' THEN 'Actualizó los datos de una liga.'
         WHEN a.accion = 'DESACTIVAR_LIGA' THEN 'Desactivó una liga (sus usuarios pierden acceso).'
+        WHEN a.accion = 'ELIMINAR_LIGA' THEN 'Eliminó una liga (baja lógica; sus usuarios pierden acceso).'
+        WHEN a.accion = 'RESTAURAR_LIGA' THEN 'Restauró una liga eliminada (vuelve con estado Activa).'
         WHEN a.accion = 'CREAR_USUARIO' THEN 'Creó un usuario nuevo.'
         WHEN a.accion = 'EDITAR_USUARIO' THEN 'Actualizó un usuario.'
         WHEN a.accion = 'RESET_PASSWORD' THEN 'Restableció la contraseña de un usuario.'
