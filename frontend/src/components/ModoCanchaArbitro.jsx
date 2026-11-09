@@ -62,7 +62,7 @@ export default function ModoCanchaArbitro({
         </button>
         <button onClick={onVolverPanel} className="bg-brand-cream text-brand-brown px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-brand-gold hover:text-white transition-colors border border-brand-gold/30 shadow-sm flex items-center gap-1.5">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-          Salir del Partido
+          Volver al Panel
         </button>
       </div>
 

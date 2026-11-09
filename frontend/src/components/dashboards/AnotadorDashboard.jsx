@@ -20,6 +20,7 @@ import EmptyState from '../EmptyState'; // FASE 1 UX: estado vacio de marca
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmacion de marca
 import ModoCancha from '../ModoCancha'; // FASE 3 UX: modo cancha para anotar a pie de cancha
+import CronometroFlotante from '../CronometroFlotante'; // LOTE 8E UX: cronometro como isla flotante
 import { SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import { tecladoModal } from '../Accesibilidad';
 import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, formatearHora, horaCanonica, fechaHoy } from '../fechas'; // LOTE FECHAS: formato unico dd/mm/aaaa y horas de 12 horas
@@ -988,6 +989,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               onIniciar={handleIniciarPartido}
               onFinalizar={finalizarPartido}
               onVerPlanilla={() => cambiarModoVista(false)}
+              onVolverPanel={() => {
+                localStorage.removeItem('partidoActivoId');
+                setPartidoActivo(null);
+                socketRef.current?.emit('presencia_oficial', { partidoId: partidoActivo.id, rol: 'anotador', estado: false });
+              }}
             />
           ) : (
             // VISTA DEL PARTIDO ACTIVO (Planilla y Panel de Cancha)
@@ -1117,29 +1123,15 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                   </div>
                 )}
 
-                {/* CRONÓMETRO MESA TÉCNICA */}   
-                <div className="bg-brand-brown text-white p-6 rounded-xl border border-brand-gold/20 shadow-lg text-center relative overflow-hidden">
-                  <h4 className="text-sm font-bold text-brand-cream/70 uppercase tracking-wider mb-2 flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Tiempo Lanzamiento
-                  </h4>
-                  <div className={`text-6xl font-black font-mono tracking-tighter my-2 ${tiempoTurno > 50 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
-                    {formatoT(tiempoTurno)}
-                  </div>
-                  <div className="flex gap-2 mt-4">
-                    <button onClick={toggleTurno} className={`flex-1 py-2 rounded-lg font-bold shadow-sm transition-colors ${cronometroTurnoActivo ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-brand-blue hover:bg-brand-brown text-white'}`}>
-                      {cronometroTurnoActivo ? 'Pausar' : 'Iniciar'}
-                    </button>
-                    <button onClick={resetTurno} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold shadow-sm transition-colors">
-                      Reset
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm text-center">
-                  <div className="text-xs font-bold text-brand-brown/70 uppercase tracking-wider mb-2">Tiempo Total del Partido</div>
-                  <div className="text-3xl font-black font-mono text-brand-brown">{formatoT(tiempoGlobal)}</div>
-                </div>
+                {/* LOTE 8E UX: cronometro como isla flotante; el bloque fijo de mesa tecnica pasa a ser un icono circular expandible */}
+                <CronometroFlotante
+                  tiempoTurno={tiempoTurno}
+                  tiempoGlobal={tiempoGlobal}
+                  cronometroTurnoActivo={cronometroTurnoActivo}
+                  formatoT={formatoT}
+                  onToggleTurno={toggleTurno}
+                  onResetTurno={resetTurno}
+                />
               </div>
             </div>
           )}
