@@ -9,7 +9,7 @@ const supabaseAdmin = require('../config/supabaseAdmin'); // FIX #8: sin fallbac
 const { responderSiErrorIntegridad } = require('../middleware/errorHandlerMiddleware'); // LOTE 4B (M1)
 const { notificarUsuarios } = require('../utilidades/notificacionesPush'); // LOTE 5 (N4) + LOTE 8C: bandeja interna + web push
 const firmasActa = require('../utilidades/firmasActa'); // LOTE 6D: firmas digitales del acta
-const { enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo, enviarRestablecerPassword } = require('../utilidades/correo'); // LOTE 6G: correo saliente SMTP y tokens de verificacion
+const { enviarCorreo, plantilla, enviarBienvenidaConVerificacion, reenviarVerificacion, solicitarCambioCorreo, enviarRestablecerPassword } = require('../utilidades/correo'); // LOTE 6G: correo saliente SMTP y tokens de verificacion + LOTE 8D (plantilla para el aviso al superadmin)
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // LOTE 6G
 
 const { registrarAuditoria } = require('../utilidades/auditoria');
@@ -177,6 +177,7 @@ router.get('/bitacora', async (req, res) => {
         WHEN a.accion = 'DESACTIVAR_CREDENCIAL' THEN 'Desactivó permanentemente una credencial.'
         WHEN a.accion = 'REVOCAR_CREDENCIAL' THEN 'Revocó el acceso de un usuario a su liga.'
         WHEN a.accion = 'RESET_PASSWORD_OPERATIVO' THEN 'Restableció la contraseña de un usuario operativo.'
+        WHEN a.accion = 'SOLICITAR_ACTIVACION' THEN 'Solicitó al superadmin la reactivación de un usuario desactivado.'
         WHEN a.accion = 'ASIGNAR_DELEGADO' THEN 'Reasignó el delegado de un equipo.'
         WHEN a.accion = 'GUARDAR_PLANTILLAS' THEN 'Guardó una plantilla de reglas.'
         WHEN a.accion = 'CREAR_TORNEO' THEN 'Creó un torneo con su calendario de partidos.'
@@ -736,7 +737,7 @@ router.get('/usuarios-operativos', async (req, res) => {
   try {
     const orgId = await obtenerOrgId(req.usuario);
     const resDb = await db.query(
-      `SELECT u.id, u.nombre, u.apellido, u.email, u.cedula, u.correo_verificado, u.email_pendiente, uo.rol 
+      `SELECT u.id, u.nombre, u.apellido, u.email, u.cedula, u.correo_verificado, u.email_pendiente, uo.rol, u.estado
        FROM public.usuarios u
        JOIN public.usuario_organizaciones uo ON u.id = uo.usuario_id
        WHERE uo.organizacion_id = $1 
@@ -877,6 +878,58 @@ router.delete('/remover-credencial/:id', async (req, res) => {
   } catch (error) { 
     console.error('Error al remover credencial:', error);
     res.status(500).json({ error: 'Error al remover credencial.' }); 
+  }
+});
+
+// ============================================================
+// LOTE 8D: SOLICITAR ACTIVACION DE USUARIO (AdminLiga -> superadmin)
+// Sin tablas nuevas: la solicitud viaja por la bandeja de
+// notificaciones (titulo 'Solicitud de Activación', pendiente =
+// hora_lectura IS NULL) y ademas se avisa por correo al superadmin.
+// ============================================================
+router.post('/usuarios/:id/solicitar-activacion', async (req, res) => {
+  try {
+    const orgId = await obtenerOrgId(req.usuario);
+    const userDb = await db.query(`SELECT id, nombre, apellido, email, cedula, estado FROM public.usuarios WHERE id = $1 AND ($2::uuid IS NULL OR organizacion_id = $2 OR EXISTS (SELECT 1 FROM public.usuario_organizaciones uo WHERE uo.usuario_id = usuarios.id AND uo.organizacion_id = $2))`, [req.params.id, orgId]);
+    if (userDb.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado en tu organización.' });
+    const usuario = userDb.rows[0];
+    if (usuario.estado !== 'Inactivo') return res.status(400).json({ error: 'Ese usuario ya está activo. Solo se puede solicitar la activación de usuarios desactivados.' });
+
+    // Guard anti-spam (LOTE 8D): si ya hay una solicitud pendiente (sin
+    // leer) para este usuario en la bandeja de algun superadmin, no se
+    // envia otra. El ID viaja en el mensaje para poder ubicar la fila.
+    const pendiente = await db.query(
+      `SELECT 1 FROM public.notificaciones WHERE titulo = 'Solicitud de Activación' AND mensaje LIKE '%' || $1 || '%' AND hora_lectura IS NULL LIMIT 1`,
+      [req.params.id]
+    );
+    if (pendiente.rows.length > 0) {
+      return res.status(400).json({ error: 'Ya existe una solicitud de activación pendiente para este usuario. El superadmin la revisará en su bandeja de notificaciones.' });
+    }
+
+    const superadmins = await db.query(`SELECT id, email FROM public.usuarios WHERE LOWER(rol) = 'superadmin' AND (estado IS NULL OR estado <> 'Inactivo')`);
+    if (superadmins.rows.length === 0) return res.status(400).json({ error: 'No hay superadministradores activos para recibir la solicitud.' });
+
+    const orgNombre = orgId ? (await db.query('SELECT nombre FROM public.organizaciones WHERE id = $1', [orgId])).rows[0]?.nombre || 'su liga' : 'su liga';
+    const adminNombre = String(req.usuario?.nombre || '').trim() + (req.usuario?.apellido ? ' ' + String(req.usuario.apellido).trim() : '');
+    const adminEtiqueta = adminNombre || req.usuario?.email || 'El administrador de liga';
+    const mensaje = adminEtiqueta + ' (' + orgNombre + ') solicita reactivar el acceso de ' + usuario.nombre + ' ' + usuario.apellido + ' (cedula ' + usuario.cedula + ', correo ' + usuario.email + '). Usuario ID: ' + usuario.id + '.';
+    await notificarUsuarios({ organizacionId: orgId, remitenteId: req.usuario.id, destinatarios: superadmins.rows.map(s => s.id), titulo: 'Solicitud de Activación', mensaje });
+
+    // Aviso adicional por correo a cada superadmin activo (plantilla del Lote 6G).
+    const cuerpoCorreo = '<p>Hola:</p><p><strong>' + adminEtiqueta + '</strong> de <strong>' + orgNombre + '</strong> solicita reactivar el acceso de:</p><ul><li>Nombre: ' + usuario.nombre + ' ' + usuario.apellido + '</li><li>Cedula: ' + usuario.cedula + '</li><li>Correo: ' + usuario.email + '</li></ul><p>Entra al panel del superadmin, ubica al usuario y usa los botones de reactivar o rechazar.</p>';
+    for (const s of superadmins.rows) {
+      try {
+        await enviarCorreo({ para: s.email, asunto: 'Solicitud de activacion de usuario - CONMINGO', html: plantilla('Solicitud de Activación', cuerpoCorreo), texto: mensaje });
+      } catch (eCorreo) {
+        console.error('LOTE 8D: no se pudo enviar el correo de solicitud a ' + s.email + ':', eCorreo?.message || eCorreo);
+      }
+    }
+
+    await registrarAuditoria(req.usuario.id, 'SOLICITAR_ACTIVACION', 'usuarios', { id: usuario.id }, { email: usuario.email, cedula: usuario.cedula }, req.ip, orgId);
+    res.json({ mensaje: 'Solicitud enviada al superadmin. Recibirás la respuesta en tus notificaciones.' });
+  } catch (error) {
+    console.error('Error al solicitar activacion de usuario:', error);
+    res.status(500).json({ error: 'Error al enviar la solicitud de activación.' });
   }
 });
 

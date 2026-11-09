@@ -766,6 +766,17 @@ const guardarTorneoCompletoBase = async (e) => {
     }
   };
 
+  // LOTE 8D: pedir al superadmin la reactivacion de un usuario desactivado.
+  // La solicitud viaja por notificaciones internas + correo al superadmin.
+  const solicitarActivacion = async (u) => {
+    if (!(await pedirConfirmacion('Solicitar activación', `¿Pedir al superadmin que reactive el acceso de ${u.nombre} ${u.apellido}? Recibirá una notificación y un correo.`, 'exito'))) return;
+    const res = await fetchConToken(`/usuarios/${u.id}/solicitar-activacion`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) mostrarToast(data.mensaje || 'Solicitud enviada al superadmin.', 'exito');
+    else mostrarToast(data.error || 'No se pudo enviar la solicitud.', 'error');
+    cargarDatos();
+  };
+
   const resetearPasswordOperativo = async (userId, cedula, nombre) => {
     if (!(await pedirConfirmacion('Restablecer contraseña', `¿Restablecer contraseña para ${nombre}?`))) return;
     // LOTE 6J (revision): bloqueo por persona, no global. Otras personas siguen operativas.
@@ -1921,7 +1932,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <tr><td colSpan={4} className="p-0 border-0"><EmptyState icono="credencial" titulo="Sin credenciales en la liga" descripcion={usuariosOperativos.length === 0 ? 'Genera la primera credencial de árbitro, anotador o delegado.' : 'Ninguna credencial coincide con el filtro aplicado.'} /></td></tr>
                           ) : pagCredenciales.filasPagina.map(u => (
                             <tr key={u.id} className="hover:bg-brand-cream/10">
-                              <td className="p-3 font-bold text-brand-brown">{u.nombre} {u.apellido}</td>
+                              <td className="p-3 font-bold text-brand-brown">{u.nombre} {u.apellido}{u.estado === 'Inactivo' && (<span className="inline-block ml-2 px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[0.65rem] font-bold">Inactivo</span>)}</td>
                               <td className="p-3"><span className="px-2 py-1 bg-brand-blue/10 text-brand-blue rounded text-xs font-bold uppercase">{u.rol}</span></td>
                               <td className="p-3 text-xs text-brand-brown/70">
                                 <div>{u.cedula}</div>
@@ -1934,6 +1945,9 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                 )}
                               </td>
                               <td className="p-3 flex justify-center gap-2">
+                                {u.estado === 'Inactivo' && (
+                                  <button onClick={() => solicitarActivacion(u)} className="px-3 py-1.5 bg-brand-rust text-white hover:bg-brand-brown rounded text-xs font-bold transition-colors shadow-sm">Solicitar activación</button>
+                                )}
                                 <button onClick={() => resetearPasswordOperativo(u.id, u.cedula, u.nombre)} disabled={envioEnCurso(u.id)} className="px-3 py-1.5 bg-brand-gold text-brand-brown hover:bg-brand-brown hover:text-brand-gold rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">{envioEnCurso(u.id) ? 'Enviando... ' + segundosCorreo + ' s' : 'Reset Clave'}</button>
                                 <button onClick={() => cambiarCorreoCredencial(u)} disabled={envioEnCurso(u.id)} className="px-3 py-1.5 bg-brand-blue text-white hover:bg-brand-brown rounded text-xs font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Correo</button>
                                 {(u.correo_verificado === false || u.email_pendiente) && (
