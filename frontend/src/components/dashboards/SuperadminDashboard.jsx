@@ -549,6 +549,20 @@ const exportarRespaldoBDBase = async (formato) => {
     }
   };
 
+  // LOTE 8D: rechazar la solicitud de activacion de un usuario desactivado.
+  // El AdminLiga que pidio la reactivacion recibe el aviso en su bandeja.
+  const rechazarSolicitud = async (u) => {
+    if (!(await pedirConfirmacion('Rechazar solicitud', `¿Rechazar reactivar el acceso de ${u.nombre} ${u.apellido} (${u.email})? El usuario seguirá desactivado.`, 'peligro'))) return;
+    const res = await fetchConToken(`/usuarios/${u.id}/rechazar-activacion`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setMensaje({ texto: data.mensaje || 'Solicitud rechazada.', tipo: 'exito' });
+      cargarDatosPestana();
+    } else {
+      setMensaje({ texto: data.error || 'No se pudo rechazar la solicitud.', tipo: 'error' });
+    }
+  };
+
   // LOTE 8B: restaurar una liga eliminada (inverso del soft delete).
   const restaurarLiga = async (liga) => {
     if (restaurandoLiga) return;
@@ -669,9 +683,14 @@ const ejecutarEliminacionBase = async (e) => {
                     </button>
                   )}
                   {u.estado === 'Inactivo' && (
+                    <>
                     <button onClick={() => reactivarUsuario(u)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Reactivar Acceso" aria-label="Reactivar Acceso">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
+                    <button onClick={() => rechazarSolicitud(u)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Rechazar Solicitud" aria-label="Rechazar Solicitud">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </button>
+                    </>
                   )}
                 </td>
               </tr>
