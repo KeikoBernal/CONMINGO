@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { tecladoModal } from '../Accesibilidad';
+import { tecladoModal } from './Accesibilidad'; // LOTE 8F FIX: el componente vive en components/, no en components/dashboards/
 
 // LOTE 8F UX: compartir un partido agendado. Modal de marca con el link del
 // marcador publico, su QR descargable y la barra de compartir: en movil el
