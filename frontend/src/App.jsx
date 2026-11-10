@@ -405,25 +405,7 @@ export default function App() {
         
         <nav className="flex justify-between items-center mb-10 pb-6 border-b border-brand-gold/30">
           <div className="flex items-center gap-3">
-            <svg className="w-9 h-9 shrink-0" viewBox="0 0 64 64" role="img" aria-label="CONMINGO">
-              <defs>
-                <radialGradient id="grad-bola-nav" cx="38%" cy="32%" r="72%">
-                  <stop offset="0%" stopColor="#E9CFA4" />
-                  <stop offset="52%" stopColor="#C89B6E" />
-                  <stop offset="100%" stopColor="#754625" />
-                </radialGradient>
-                <clipPath id="recorte-bola-nav"><circle cx="30" cy="34" r="26" /></clipPath>
-              </defs>
-              <circle cx="30" cy="34" r="26" fill="url(#grad-bola-nav)" />
-              <g fill="none" stroke="#4A2313" strokeWidth="2.5" clipPath="url(#recorte-bola-nav)">
-                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(0 30 34)" />
-                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(90 30 34)" />
-                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(180 30 34)" />
-                <path d="M 30 8 A 13 26 0 0 1 30 60" transform="rotate(270 30 34)" />
-              </g>
-              <ellipse cx="20" cy="24" rx="6" ry="3.5" fill="#FFF7DF" opacity="0.35" transform="rotate(-28 20 24)" />
-              <circle cx="53" cy="10" r="6" fill="#E7BA67" stroke="#9E7A2E" strokeWidth="2" />
-            </svg>
+            <img src="/icono.svg" alt="CONMINGO" className="w-9 h-9 shrink-0" />
             <div className="leading-tight">
               <h2 className="text-2xl font-bold text-brand-brown tracking-tight">CONMINGO</h2>
               <p className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-brand-rust">Gestion deportiva de bolas criollas</p>
