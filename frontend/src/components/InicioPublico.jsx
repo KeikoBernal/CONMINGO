@@ -247,6 +247,7 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
 
       {/* HERO: la propuesta para quienes ya conocen la cancha */}
       <section className="text-center pt-14 pb-20 max-w-3xl mx-auto">
+        <img src="/logo.svg" alt="CONMINGO" className="w-64 sm:w-80 md:w-96 mx-auto mb-8" />
         <p className="text-xs font-bold uppercase tracking-[0.25em] text-brand-rust mb-4">Sistema de gestion deportiva de bolas criollas</p>
         <h1 className="text-4xl sm:text-5xl font-extrabold text-brand-brown leading-tight mb-6">
           La cancha es suya.

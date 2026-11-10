@@ -13,7 +13,7 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.js',
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['favicon.svg', 'icons.svg', 'icono.svg', 'logo.svg'],
       manifest: {
         name: 'conmingo',
         short_name: 'conmingo',
@@ -22,6 +22,8 @@ export default defineConfig({
         background_color: '#F2EBE0',
         display: 'standalone', 
         icons: [
+          { src: '/icono.svg', sizes: 'any', type: 'image/svg+xml' },
+
           {
             src: '/pwa-192x192.png',
             sizes: '192x192',
