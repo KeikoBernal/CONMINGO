@@ -28,6 +28,7 @@ import ProtestasAdmin from '../ProtestasAdmin';
 import Premiacion from '../Premiacion';
 import { QRCodeCanvas } from 'qrcode.react';
 import { tecladoModal } from '../Accesibilidad';
+import CompartirPartido from '../CompartirPartido'; // LOTE 8F: compartir partidos agendados (link + QR + redes)
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 // LOTE 6B: VITE_SOCKET_URL puede llegar con el sufijo /api (la URL del REST, no la del
@@ -175,6 +176,7 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   const [modalFirmasAdmin, setModalFirmasAdmin] = useState(null);
   // LOTE 6F (N1): QR del marcador publico de un partido (modal para proyectar/descargar)
   const [modalQrPartido, setModalQrPartido] = useState(null);
+  const [modalCompartirPartido, setModalCompartirPartido] = useState(null); // LOTE 8F: modal de compartir partido agendado
   // LOTE 6G: cambio de correo y reenvio de verificacion de credenciales
   const [modalCorreoCredencial, setModalCorreoCredencial] = useState(null);
   const [enviosEnCurso, setEnviosEnCurso] = useState([]); // LOTE 6J: ids con un envio de correo en curso (bloqueo por persona)
@@ -2701,7 +2703,12 @@ const bitacoraConTexto = bitacora.map(evento => ({
                                         <td className="text-brand-brown/80">{formatearFechaHora(p.fecha_hora)}</td>
                                         <td className="text-brand-brown/80">{p.sede_nombre || 'Principal'}</td>
                                         <td className="text-center">
-                                          <button onClick={() => setModalEditarPartido({ visible: true, partido: p, fecha_hora: p.fecha_hora.slice(0, 16), arbitro_id: p.arbitro_id || '', anotador_id: p.anotador_id || '', sede_id: p.sede_id || '' })} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1 rounded text-xs font-bold transition-colors">Modificar</button>
+                                          <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                            <button onClick={() => setModalEditarPartido({ visible: true, partido: p, fecha_hora: p.fecha_hora.slice(0, 16), arbitro_id: p.arbitro_id || '', anotador_id: p.anotador_id || '', sede_id: p.sede_id || '' })} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1 rounded text-xs font-bold transition-colors">Modificar</button>
+                                            {p.estado === 'Agendado' && (
+                                              <button onClick={() => setModalCompartirPartido(p)} className="bg-brand-cream text-brand-brown hover:bg-brand-rust hover:text-white border border-brand-gold/30 px-3 py-1 rounded text-xs font-bold transition-colors">Compartir</button>
+                                            )}
+                                          </div>
                                         </td>
                                       </tr>
                                     ))}
@@ -3212,6 +3219,10 @@ const bitacoraConTexto = bitacora.map(evento => ({
             </form>
           </div>
         </div>
+      )}
+      {/* MODAL COMPARTIR PARTIDO AGENDADO (LOTE 8F) */}
+      {modalCompartirPartido && (
+        <CompartirPartido partido={modalCompartirPartido} url={urlMarcadorPartido(modalCompartirPartido)} onCerrar={() => setModalCompartirPartido(null)} />
       )}
       {/* MODAL QR DEL MARCADOR PUBLICO (LOTE 6F) */}
       {modalQrPartido && (
