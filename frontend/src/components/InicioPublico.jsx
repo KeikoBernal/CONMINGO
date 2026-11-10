@@ -215,7 +215,7 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
           ))}
         </div>
 
-                <div className="absolute left-[-4rem] top-[38%] w-72 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * 0.15).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(185,85,47,0.32), transparent)' }}></div>
+        <div className="absolute left-[-4rem] top-[38%] w-72 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * 0.15).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(185,85,47,0.32), transparent)' }}></div>
         <div className="absolute right-[-3rem] top-[76%] w-80 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * -0.1).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(138,176,188,0.35), transparent)' }}></div>
 
         <div className="absolute -bottom-24 right-[28%]" style={{ transform: parallax(-0.08) }}>
