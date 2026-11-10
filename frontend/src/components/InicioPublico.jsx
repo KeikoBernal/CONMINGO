@@ -5,7 +5,8 @@ import { formatearFechaHora } from './fechas'; // LOTE FECHAS: fecha del partido
 // sus gradientes (con un toque mas de terracota) y simula el lance mientras
 // se scrollea, porque en bolas criollas gana el equipo que deja mas bolas
 // cerca del mingo: las bolas ilustradas de marca ruedan hacia el mingo
-// dorado a medida que se baja por la pagina. El copy va para quien ya
+// dorado durante todo el recorrido, hasta llegar al footer. El copy va
+// para quien ya
 // conoce el deporte, las tarjetas llevan iconos, hay footer completo y el
 // sistema se presenta como gestion deportiva de bolas criollas. Solo se
 // listan partidos en vivo o agendados a futuro.
@@ -18,18 +19,19 @@ const BolaCriolla = ({ tamano = 'h-12 w-12' }) => (
   <img src="/bola1.svg" alt="Bola criolla ilustrada" className={tamano} />
 );
 
-// EL ARRIME: la jugada del fondo, simulada con el scroll. El mingo dorado
-// queda clavado y cada bola ilustrada parte de un extremo de la primera
-// pantalla y rueda hasta su distancia final del mingo en un tramo propio
-// del scroll: gana el equipo con mas bolas cerca del mingo. Las posiciones
-// estan en px relativos al centro del mingo; el umbral es cuanto scroll
-// espera cada bola antes de rodar.
-const ARRIME_PASO = 420;
+// EL ARRIME: la jugada del fondo, simulada con el scroll y repartida en
+// todo el recorrido de la pagina, hasta llegar al footer. El mingo dorado
+// va fijo en pantalla y cada bola ilustrada parte de un extremo y rueda
+// hasta su distancia final del mingo: gana el equipo con mas bolas cerca
+// del mingo. Las posiciones estan en px relativos al centro del mingo; el
+// umbral es la fraccion del scroll total que espera cada bola antes de
+// rodar y la ventana es la fraccion del scroll que tarda en llegar.
+const ARRIME_VENTANA = 0.5;
 const BOLAS_ARRIME = [
   { src: '/bola1.svg', tamano: 'w-20 h-20', umbral: 0, desde: { x: -640, y: 120, giro: -170 }, hasta: { x: -34, y: 8, giro: -12 } },
-  { src: '/bola4.svg', tamano: 'w-16 h-16', umbral: 120, desde: { x: 230, y: -320, giro: 160 }, hasta: { x: 40, y: -6, giro: 18 } },
-  { src: '/bola2.svg', tamano: 'w-16 h-16', umbral: 240, desde: { x: 330, y: 230, giro: 140 }, hasta: { x: 10, y: 46, giro: 32 } },
-  { src: '/bola0.svg', tamano: 'w-20 h-20', umbral: 360, desde: { x: -460, y: 350, giro: -150 }, hasta: { x: -16, y: -46, giro: -28 } }
+  { src: '/bola4.svg', tamano: 'w-16 h-16', umbral: 0.12, desde: { x: 230, y: -320, giro: 160 }, hasta: { x: 40, y: -6, giro: 18 } },
+  { src: '/bola2.svg', tamano: 'w-16 h-16', umbral: 0.24, desde: { x: 330, y: 230, giro: 140 }, hasta: { x: 10, y: 46, giro: 32 } },
+  { src: '/bola0.svg', tamano: 'w-20 h-20', umbral: 0.36, desde: { x: -460, y: 350, giro: -150 }, hasta: { x: -16, y: -46, giro: -28 } }
 ];
 
 const VENTAJAS = [
@@ -73,6 +75,7 @@ const VENTAJAS = [
 
 export default function InicioPublico({ partidos = [], onIniciarSesion }) {
   const [desplazamiento, setDesplazamiento] = useState(0);
+  const [recorridoScroll, setRecorridoScroll] = useState(1); // px que abarca scrollear toda la pagina
   const reducirMovimiento = useRef(false);
 
   // Lectura temprana de prefers-reduced-motion (la misma del efecto de
@@ -97,6 +100,7 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
       raf = requestAnimationFrame(() => {
         raf = 0;
         setDesplazamiento(window.scrollY || 0);
+        setRecorridoScroll(Math.max(1, document.documentElement.scrollHeight - window.innerHeight));
       });
     };
     window.addEventListener('scroll', alScrollear, { passive: true });
@@ -120,11 +124,13 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
   const abrirSimulador = () => window.open('/?vista=simulador', '_blank');
   const parallax = (factor) => `translateY(${(desplazamiento * factor).toFixed(1)}px)`;
 
-  // Avance de una bola del arrime hacia el mingo segun el scroll; frena
+  // Avance de una bola del arrime hacia el mingo, repartido en todo el
+  // recorrido de la pagina (hasta el footer); frena
   // suave al llegar y con movimiento reducido va directo a su lugar.
   const avanceBola = (bola, campo) => {
     if (reducirMovimiento.current) return bola.hasta[campo];
-    const bruto = Math.min(1, Math.max(0, (desplazamiento - bola.umbral) / ARRIME_PASO));
+    const avance = Math.min(1, Math.max(0, desplazamiento / recorridoScroll));
+    const bruto = Math.min(1, Math.max(0, (avance - bola.umbral) / ARRIME_VENTANA));
     const suave = 1 - (1 - bruto) * (1 - bruto);
     return bola.desde[campo] + (bola.hasta[campo] - bola.desde[campo]) * suave;
   };
@@ -191,11 +197,12 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
           </svg>
         </div>
 
-        {/* EL ARRIME: simulacion del lance ligada al scroll. El mingo dorado
-            queda clavado en el fondo y las bolas ilustradas ruedan hacia el,
-            una por una, a medida que se scrollea hacia abajo: en bolas
-            criollas gana el equipo que deja mas bolas cerca del mingo. */}
-        <div className="absolute right-[24%] top-[520px] w-10 h-10" style={{ transform: parallax(0.32) }}>
+        {/* EL ARRIME: simulacion del lance ligada al scroll y repartida en
+            todo el recorrido hasta el footer. El mingo dorado va fijo en
+            pantalla y las bolas ilustradas ruedan hacia el, una por una,
+            mientras se baja: en bolas criollas gana el equipo que deja mas
+            bolas cerca del mingo. */}
+        <div className="absolute right-[24%] top-[45vh] w-10 h-10" style={{ transform: parallax(1) }}">
           <img src="/mingo.svg" alt="" className="w-10 h-10 arte-brillo" />
           {BOLAS_ARRIME.map((bola) => (
             <img
