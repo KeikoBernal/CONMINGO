@@ -106,6 +106,17 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
 // Estado para saber qué botón específico se está transformando en bola
   const [animandoBoton, setAnimandoBoton] = useState(null);
 
+  // LOTE 8H parte 2: la guia navega por las secciones del panel (pestaña y
+  // sub-pestaña de cada grupo); se usa tambien para volver al Inicio al cerrar.
+  const irASeccionTour = (id, sub) => {
+    setMenuAbierto(false);
+    if (id === 'torneos' && sub) setSubPestanaTorneo(sub);
+    if (id === 'equipos' && sub) setSubEquipos(sub);
+    if (id === 'disciplina' && sub) setSubDisciplina(sub);
+    if (id === 'resultados' && sub) setSubResultados(sub);
+    if (id === 'configuracion' && sub) setSubConfig(sub);
+    setPestana(id);
+  };
   const cambiarPestanaConAnimacion = (nuevaPestana) => {
     // Si ya estamos ahí o hay una animación en curso, no hacemos nada
     if (nuevaPestana === pestana || animandoBoton) return;
@@ -1325,7 +1336,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
-      <TourGuia rol="adminLiga" activo={tourActivo} onCerrar={cerrarTour} />
+      <TourGuia rol="adminLiga" activo={tourActivo} onCerrar={cerrarTour} seccionInicio="inicio" onIrASeccion={irASeccionTour} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
 
       {/* MODALES REUTILIZABLES */}

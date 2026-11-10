@@ -836,7 +836,7 @@ const ejecutarEliminacionBase = async (e) => {
   return (
     <div className="flex h-screen w-full bg-brand-cream font-sans overflow-hidden">
       <SistemaMensajeria usuario={usuario} token={token} />
-      <TourGuia rol="superadmin" activo={tourActivo} onCerrar={cerrarTour} />
+      <TourGuia rol="superadmin" activo={tourActivo} onCerrar={cerrarTour} seccionInicio="inicio" onIrASeccion={(id) => { setPestana(id); setMenuAbierto(false); }} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
 
       {/* MODAL CAMBIO DE CORREO (LOTE 6G) */}
