@@ -202,7 +202,7 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
             pantalla y las bolas ilustradas ruedan hacia el, una por una,
             mientras se baja: en bolas criollas gana el equipo que deja mas
             bolas cerca del mingo. */}
-        <div className="absolute right-[24%] top-[45vh] w-10 h-10" style={{ transform: parallax(1) }}">
+        <div className="absolute right-[24%] top-[520px] w-10 h-10" style={{ transform: parallax(0.32) }}>
           <img src="/mingo.svg" alt="" className="w-10 h-10 arte-brillo" />
           {BOLAS_ARRIME.map((bola) => (
             <img
