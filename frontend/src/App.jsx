@@ -405,9 +405,8 @@ export default function App() {
         
         <nav className="flex justify-between items-center mb-10 pb-6 border-b border-brand-gold/30">
           <div className="flex items-center gap-3">
-            <img src="/icono.svg" alt="CONMINGO" className="w-9 h-9 shrink-0" />
             <div className="leading-tight">
-              <h2 className="text-2xl font-bold text-brand-brown tracking-tight">CONMINGO</h2>
+              <img src="/logo.svg" alt="CONMINGO" className="h-10 sm:h-11 w-auto shrink-0" />
               <p className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-brand-rust">Gestion deportiva de bolas criollas</p>
             </div>
           </div>
