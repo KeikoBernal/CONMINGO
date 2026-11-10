@@ -182,6 +182,9 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
         <div className="absolute -top-48 -right-40 w-[34rem] h-[34rem] rounded-full" style={{ transform: parallax(0.08), background: 'radial-gradient(circle at 40% 40%, rgba(231,186,103,0.4), rgba(231,186,103,0.12) 45%, rgba(231,186,103,0) 70%)' }}></div>
         <div className="absolute -bottom-56 -left-40 w-[36rem] h-[36rem] rounded-full" style={{ transform: parallax(-0.06), background: 'radial-gradient(circle at 50% 50%, rgba(242,235,224,0.9), rgba(242,235,224,0.25) 50%, rgba(242,235,224,0) 72%)' }}></div>
         <div className="absolute -top-24 left-[16%] w-[30rem] h-[30rem] rounded-full" style={{ transform: parallax(0.12), background: 'radial-gradient(circle at 55% 45%, rgba(185,85,47,0.30), rgba(185,85,47,0.10) 45%, rgba(185,85,47,0) 70%)' }}></div>
+        {/* Spots de gradiente acompanando el footer, espejo de los de arriba */}
+        <div className="absolute -bottom-48 -right-40 w-[34rem] h-[34rem] rounded-full" style={{ transform: parallax(-0.06), background: 'radial-gradient(circle at 40% 40%, rgba(231,186,103,0.35), rgba(231,186,103,0.10) 45%, rgba(231,186,103,0) 70%)' }}></div>
+        <div className="absolute -bottom-24 left-[16%] w-[30rem] h-[30rem] rounded-full" style={{ transform: parallax(-0.10), background: 'radial-gradient(circle at 55% 45%, rgba(185,85,47,0.28), rgba(185,85,47,0.10) 45%, rgba(185,85,47,0) 70%)' }}></div>
 
         <div className="absolute top-24 -right-24" style={{ transform: parallax(0.18) }}>
           <svg className="w-80 h-80 arte-orbita" viewBox="0 0 200 200" fill="none">
