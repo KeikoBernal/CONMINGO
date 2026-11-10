@@ -519,7 +519,7 @@ const suspenderPartido = async () => {
       <SistemaMensajeria usuario={usuario} token={token} ligaActivaId={ligaFiltro} />
       <ChipOffline enLinea={enLinea} pendientes={colaOffline.pendientes} fallidos={colaOffline.fallidos} reintentando={reintentandoCola} onReintentar={reintentarColaFallidos} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
-      <TourGuia rol="arbitro" activo={tourActivo} onCerrar={cerrarTour} />
+            <TourGuia rol="arbitro" activo={tourActivo} onCerrar={cerrarTour} seccionInicio="inicio" onIrASeccion={(id) => { setPestana(id); setMenuAbierto(false); }} />
       <ConfirmDialog confirmacion={confirmacion} onCerrar={() => setConfirmacion(null)} />
       
       {/* MODAL SORTEO */}
