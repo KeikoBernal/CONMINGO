@@ -144,6 +144,9 @@ export default function AdminLigaDashboard({ usuario, cerrarSesion }) {
   // Estados Globales
   const [equipos, setEquipos] = useState([]);
   const [equipoSeleccionado, setEquipoSeleccionado] = useState(null);
+  // LOTE 8G: chips de filtro por genero y categoria/edad en el listado de equipos
+  const [filtroGenero, setFiltroGenero] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState('');
   const [jugadores, setJugadores] = useState([]);
   const [sedes, setSedes] = useState([]);
   const [plantillasReglas, setPlantillasReglas] = useState([]);
@@ -1259,6 +1262,25 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
   const pagosConTexto = pagos.map(p => ({ ...p, inscrito: p.jugador_nombre ? p.jugador_nombre + ' (jugador)' : (p.equipo_nombre || '') + ' (equipo)' }));
   const filasPagos = filteredRows('pagos', pagosConTexto, ['metodo', 'moneda', 'torneo_nombre'], ['creado_en']);
   const filasEquipos = filteredRows('equipos', equipos, ['categoria', 'tipo_genero'], []);
+  // LOTE 8G: los chips de genero y categoria filtran encima de la barra de
+  // HerramientasTabla, que sigue manejando busqueda, select y exportaciones.
+  const ordenCategorias = ['Pre-Infantil (<8)', 'Infantil (8-13)', 'Adulto 22+', 'Libre', 'Flash'];
+  const indiceCategoria = cat => { const i = ordenCategorias.indexOf(cat); return i === -1 ? ordenCategorias.length : i; };
+  const equiposChips = filasEquipos.filter(eq => (!filtroGenero || eq.tipo_genero === filtroGenero) && (!filtroCategoria || eq.categoria === filtroCategoria));
+  const generosDisponibles = [...new Set(equipos.map(eq => eq.tipo_genero).filter(Boolean))].sort((a, b) => ['Masculino', 'Femenino', 'Mixto'].indexOf(a) - ['Masculino', 'Femenino', 'Mixto'].indexOf(b));
+  const categoriasDisponibles = [...new Set(equipos.map(eq => eq.categoria).filter(Boolean))].sort((a, b) => indiceCategoria(a) - indiceCategoria(b) || a.localeCompare(b, 'es'));
+  // LOTE 8G: agrupado en dos niveles: categoria/edad primero, genero adentro.
+  const equiposAgrupados = Object.values(
+    equiposChips.reduce((grupos, eq) => {
+      const cat = eq.categoria || 'Sin categoria';
+      const gen = eq.tipo_genero || 'Mixto';
+      if (!grupos[cat]) grupos[cat] = { categoria: cat, generos: {} };
+      if (!grupos[cat].generos[gen]) grupos[cat].generos[gen] = { genero: gen, equipos: [] };
+      grupos[cat].generos[gen].equipos.push(eq);
+      return grupos;
+    }, {})
+  ).sort((a, b) => indiceCategoria(a.categoria) - indiceCategoria(b.categoria) || a.categoria.localeCompare(b.categoria, 'es'))
+    .map(g => ({ categoria: g.categoria, total: Object.values(g.generos).reduce((suma, x) => suma + x.equipos.length, 0), generos: Object.values(g.generos).sort((a, b) => ['Masculino', 'Femenino', 'Mixto'].indexOf(a.genero) - ['Masculino', 'Femenino', 'Mixto'].indexOf(b.genero)) }));
   const filasNomina = filteredRows('nomina', jugadores, ['genero', 'sexo'], ['fecha_nacimiento']);
   const credencialesConEquipo = usuariosOperativos.map(usuarioOperativo => ({
     ...usuarioOperativo,
@@ -1678,13 +1700,44 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-brand-gold/20">
                   <EncabezadoTabla titulo="Listado de Equipos" total={filasEquipos.length} />
                   <TableTools reportContext={{ usuario: usuario?.email || usuario?.nombre || usuario?.username }} logoUrl={orgData.logo_url} nombreLiga={orgData.nombre} rows={equipos} filteredRows={filasEquipos} filter={getFilter('equipos')} setFilter={setTableFilter('equipos')} columns={[{ key: 'nombre', label: 'Equipo' }, { key: 'categoria', label: 'Categoría' }, { key: 'tipo_genero', label: 'Género' }]} categoryFields={["categoria", "tipo_genero"]} filename="equipos_filtrados" />
+                  {/* LOTE 8G: chips de genero y categoria/edad */}
+                  <div className="flex flex-col gap-2 mb-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-brand-brown/70 w-20">Género</span>
+                      <button type="button" onClick={() => setFiltroGenero('')} className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${!filtroGenero ? 'bg-brand-rust text-white border-brand-rust' : 'bg-brand-cream text-brand-brown border-brand-gold/30 hover:bg-brand-rust hover:text-white'}`}>Todos</button>
+                      {generosDisponibles.map(g => (
+                        <button type="button" key={g} onClick={() => setFiltroGenero(filtroGenero === g ? '' : g)} className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${filtroGenero === g ? 'bg-brand-rust text-white border-brand-rust' : 'bg-brand-cream text-brand-brown border-brand-gold/30 hover:bg-brand-rust hover:text-white'}`}>{g}</button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-brand-brown/70 w-20">Categoría</span>
+                      <button type="button" onClick={() => setFiltroCategoria('')} className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${!filtroCategoria ? 'bg-brand-rust text-white border-brand-rust' : 'bg-brand-cream text-brand-brown border-brand-gold/30 hover:bg-brand-rust hover:text-white'}`}>Todas</button>
+                      {categoriasDisponibles.map(cat => (
+                        <button type="button" key={cat} onClick={() => setFiltroCategoria(filtroCategoria === cat ? '' : cat)} className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${filtroCategoria === cat ? 'bg-brand-rust text-white border-brand-rust' : 'bg-brand-cream text-brand-brown border-brand-gold/30 hover:bg-brand-rust hover:text-white'}`}>{cat}</button>
+                      ))}
+                    </div>
+                  </div>
                   
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {cargando && filasEquipos.length === 0 ? (
-                      <div className="col-span-full"><SkeletonTarjetas cantidad={6} clasesGrid="grid-cols-1 md:grid-cols-2 lg:grid-cols-3" /></div>
-                    ) : filasEquipos.length === 0 ? (
-                      <div className="col-span-full"><EmptyState icono="equipos" titulo="Aún no hay equipos inscritos" descripcion="Registra el primer equipo de la liga para armar su nómina." /></div>
-                    ) : filasEquipos.map(e => (
+                  {cargando && filasEquipos.length === 0 ? (
+                    <SkeletonTarjetas cantidad={6} clasesGrid="grid-cols-1 md:grid-cols-2 lg:grid-cols-3" />
+                  ) : filasEquipos.length === 0 ? (
+                    <EmptyState icono="equipos" titulo="Aún no hay equipos inscritos" descripcion="Registra el primer equipo de la liga para armar su nómina." />
+                  ) : equiposAgrupados.length === 0 ? (
+                    <EmptyState icono="equipos" titulo="Ningún equipo coincide" descripcion="Ajusta los chips de género o categoría para ver más equipos." />
+                  ) : equiposAgrupados.map(grupo => (
+                    <div key={grupo.categoria} className="mb-6 last:mb-0">
+                      <div className="flex items-center gap-2 mb-3">
+                        <h4 className="text-sm font-bold uppercase tracking-wider text-brand-rust">{grupo.categoria}</h4>
+                        <span className="text-xs font-bold bg-brand-cream text-brand-brown px-2 py-0.5 rounded-full border border-brand-gold/20">{grupo.total} {grupo.total === 1 ? 'equipo' : 'equipos'}</span>
+                      </div>
+                      {grupo.generos.map(grupoGenero => (
+                        <div key={grupoGenero.genero} className="mb-4 last:mb-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h5 className="text-xs font-bold uppercase tracking-wide text-brand-brown/70">{grupoGenero.genero}</h5>
+                            <span className="text-[0.65rem] font-semibold text-brand-brown/50">{grupoGenero.equipos.length} {grupoGenero.equipos.length === 1 ? 'equipo' : 'equipos'}</span>
+                          </div>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            {grupoGenero.equipos.map(e => (
                       <div key={e.id} className={`p-5 rounded-xl border transition-all ${equipoSeleccionado?.id === e.id ? 'border-brand-rust bg-brand-rust/5 shadow-md ring-1 ring-brand-rust' : 'border-brand-gold/30 bg-white hover:border-brand-blue hover:shadow-sm'}`}>
                         <div className="flex justify-between items-start mb-3">
                           <h4 className="font-bold text-brand-brown text-lg">{e.nombre}</h4>
@@ -1711,8 +1764,12 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           <button onClick={() => eliminarEquipo(e.id, e.nombre)} className="px-3 bg-red-100 text-red-600 rounded hover:bg-red-600 hover:text-white transition-colors flex items-center justify-center"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
 
                   {/* GESTIÓN DE NÓMINA (EQUIPO SELECCIONADO) */}
                   {equipoSeleccionado && (
