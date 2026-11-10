@@ -13,7 +13,7 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.js',
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg', 'icono.svg', 'logo.svg'],
+      includeAssets: ['favicon.svg', 'icons.svg', 'icono.svg', 'logo.svg', 'mingo.svg', 'bola0.svg', 'bola1.svg', 'bola2.svg', 'bola4.svg'],
       manifest: {
         name: 'conmingo',
         short_name: 'conmingo',

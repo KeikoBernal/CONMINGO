@@ -1,42 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatearFechaHora } from './fechas'; // LOTE FECHAS: fecha del partido en dd/mm/aaaa, 12 horas
 
-// PANTALLA DE INICIO PUBLICA (CONMINGO), revision de Keiko: el fondo ya no
-// demuestra el lance (se decora con circulos, gradientes y lineas generados
-// con codigo que se desplazan al scrollear), el copy va para quien ya
+// PANTALLA DE INICIO PUBLICA (CONMINGO), revision de Keiko: el fondo conserva
+// sus gradientes (con un toque mas de terracota) y simula el lance mientras
+// se scrollea, porque en bolas criollas gana el equipo que deja mas bolas
+// cerca del mingo: las bolas ilustradas de marca ruedan hacia el mingo
+// dorado durante todo el recorrido, hasta llegar al footer. El copy va
+// para quien ya
 // conoce el deporte, las tarjetas llevan iconos, hay footer completo y el
 // sistema se presenta como gestion deportiva de bolas criollas. Solo se
 // listan partidos en vivo o agendados a futuro.
 
-// Bola criolla vectorial. Las bolas reales son de madera dura (vera,
-// guayacan) y se identifican con una cruz pintada que las rodea para
-// diferenciar los equipos; aqui son cuatro bandas entrelazadas: cada
-// una nace y muere en puntos opuestos del contorno y se abomba en el
-// mismo sentido de rotacion pasando a media distancia del centro, y
-// el rombo del medio queda vacio (patron de las referencias de Keiko).
+// Bola criolla ilustrada: asset de marca de Keiko (ilustracion embebida en el
+// SVG). Reemplaza a la bola vectorial con gradientes, que no pegaba con el
+// estilo de la marca. Las bolas reales son de madera dura y se distinguen por
+// las marcas pintadas, igual que estas ilustraciones.
 const BolaCriolla = ({ tamano = 'h-12 w-12' }) => (
-  <svg viewBox="0 0 64 64" className={tamano} role="img" aria-label="Bola criolla">
-    <defs>
-      <radialGradient id="grad-bola-criolla" cx="38%" cy="32%" r="72%">
-        <stop offset="0%" stopColor="#E9CFA4" />
-        <stop offset="52%" stopColor="#C89B6E" />
-        <stop offset="100%" stopColor="#754625" />
-      </radialGradient>
-      <clipPath id="recorte-bola-criolla"><circle cx="32" cy="32" r="29" /></clipPath>
-    </defs>
-    <ellipse cx="33" cy="58" rx="21" ry="3.5" fill="#572C19" opacity="0.18" />
-    <circle cx="32" cy="32" r="29" fill="url(#grad-bola-criolla)" />
-    <path d="M13 40 C 21 44, 43 44, 51 40" fill="none" stroke="#8F5B33" strokeWidth="1" opacity="0.35" />
-    <path d="M15 22 C 23 18, 41 18, 49 22" fill="none" stroke="#E9CFA4" strokeWidth="1" opacity="0.3" />
-    <g fill="none" stroke="#4A2313" strokeWidth="3" clipPath="url(#recorte-bola-criolla)">
-      <path d="M 32 3 A 14.5 29 0 0 1 32 61" transform="rotate(0 32 32)" />
-      <path d="M 32 3 A 14.5 29 0 0 1 32 61" transform="rotate(90 32 32)" />
-      <path d="M 32 3 A 14.5 29 0 0 1 32 61" transform="rotate(180 32 32)" />
-      <path d="M 32 3 A 14.5 29 0 0 1 32 61" transform="rotate(270 32 32)" />
-    </g>
-    <ellipse cx="21" cy="17" rx="7.5" ry="4.5" fill="#FFF7DF" opacity="0.35" transform="rotate(-28 21 17)" />
-  </svg>
+  <img src="/bola1.svg" alt="Bola criolla ilustrada" className={tamano} />
 );
+
+// EL ARRIME: la jugada del fondo, simulada con el scroll y repartida en
+// todo el recorrido de la pagina, hasta llegar al footer. El mingo dorado
+// va fijo en pantalla y cada bola ilustrada parte de un extremo y rueda
+// hasta su distancia final del mingo: gana el equipo con mas bolas cerca
+// del mingo. Las posiciones estan en px relativos al centro del mingo; el
+// umbral es la fraccion del scroll total que espera cada bola antes de
+// rodar y la ventana es la fraccion del scroll que tarda en llegar.
+const ARRIME_VENTANA = 0.5;
+const BOLAS_ARRIME = [
+  { src: '/bola1.svg', tamano: 'w-20 h-20', umbral: 0, desde: { x: -640, y: 120, giro: -170 }, hasta: { x: -34, y: 8, giro: -12 } },
+  { src: '/bola4.svg', tamano: 'w-16 h-16', umbral: 0.12, desde: { x: 230, y: -320, giro: 160 }, hasta: { x: 40, y: -6, giro: 18 } },
+  { src: '/bola2.svg', tamano: 'w-16 h-16', umbral: 0.24, desde: { x: 330, y: 230, giro: 140 }, hasta: { x: 10, y: 46, giro: 32 } },
+  { src: '/bola0.svg', tamano: 'w-20 h-20', umbral: 0.36, desde: { x: -460, y: 350, giro: -150 }, hasta: { x: -16, y: -46, giro: -28 } }
+];
 
 const VENTAJAS = [
   {
@@ -79,7 +75,15 @@ const VENTAJAS = [
 
 export default function InicioPublico({ partidos = [], onIniciarSesion }) {
   const [desplazamiento, setDesplazamiento] = useState(0);
+  const [recorridoScroll, setRecorridoScroll] = useState(1); // px que abarca scrollear toda la pagina
   const reducirMovimiento = useRef(false);
+
+  // Lectura temprana de prefers-reduced-motion (la misma del efecto de
+  // scroll): con el movimiento reducido las bolas del fondo quedan
+  // arrimadas al mingo desde el inicio, sin simulacion.
+  if (!reducirMovimiento.current && typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    reducirMovimiento.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
 
   // El arte de fondo se desplaza a distinta velocidad que el contenido
   // mientras se scrollea (parallax suave, desactivado si el usuario
@@ -96,6 +100,7 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
       raf = requestAnimationFrame(() => {
         raf = 0;
         setDesplazamiento(window.scrollY || 0);
+        setRecorridoScroll(Math.max(1, document.documentElement.scrollHeight - window.innerHeight));
       });
     };
     window.addEventListener('scroll', alScrollear, { passive: true });
@@ -118,6 +123,17 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
   const abrirPizarra = () => window.open('/?vista=puntajes', '_blank');
   const abrirSimulador = () => window.open('/?vista=simulador', '_blank');
   const parallax = (factor) => `translateY(${(desplazamiento * factor).toFixed(1)}px)`;
+
+  // Avance de una bola del arrime hacia el mingo, repartido en todo el
+  // recorrido de la pagina (hasta el footer); frena
+  // suave al llegar y con movimiento reducido va directo a su lugar.
+  const avanceBola = (bola, campo) => {
+    if (reducirMovimiento.current) return bola.hasta[campo];
+    const avance = Math.min(1, Math.max(0, desplazamiento / recorridoScroll));
+    const bruto = Math.min(1, Math.max(0, (avance - bola.umbral) / ARRIME_VENTANA));
+    const suave = 1 - (1 - bruto) * (1 - bruto);
+    return bola.desde[campo] + (bola.hasta[campo] - bola.desde[campo]) * suave;
+  };
 
   const TarjetaPartido = ({ p }) => (
     <article className="group bg-white border border-brand-gold/30 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-brand-rust transition-all">
@@ -160,10 +176,12 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
   return (
     <div className="relative animate-slide-up">
 
-      {/* ARTE DE FONDO: circulos con gradientes y lineas generados con codigo; decoran y se desplazan con el scroll */}
+      {/* ARTE DE FONDO: gradientes (con mas terracota), lineas y los assets
+          ilustrados de marca; decoran y se desplazan con el scroll */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <div className="absolute -top-48 -right-40 w-[34rem] h-[34rem] rounded-full" style={{ transform: parallax(0.08), background: 'radial-gradient(circle at 40% 40%, rgba(231,186,103,0.4), rgba(231,186,103,0.12) 45%, rgba(231,186,103,0) 70%)' }}></div>
         <div className="absolute -bottom-56 -left-40 w-[36rem] h-[36rem] rounded-full" style={{ transform: parallax(-0.06), background: 'radial-gradient(circle at 50% 50%, rgba(242,235,224,0.9), rgba(242,235,224,0.25) 50%, rgba(242,235,224,0) 72%)' }}></div>
+        <div className="absolute -top-24 left-[16%] w-[30rem] h-[30rem] rounded-full" style={{ transform: parallax(0.12), background: 'radial-gradient(circle at 55% 45%, rgba(185,85,47,0.30), rgba(185,85,47,0.10) 45%, rgba(185,85,47,0) 70%)' }}></div>
 
         <div className="absolute top-24 -right-24" style={{ transform: parallax(0.18) }}>
           <svg className="w-80 h-80 arte-orbita" viewBox="0 0 200 200" fill="none">
@@ -179,61 +197,25 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
           </svg>
         </div>
 
-        <div className="absolute left-[6%] top-[16%]" style={{ transform: parallax(0.3) }}>
-          <svg className="w-28 h-28 arte-flotar" viewBox="0 0 64 64" fill="none">
-            <defs>
-              <radialGradient id="arte-disco-rust" cx="38%" cy="32%" r="72%">
-                <stop offset="0%" stopColor="#B9552F" />
-                <stop offset="60%" stopColor="#9E3F23" />
-                <stop offset="100%" stopColor="#5C2413" />
-              </radialGradient>
-              <clipPath id="recorte-disco-rust"><circle cx="32" cy="32" r="30" /></clipPath>
-            </defs>
-            <circle cx="32" cy="32" r="30" fill="url(#arte-disco-rust)" opacity="0.55" />
-            <g fill="none" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="3" clipPath="url(#recorte-disco-rust)">
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(0 32 32)" />
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(90 32 32)" />
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(180 32 32)" />
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(270 32 32)" />
-            </g>
-          </svg>
+        {/* EL ARRIME: simulacion del lance ligada al scroll y repartida en
+            todo el recorrido hasta el footer. El mingo dorado va fijo en
+            pantalla y las bolas ilustradas ruedan hacia el, una por una,
+            mientras se baja: en bolas criollas gana el equipo que deja mas
+            bolas cerca del mingo. */}
+        <div className="absolute right-[24%] w-10 h-10" style={{ top: '45vh', transform: parallax(1) }}>
+          <img src="/mingo.svg" alt="" className="w-10 h-10 arte-brillo" />
+          {BOLAS_ARRIME.map((bola) => (
+            <img
+              key={bola.src}
+              src={bola.src}
+              alt=""
+              className={`absolute left-1/2 top-1/2 ${bola.tamano} opacity-80`}
+              style={{ transform: `translate(calc(-50% + ${avanceBola(bola, 'x').toFixed(1)}px), calc(-50% + ${avanceBola(bola, 'y').toFixed(1)}px)) rotate(${avanceBola(bola, 'giro').toFixed(1)}deg)` }}
+            />
+          ))}
         </div>
 
-        <div className="absolute right-[10%] top-[52%]" style={{ transform: parallax(0.45) }}>
-          <svg className="w-16 h-16 arte-flotar-lento" viewBox="0 0 64 64" fill="none">
-            <defs>
-              <radialGradient id="arte-disco-blue" cx="38%" cy="32%" r="72%">
-                <stop offset="0%" stopColor="#A9C6D0" />
-                <stop offset="60%" stopColor="#8AB0BC" />
-                <stop offset="100%" stopColor="#4F6E7A" />
-              </radialGradient>
-              <clipPath id="recorte-disco-blue"><circle cx="32" cy="32" r="30" /></clipPath>
-            </defs>
-            <circle cx="32" cy="32" r="30" fill="url(#arte-disco-blue)" opacity="0.45" />
-            <g fill="none" stroke="#F2EBE0" strokeOpacity="0.5" strokeWidth="3" clipPath="url(#recorte-disco-blue)">
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(0 32 32)" />
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(90 32 32)" />
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(180 32 32)" />
-              <path d="M 32 2 A 15 30 0 0 1 32 62" transform="rotate(270 32 32)" />
-            </g>
-          </svg>
-        </div>
-
-        <div className="absolute right-[22%] top-[12%]" style={{ transform: parallax(0.24) }}>
-          <svg className="w-10 h-10 arte-brillo" viewBox="0 0 32 32">
-            <defs>
-              <radialGradient id="arte-mingo" cx="38%" cy="32%" r="72%">
-                <stop offset="0%" stopColor="#FFF3C9" />
-                <stop offset="45%" stopColor="#E7BA67" />
-                <stop offset="100%" stopColor="#8A6524" />
-              </radialGradient>
-            </defs>
-            <circle cx="16" cy="16" r="14" fill="url(#arte-mingo)" />
-            <circle cx="11" cy="10" r="2.6" fill="#FFF7DF" opacity="0.9" />
-          </svg>
-        </div>
-
-        <div className="absolute left-[-4rem] top-[38%] w-72 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * 0.15).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(158,63,35,0.25), transparent)' }}></div>
+        <div className="absolute left-[-4rem] top-[38%] w-72 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * 0.15).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(185,85,47,0.32), transparent)' }}></div>
         <div className="absolute right-[-3rem] top-[76%] w-80 h-px" style={{ transform: `rotate(-28deg) translateY(${(desplazamiento * -0.1).toFixed(1)}px)`, background: 'linear-gradient(90deg, transparent, rgba(138,176,188,0.35), transparent)' }}></div>
 
         <div className="absolute -bottom-24 right-[28%]" style={{ transform: parallax(-0.08) }}>
