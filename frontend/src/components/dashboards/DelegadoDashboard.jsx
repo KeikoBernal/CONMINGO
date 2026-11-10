@@ -378,7 +378,7 @@ const exportarPlanillaBase = async (partidoId, formato) => {
       
       <SistemaMensajeria usuario={usuario} token={token} />
       <ToastContainer toasts={toasts} onCerrar={cerrarToast} />
-      <TourGuia rol="delegado" activo={tourActivo} onCerrar={cerrarTour} />
+            <TourGuia rol="delegado" activo={tourActivo} onCerrar={cerrarTour} seccionInicio="equipo" onIrASeccion={(id) => { setPestana(id); setMenuAbierto(false); }} />
 
       {/* MODAL DE CAMBIO DE CONTRASEÑA */}
       {debeCambiarPass && (
