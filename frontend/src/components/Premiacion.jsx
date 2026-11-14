@@ -153,7 +153,7 @@ const generarActaPremiacion = async (datos, orgLiga) => {
     head: [['Reconocimiento', 'Jugador', 'Equipo', 'Estadística']],
     body: filasCampeones,
     styles: { fontSize: 8.5 },
-    headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream },
+    headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown }, // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro
     columnStyles: { 3: { cellWidth: 52 } }
   });
 
@@ -169,7 +169,7 @@ const generarActaPremiacion = async (datos, orgLiga) => {
       String(i + 1), nombreJugador(f), f.equipo_nombre || '-', String(f.lances), String(f.buenos), f.average_global === null ? '-' : String(f.average_global)
     ]),
     styles: { fontSize: 8 },
-    headStyles: { fillColor: MARCA_PDF_BN.rust, textColor: [255, 255, 255] }
+    headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown } // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno gris
   });
 
   const yNota = (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 200) + 10;
@@ -376,4 +376,5 @@ export default function Premiacion() {
     </div>
   );
 }
+
 

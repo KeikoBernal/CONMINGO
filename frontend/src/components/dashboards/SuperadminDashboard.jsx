@@ -290,7 +290,7 @@ const exportarRespaldoBDBase = async (formato) => {
       const cabecerasPDF = pdfColumnas.map(col => col.label);
       autoTable(doc, {
         startY: 36, head: [cabecerasPDF], body: filasPDF, theme: 'grid',
-        headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream }, styles: { fontSize: 8 }
+        headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown }, styles: { fontSize: 8 } // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro
       });
       doc.save(`${nombreArchivo}.pdf`);
     }
@@ -1490,3 +1490,4 @@ const ejecutarEliminacionBase = async (e) => {
     </div>
   );
 }
+
