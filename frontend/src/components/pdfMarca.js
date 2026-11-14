@@ -8,6 +8,11 @@
 // y reportes se imprimen en BLANCO Y NEGRO (solo los logos
 // conservan su color); diplomas y carnets mantienen la paleta
 // de marca a color via MARCA_PDF.
+// LOTE 8K FIX (reporte de Keiko): la cabecera ya no dibuja una
+// bola criolla inventada. El logo real de CONMINGO es /logo.svg
+// (el mismo de la barra de inicio) y se rasteriza con canvas;
+// el logo de la liga se descarga y convierte a dataURL antes de
+// incrustarlo.
 // ============================================================
 
 // Paleta de marca en RGB (mismos valores del tema de index.css).
@@ -37,9 +42,41 @@ const formatoImagen = (url) => {
   return null;
 };
 
+// Descarga una imagen (URL firmada de Storage o remota) y la devuelve como
+// dataURL lista para jsPDF. Devuelve null si no esta disponible.
+export const urlADataURL = async (url) => {
+  try {
+    if (!url) return null;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const dataUrl = await new Promise((resolve) => {
+      const lector = new FileReader();
+      lector.onload = () => resolve(lector.result);
+      lector.onerror = () => resolve(null);
+      lector.readAsDataURL(blob);
+    });
+    return typeof dataUrl === 'string' && dataUrl.startsWith('data:image/') ? dataUrl : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+// LOTE 8K FIX: normaliza el logo de la liga para jsPDF. Acepta un dataURL
+// PNG/JPEG tal cual y convierte una URL remota (Storage de Supabase)
+// descargandola; asi la cabecera muestra el logo real de la liga y no un
+// dibujo de relleno. Devuelve null si no se puede obtener.
+export const normalizarLogoLiga = async (logoUrl) => {
+  if (typeof logoUrl !== 'string' || !logoUrl) return null;
+  if (logoUrl.startsWith('data:image/')) return formatoImagen(logoUrl) ? logoUrl : null;
+  if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) return urlADataURL(logoUrl);
+  return null;
+};
+
 // Logo de la liga en (x, y) con lado tamano. Si no hay logo (o es
 // WEBP, que jsPDF no soporta) dibuja una bola criolla de marca en
 // la paleta indicada. Devuelve true solo si dibujo la imagen del logo.
+// (Se conserva para diplomas y carnets; el encabezado de marca ya no la usa.)
 export const dibujarLogoLiga = (pdf, logoUrl, x, y, tamano, conMarco = true, paleta = MARCA_PDF) => {
   const formato = formatoImagen(logoUrl);
   if (formato) {
@@ -73,9 +110,11 @@ export const dibujarLogoLiga = (pdf, logoUrl, x, y, tamano, conMarco = true, pal
   return false;
 };
 
-// LOTE 8K: logo CONMINGO (frontend/public/logo.png) para la cabecera de
-// todos los PDF. Se carga una sola vez y se cachea como dataURL PNG;
-// si no esta disponible, la cabecera sale sin el y nada se rompe.
+// LOTE 8K FIX: logo REAL de CONMINGO (frontend/public/logo.svg, el mismo de
+// la barra de inicio). jsPDF no incrusta SVG, asi que se rasteriza una sola
+// vez con canvas (lienzo 256x256 con fondo transparente, sin deformar la
+// imagen) y se cachea como dataURL PNG. Si no esta disponible, la cabecera
+// sale sin el y nada se rompe.
 let cacheLogoConmingo; // undefined: aun no cargado; null: no disponible
 let promesaLogoConmingo = null;
 export const obtenerLogoConmingo = () => {
@@ -83,14 +122,26 @@ export const obtenerLogoConmingo = () => {
   if (!promesaLogoConmingo) {
     promesaLogoConmingo = (async () => {
       try {
-        const res = await fetch('/logo.png');
-        if (!res.ok) throw new Error('logo no disponible');
-        const blob = await res.blob();
         const dataUrl = await new Promise((resolve) => {
-          const lector = new FileReader();
-          lector.onload = () => resolve(lector.result);
-          lector.onerror = () => resolve(null);
-          lector.readAsDataURL(blob);
+          const imagen = new Image();
+          imagen.onload = () => {
+            try {
+              const lado = 256;
+              const escala = imagen.width > 0 && imagen.height > 0 ? Math.min(lado / imagen.width, lado / imagen.height) : 1;
+              const ancho = Math.max(1, Math.round(imagen.width * escala));
+              const alto = Math.max(1, Math.round(imagen.height * escala));
+              const canvas = document.createElement('canvas');
+              canvas.width = lado;
+              canvas.height = lado;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(imagen, Math.round((lado - ancho) / 2), Math.round((lado - alto) / 2), ancho, alto);
+              resolve(canvas.toDataURL('image/png'));
+            } catch (e) {
+              resolve(null);
+            }
+          };
+          imagen.onerror = () => resolve(null);
+          imagen.src = '/logo.svg';
         });
         cacheLogoConmingo = (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/png')) ? dataUrl : null;
       } catch (e) {
@@ -106,19 +157,36 @@ export const obtenerLogoConmingo = () => {
 // negro en blanco y negro), logo de la liga a la izquierda, logo CONMINGO a
 // la derecha y nombre de la liga; titulo y subtitulo viajan en la segunda
 // linea. Devuelve la Y (30) donde el documento debe continuar. Es ASINCRONA
-// porque precarga el logo CONMINGO: los generadores deben hacer await.
+// porque normaliza el logo de la liga y precarga el logo CONMINGO: los
+// generadores deben hacer await.
+// LOTE 8K FIX (reporte de Keiko): nunca se dibuja una bola inventada. A la
+// izquierda va el logo real de la liga (convertido a dataURL); si la liga no
+// tiene logo, ocupa su lugar el logo real de CONMINGO. El logo de CONMINGO
+// va a la derecha solo cuando la izquierda es el de la liga (nunca duplicado).
 export const encabezadoMarca = async (pdf, { nombreLiga = '', logoUrl = null, titulo = 'REPORTE OFICIAL', subtitulo = '', blancoYNegro = false } = {}) => {
   const paleta = blancoYNegro ? MARCA_PDF_BN : MARCA_PDF;
   const ancho = pdf.internal.pageSize.getWidth();
   pdf.setFillColor(paleta.brown[0], paleta.brown[1], paleta.brown[2]);
   pdf.rect(0, 0, ancho, 22, 'F');
-  dibujarLogoLiga(pdf, logoUrl, 6, 2.5, 17, true, paleta);
-  // LOTE 8K: logo CONMINGO en la cabecera (derecha), sobre marco blanco.
+  const logoLigaData = await normalizarLogoLiga(logoUrl);
   const logoConmingo = await obtenerLogoConmingo();
-  if (logoConmingo) {
+  const logoIzquierdo = logoLigaData || logoConmingo;
+  const formatoIzquierdo = logoIzquierdo && logoIzquierdo.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
+  if (logoIzquierdo) {
     try {
       pdf.setFillColor(255, 255, 255);
-      pdf.roundedRect(ancho - 23, 2.5, 17, 17, 1.5, 1.5, 'F');
+      pdf.setDrawColor(paleta.gold[0], paleta.gold[1], paleta.gold[2]);
+      pdf.setLineWidth(0.4);
+      pdf.roundedRect(6, 2.5, 17, 17, 1.5, 1.5, 'FD');
+      pdf.addImage(logoIzquierdo, formatoIzquierdo, 7.5, 4, 14, 14);
+    } catch (e) {
+      // El logo izquierdo falla: la cabecera queda solo con el texto.
+    }
+  }
+  if (logoLigaData && logoConmingo) {
+    try {
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(ancho - 23, 2.5, 17, 17, 1.5, 1.5, 'FD');
       pdf.addImage(logoConmingo, 'PNG', ancho - 21.5, 4, 14, 14);
     } catch (e) {
       // El logo CONMINGO falla: la cabecera queda solo con el logo de la liga.

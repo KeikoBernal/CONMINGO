@@ -1012,10 +1012,15 @@ const confirmarEditarPartidoBase = async (e) => {
 const exportarPlanillaFormato = async (partidoId, formato) => {
     try {
       setMensaje(`Generando archivo ${formato.toUpperCase()} de la planilla...`);
-      const resPart = await fetchConToken(`/publico/partidos/${partidoId}`);
+      // LOTE 8K FIX (reporte de Keiko): los endpoints /publico son PUBLICOS y
+      // viven en la raiz de la API; fetchConToken prefija /admin-liga, donde
+      // esas rutas NO existen (404): por eso fallaban TODAS las exportaciones
+      // del historial. Se consultan con fetch plano contra la raiz de la API.
+      const resPart = await fetch(`${API_URL}/publico/partidos/${partidoId}`);
       const partidoData = await resPart.json();
-      const resNom = await fetchConToken(`/publico/partidos/${partidoId}/nomina`);
-      const nominaData = await resNom.json();
+      if (!resPart.ok) throw new Error(partidoData.error || 'Partido no encontrado.');
+      const resNom = await fetch(`${API_URL}/publico/partidos/${partidoId}/nomina`);
+      const nominaData = resNom.ok ? await resNom.json() : [];
 
       const nombreArchivo = `Planilla_${partidoData.local_nombre}_vs_${partidoData.visita_nombre}`.replace(/\s+/g, '_');
 
@@ -3301,4 +3306,5 @@ const bitacoraConTexto = bitacora.map(evento => ({
     </div>
   );
 }
+
 
