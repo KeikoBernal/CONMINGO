@@ -88,7 +88,7 @@ export const generarActaPDF = async ({
     theme: 'grid',
     styles: { fontSize: 7, halign: 'center', cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1 },
     columnStyles: { 1: { halign: 'left', cellWidth: 50 } },
-    headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream },
+    headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown }, // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro
     didParseCell: function (data) {
       if (data.row.index === bodyLocal.length - 1) {
         data.cell.styles.fillColor = MARCA_PDF_BN.cream;
@@ -111,7 +111,7 @@ export const generarActaPDF = async ({
     theme: 'grid',
     styles: { fontSize: 7, halign: 'center', cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1 },
     columnStyles: { 1: { halign: 'left', cellWidth: 50 } },
-    headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream },
+    headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown }, // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro
     didParseCell: function (data) {
       if (data.row.index === bodyVisita.length - 1) {
         data.cell.styles.fillColor = MARCA_PDF_BN.cream;
@@ -140,13 +140,22 @@ export const generarActaPDF = async ({
   for (const slot of slotsFirma) doc.line(slot.x, yFirmas, slot.x + 55, yFirmas);
   if (listaFirmas) {
     for (const slot of slotsFirma) {
-      const firma = listaFirmas.find(f => f.rol_firma === slot.rol && f.firmada && f.url_firmada);
+      // LOTE 8K3 (reporte de Keiko): una firma REGISTRADA cuya imagen no se
+      // pudo incrustar (URL firmada vencida o no disponible) ya no se queda
+      // en blanco en silencio: el acta lo indica sobre la linea.
+      const firma = listaFirmas.find(f => f.rol_firma === slot.rol && f.firmada);
       if (!firma) continue;
-      try {
-        const img = await urlADataURL(firma.url_firmada);
-        if (img) doc.addImage(img, 'PNG', slot.x + 7, yFirmas - 16, 40, 14);
-      } catch (e) {
-        // La imagen no esta disponible: queda la linea en blanco.
+      let img = null;
+      if (firma.url_firmada) {
+        try { img = await urlADataURL(firma.url_firmada); } catch (e) { img = null; }
+      }
+      if (img) {
+        doc.addImage(img, 'PNG', slot.x + 7, yFirmas - 16, 40, 14);
+      } else {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7.5);
+        doc.setTextColor(110, 110, 110);
+        doc.text('Firma registrada (imagen no disponible)', slot.x + 27.5, yFirmas - 6, { align: 'center' });
       }
     }
   }
@@ -219,4 +228,5 @@ export const generarActaDesdePartido = async (partido, nomina, planilla, firmas,
     firmas
   });
 };
+
 

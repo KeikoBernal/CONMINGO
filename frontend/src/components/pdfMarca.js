@@ -44,22 +44,52 @@ const formatoImagen = (url) => {
 
 // Descarga una imagen (URL firmada de Storage o remota) y la devuelve como
 // dataURL lista para jsPDF. Devuelve null si no esta disponible.
+// LOTE 8K3 (reporte de Keiko: firmas que no aparecen en el PDF): ahora hace
+// dos intentos de fetch y un fallback con <img crossOrigin> + canvas, para
+// cubrir respuestas lentas o bloqueos puntuales de lectura; si todo falla
+// devuelve null y el acta lo deja constancia en lugar de callarse.
 export const urlADataURL = async (url) => {
-  try {
-    if (!url) return null;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const dataUrl = await new Promise((resolve) => {
-      const lector = new FileReader();
-      lector.onload = () => resolve(lector.result);
-      lector.onerror = () => resolve(null);
-      lector.readAsDataURL(blob);
-    });
-    return typeof dataUrl === 'string' && dataUrl.startsWith('data:image/') ? dataUrl : null;
-  } catch (e) {
-    return null;
+  if (!url) return null;
+  for (let intento = 0; intento < 2; intento++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const blob = await res.blob();
+        const dataUrl = await new Promise((resolve) => {
+          const lector = new FileReader();
+          lector.onload = () => resolve(lector.result);
+          lector.onerror = () => resolve(null);
+          lector.readAsDataURL(blob);
+        });
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) return dataUrl;
+      }
+    } catch (e) {
+      // Se reintenta una vez; si vuelve a fallar pasa al fallback.
+    }
   }
+  try {
+    const dataUrl = await new Promise((resolve) => {
+      const imagen = new Image();
+      imagen.crossOrigin = 'anonymous';
+      imagen.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = imagen.naturalWidth || imagen.width || 1;
+          canvas.height = imagen.naturalHeight || imagen.height || 1;
+          canvas.getContext('2d').drawImage(imagen, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        } catch (e) {
+          resolve(null);
+        }
+      };
+      imagen.onerror = () => resolve(null);
+      imagen.src = url;
+    });
+    if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) return dataUrl;
+  } catch (e) {
+    // Sin imagen disponible.
+  }
+  return null;
 };
 
 // LOTE 8K FIX: normaliza el logo de la liga para jsPDF. Acepta un dataURL
@@ -166,8 +196,12 @@ export const obtenerLogoConmingo = () => {
 export const encabezadoMarca = async (pdf, { nombreLiga = '', logoUrl = null, titulo = 'REPORTE OFICIAL', subtitulo = '', blancoYNegro = false } = {}) => {
   const paleta = blancoYNegro ? MARCA_PDF_BN : MARCA_PDF;
   const ancho = pdf.internal.pageSize.getWidth();
-  pdf.setFillColor(paleta.brown[0], paleta.brown[1], paleta.brown[2]);
-  pdf.rect(0, 0, ancho, 22, 'F');
+  // LOTE 8K3 (reporte de Keiko): en blanco y negro la cabecera NO lleva banda
+  // de relleno (fondo blanco, lista para imprimir); a color conserva la banda.
+  if (!blancoYNegro) {
+    pdf.setFillColor(paleta.brown[0], paleta.brown[1], paleta.brown[2]);
+    pdf.rect(0, 0, ancho, 22, 'F');
+  }
   const logoLigaData = await normalizarLogoLiga(logoUrl);
   const logoConmingo = await obtenerLogoConmingo();
   const logoIzquierdo = logoLigaData || logoConmingo;
@@ -193,7 +227,10 @@ export const encabezadoMarca = async (pdf, { nombreLiga = '', logoUrl = null, ti
     }
   }
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(paleta.cream[0], paleta.cream[1], paleta.cream[2]);
+  // LOTE 8K3: sin banda oscura el nombre va en gris casi negro; a color
+  // sigue en crema sobre la banda de marca.
+  const colorTitulo = blancoYNegro ? MARCA_PDF_BN.brown : MARCA_PDF.cream;
+  pdf.setTextColor(colorTitulo[0], colorTitulo[1], colorTitulo[2]);
   pdf.setFontSize(12);
   pdf.text(nombreLiga ? String(nombreLiga) : 'CONMINGO', 27, 9.5);
   pdf.setFont('helvetica', 'normal');
@@ -217,3 +254,4 @@ export const ajustarTexto = (pdf, texto, anchoMax, tamanoInicial, tamanoMinimo =
   }
   return tamano;
 };
+

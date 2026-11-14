@@ -592,8 +592,17 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   // LOTE 8K: descarga el acta del partido activo con el estado local del panel
   // (sin releer el backend) y las firmas ya cargadas.
+  // LOTE 8K3 (reporte de Keiko: firmas que no aparecen en el PDF): se vuelve a
+  // consultar el estado de firmas justo antes de generar, porque las URLs
+  // firmadas de las imagenes vencen en 1 hora y el otro oficial pudo firmar
+  // hace un rato; si la consulta falla se usa el estado conocido.
   const descargarActaActiva = async () => {
     try {
+      let firmasActuales = firmasActa;
+      try {
+        const resFirmas = await fetchConToken(`/partidos/${partidoActivo.id}/firmas`);
+        if (resFirmas.ok) { firmasActuales = await resFirmas.json(); setFirmasActa(firmasActuales); }
+      } catch (e) { /* usa el estado conocido */ }
       await generarActaPDF({
         nombreLiga: orgLiga?.nombre || '',
         logoLiga: orgLiga?.logo_url || null,
@@ -606,7 +615,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
         jugadoresLocal, jugadoresVisita,
         efectividadJugadores, manualStats,
         puntosPorManoLocal, puntosPorManoVisita,
-        firmas: firmasActa?.firmas || null
+        firmas: Array.isArray(firmasActuales) ? firmasActuales : (firmasActuales?.firmas || null)
       });
     } catch (err) {
       mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
@@ -1199,3 +1208,4 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     </div>
   );
 }
+

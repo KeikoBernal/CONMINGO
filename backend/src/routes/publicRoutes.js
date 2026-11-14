@@ -25,7 +25,10 @@ router.get('/partidos/:id', async (req, res) => {
              COALESCE(ua.nombre || ' ' || ua.apellido, '') AS arbitro_nombre,
              COALESCE(un.nombre || ' ' || un.apellido, '') AS anotador_nombre,
              COALESCE(jl.nombre || ' ' || jl.apellido, '') AS capitan_local_nombre,
-             COALESCE(jv.nombre || ' ' || jv.apellido, '') AS capitan_visita_nombre
+             COALESCE(jv.nombre || ' ' || jv.apellido, '') AS capitan_visita_nombre,
+             -- LOTE 8K3 (reporte de Keiko): marcador oficial del partido (tabla
+             -- resultados; existe al finalizar y se actualiza con protestas).
+             r.marcador_local, r.marcador_visita, r.tipo_resolucion
       FROM public.partidos p
       LEFT JOIN public.equipos el ON p.equipo_local_id = el.id
       LEFT JOIN public.equipos ev ON p.equipo_visita_id = ev.id
@@ -36,6 +39,7 @@ router.get('/partidos/:id', async (req, res) => {
       LEFT JOIN public.usuarios un ON p.anotador_id = un.id
       LEFT JOIN public.jugadores jl ON el.capitan_id = jl.id
       LEFT JOIN public.jugadores jv ON ev.capitan_id = jv.id
+      LEFT JOIN public.resultados r ON r.partido_id = p.id
       WHERE (o.eliminado_en IS NULL) AND p.id = $1 -- LOTE 8B: los partidos de ligas eliminadas no se exponen
     `, [partidoId]); // MODIFICACIÓN: Pasamos la variable parseada en lugar de req.params.id
 
@@ -128,4 +132,5 @@ router.get('/partidos/:id/firmas', async (req, res) => {
 });
 
 module.exports = router;
+
 

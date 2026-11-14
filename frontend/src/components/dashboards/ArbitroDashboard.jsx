@@ -383,8 +383,17 @@ const guardarSorteo = async () => {
 
   // LOTE 8K: descarga el acta del partido activo con el estado local del panel
   // (el arbitro no maneja stats manuales: van vacios, como en su planilla).
+  // LOTE 8K3 (reporte de Keiko: firmas que no aparecen en el PDF): se vuelve a
+  // consultar el estado de firmas justo antes de generar, porque las URLs
+  // firmadas de las imagenes vencen en 1 hora; si la consulta falla se usa el
+  // estado conocido.
   const descargarActaActiva = async () => {
     try {
+      let firmasActuales = firmasActa;
+      try {
+        const resFirmas = await fetchConToken(`/partidos/${partidoActivo.id}/firmas`);
+        if (resFirmas.ok) { firmasActuales = await resFirmas.json(); setFirmasActa(firmasActuales); }
+      } catch (e) { /* usa el estado conocido */ }
       await generarActaPDF({
         nombreLiga: orgLiga?.nombre || '',
         logoLiga: orgLiga?.logo_url || null,
@@ -397,7 +406,7 @@ const guardarSorteo = async () => {
         jugadoresLocal, jugadoresVisita,
         efectividadJugadores,
         puntosPorManoLocal, puntosPorManoVisita,
-        firmas: firmasActa?.firmas || null
+        firmas: Array.isArray(firmasActuales) ? firmasActuales : (firmasActuales?.firmas || null)
       });
     } catch (err) {
       mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
@@ -1115,3 +1124,4 @@ const suspenderPartido = async () => {
     </div>
   );
 }
+

@@ -1022,19 +1022,43 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
       const resNom = await fetch(`${API_URL}/publico/partidos/${partidoId}/nomina`);
       const nominaData = resNom.ok ? await resNom.json() : [];
 
+      // LOTE 8K3 (reporte de Keiko): los CSV/Excel/JSON solo traian la nomina
+      // y no mostraban el resultado del partido. Ahora incluyen el marcador
+      // oficial (public.resultados, devuelto por el endpoint publico desde
+      // este lote); si aun no existe, se calcula desde los tantos por mano
+      // de la planilla persistida.
+      let planillaExport = {};
+      try {
+        const resPlanillaExport = await fetch(`${API_URL}/publico/partidos/${partidoId}/planilla`);
+        if (resPlanillaExport.ok) planillaExport = await resPlanillaExport.json();
+      } catch (e) { /* sin planilla persistida: el marcador viene del resultado oficial */ }
+      const sumaTantos = (arr) => (Array.isArray(arr) ? arr.reduce((acc, v) => acc + (Number(v) || 0), 0) : 0);
+      const marcadorLocal = partidoData.marcador_local !== null && partidoData.marcador_local !== undefined
+        ? Number(partidoData.marcador_local)
+        : sumaTantos(planillaExport.tantosLocal);
+      const marcadorVisita = partidoData.marcador_visita !== null && partidoData.marcador_visita !== undefined
+        ? Number(partidoData.marcador_visita)
+        : sumaTantos(planillaExport.tantosVisita);
+      const mostrarResultado = marcadorLocal > 0 || marcadorVisita > 0 || partidoData.estado === 'Finalizado';
+      const textoResultado = mostrarResultado
+        ? `${partidoData.local_nombre} ${marcadorLocal} - ${marcadorVisita} ${partidoData.visita_nombre}`
+        : 'Sin resultado registrado';
+
       const nombreArchivo = `Planilla_${partidoData.local_nombre}_vs_${partidoData.visita_nombre}`.replace(/\s+/g, '_');
 
       if (formato === 'json') {
-        const blob = new Blob([JSON.stringify({ partido: partidoData, nomina: nominaData }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ partido: partidoData, resultado: { marcador_local: marcadorLocal, marcador_visita: marcadorVisita }, nomina: nominaData }, null, 2)], { type: 'application/json' });
         descargarBlob(blob, `${nombreArchivo}.json`);
       } else if (formato === 'csv') {
-        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${partidoData.fecha_hora}\n\nCedula,Nombre,Apellido,Dorsal,Equipo\n`;
+        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${formatearFecha(partidoData.fecha_hora)}\nEstado,${partidoData.estado}\nResultado,"${textoResultado}"\n\nCedula,Nombre,Apellido,Dorsal,Equipo\n`;
         nominaData.forEach(j => { csv += `${j.cedula},"${j.nombre}","${j.apellido}",${j.numero_dorsal},"${j.equipo_nombre || 'N/A'}"\n`; });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         descargarBlob(blob, `${nombreArchivo}.csv`);
       } else if (formato === 'excel') {
         let html = `<table border="1"><tr><th>Encuentro</th><th>${partidoData.local_nombre} vs ${partidoData.visita_nombre}</th></tr>`;
-        html += `<tr><th>Fecha</th><th>${partidoData.fecha_hora}</th></tr></table><br/>`;
+        html += `<tr><th>Fecha</th><th>${formatearFecha(partidoData.fecha_hora)}</th></tr>`;
+        html += `<tr><th>Estado</th><th>${partidoData.estado}</th></tr>`;
+        html += `<tr><th>Resultado</th><th>${textoResultado}</th></tr></table><br/>`;
         html += `<table border="1"><tr><th>Cédula</th><th>Nombre</th><th>Apellido</th><th>Dorsal</th></tr>`;
         nominaData.forEach(j => { html += `<tr><td>${j.cedula}</td><td>${j.nombre}</td><td>${j.apellido}</td><td>${j.numero_dorsal}</td></tr>`; });
         html += `</table>`;
@@ -1096,9 +1120,9 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
       await encabezadoMarca(pdf, { nombreLiga: orgData.nombre, logoUrl: orgData.logo_url, titulo: 'REPORTE OFICIAL', subtitulo: 'Estadísticas de la liga', blancoYNegro: true });
       pdf.setTextColor(60, 60, 60); pdf.setFontSize(8);
       pdf.text(`Usuario: ${usuario?.email || usuario?.nombre || usuario?.username}   |   Generado: ${formatearFechaHora(new Date())}   |   Temporada: ${temporadaFiltro}`, 14, 30);
-      autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream } });
+      autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown } }); // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro
       if (estadisticas.mejores_jugadores?.length) {
-        autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream } });
+        autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown } }); // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro
       }
       pdf.save(`${nombreArchivo}.pdf`);
     }
@@ -3306,5 +3330,6 @@ const bitacoraConTexto = bitacora.map(evento => ({
     </div>
   );
 }
+
 
 
