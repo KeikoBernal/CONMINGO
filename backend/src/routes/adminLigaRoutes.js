@@ -1958,6 +1958,13 @@ router.put('/partidos/:id/reagendar', async (req, res) => {
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = $1, estado = 'Agendado' WHERE id = $2`, [nueva_fecha_hora, id]);
+    // LOTE 8J: la planilla persistida (FIX #16) puede traer un estadoPartido
+    // 'Suspendido' de una suspension anterior; se resetea para que el anotador
+    // y el arbitro no reciban la suspension vieja al entrar al partido reagendado.
+    if (permChk.rows[0].estado === 'Agendado' || permChk.rows[0].estado === 'Suspendido') {
+      const resetearEstadoPlanilla = req.app.get('resetearEstadoPlanilla');
+      if (typeof resetearEstadoPlanilla === 'function') await resetearEstadoPlanilla(id, 'Agendado');
+    }
     // LOTE 5 (N4): aviso del nuevo horario a delegados y oficiales
     try {
       const involucradosReagenda = new Set();
@@ -2007,6 +2014,19 @@ const sedeChk = await db.query(`SELECT id FROM public.sedes WHERE id = $1 AND ($
     }
 
     await db.query(`UPDATE public.partidos SET fecha_hora = COALESCE($1, fecha_hora), arbitro_id = $2, anotador_id = $3, sede_id = COALESCE($4, sede_id) WHERE id = $5`, [fecha_hora, arbitro_id || null, anotador_id || null, sede_id, id]);
+    // LOTE 8J: si el partido ya estaba suspendido (auto-suspension por retraso o
+    // suspension del arbitro) y el admin cambia la hora con este modal, el estado
+    // quedaba pegado en 'Suspendido' con fecha futura: el anotador y el arbitro lo
+    // veian suspendido de inmediato y la cartelera lo escondia. Se restaura a
+    // 'Agendado', igual que hace reagendar.
+    if (fecha_hora && permChk.rows[0].estado === 'Suspendido') {
+      await db.query("UPDATE public.partidos SET estado = 'Agendado' WHERE id = $1", [id]);
+    }
+    // LOTE 8J: resetea tambien el estado guardado en la planilla persistida (FIX #16).
+    if (fecha_hora && (permChk.rows[0].estado === 'Agendado' || permChk.rows[0].estado === 'Suspendido')) {
+      const resetearEstadoPlanilla = req.app.get('resetearEstadoPlanilla');
+      if (typeof resetearEstadoPlanilla === 'function') await resetearEstadoPlanilla(id, 'Agendado');
+    }
     // FIX (revision de seguridad, hallazgo bajo): la reasignacion de oficiales invalida
     // de inmediato el cache de permisos del servidor; un oficial desasignado deja de
     // poder operar el partido en su siguiente accion y no hasta 60 segundos despues.
