@@ -1,8 +1,8 @@
 import React from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { formatearHora } from '../fechas'; // LOTE FECHAS: normaliza hora_inicio/hora_final legado (03:45 p. m., 15:45 o ISO)
-import { encabezadoMarca, MARCA_PDF } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca del acta
+// LOTE 8K: el acta oficial en PDF se genera desde el modulo compartido
+// actaPdf (blanco y negro, logos de CONMINGO y de la liga, firmas incrustadas).
+import { generarActaPDF } from '../actaPdf';
 
 export default function PlanillaUniversal({
   rol = 'espectador',
@@ -19,7 +19,8 @@ export default function PlanillaUniversal({
   alHacerClicPuntuacion = () => {},
   alSeleccionarStatCell = () => {},
   nombreLiga = '',
-  logoLiga = null
+  logoLiga = null,
+  firmasActa = null
 }) {
   const manoIndices = Array.from({ length: 20 }, (_, i) => i + 1);
 
@@ -32,132 +33,27 @@ export default function PlanillaUniversal({
 
   const [generandoPDF, setGenerandoPDF] = React.useState(false);
  
-  // FUNCIÓN GENERADORA DEL PDF NATIVO
-
+  // LOTE 8K: el PDF lo genera el modulo compartido actaPdf (blanco y negro,
+  // logos CONMINGO y de la liga, tantas por mano y firmas incrustadas).
   const generarPDF = () => {
-    // INSERCIÓN: Regla de Idempotencia y timeout para actualización de UI
+    // Regla de Idempotencia y timeout para actualizacion de UI
     if (generandoPDF) return;
     setGenerandoPDF(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        const doc = new jsPDF('landscape');
-
-        // LOTE PDF MARCA: encabezado con logo y nombre de la liga en el acta oficial.
-        encabezadoMarca(doc, { nombreLiga, logoUrl: logoLiga, titulo: 'PLANILLA OFICIAL DE ANOTACIÓN' });
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Encuentro: ${datosPartido.localNombre || 'Local'} vs ${datosPartido.visitaNombre || 'Visita'}`, 14, 30);
-    doc.text(`Fecha: ${datosPartido.fecha || '---'} | H. Inicio: ${formatearHora(datosPartido.horaInicio) || '--:--'} | H. Final: ${formatearHora(datosPartido.horaFinal) || '--:--'}`, 14, 36);
-    doc.text(`Marcador Final: ${datosPartido.localNombre} (${totalLocal}) - (${totalVisita}) ${datosPartido.visitaNombre}`, 14, 42);
-
-    const headBase = ['N°', 'JUGADORES', ...Array.from({length: 20}, (_, i) => (i + 1).toString()), 'AL', 'AB', 'BL', 'BB'];
-
-    const bodyLocal = jugadoresLocal.map(j => {
-      const stats = manualStats[j.id] || { AL: 0, AB: 0, BL: 0, BB: 0 };
-      const manos = Array.from({length: 20}, (_, i) => {
-         const jugada = efectividadJugadores[j.id]?.[i];
-         return jugada?.valor || '';
-      });
-      return [
-        j.numero_dorsal, 
-        `${j.apellido} ${j.nombre}`.toUpperCase(), 
-        ...manos, 
-        stats.AL || '', stats.AB || '', stats.BL || '', stats.BB || ''
-      ];
-    });
-    
-    bodyLocal.push([
-      '', 'PUNTUACIÓN POR MANO ->', ...puntosPorManoLocal.map(p => p !== 0 && p !== '' ? p.toString() : ''), '', '', '', ''
-    ]);
-
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`EQUIPO LOCAL: ${datosPartido.localNombre} (Capitán: ${datosPartido.capitanLocal || 'N/R'})`, 14, 49);
-    
-    autoTable(doc, {
-      startY: 51,
-      head: [headBase],
-      body: bodyLocal,
-      theme: 'grid',
-      styles: { fontSize: 7, halign: 'center', cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1 },
-      columnStyles: { 1: { halign: 'left', cellWidth: 50 } }, 
-      headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream },
-      didParseCell: function (data) {
-        if (data.row.index === bodyLocal.length - 1) {
-          data.cell.styles.fillColor = MARCA_PDF.cream; 
-          data.cell.styles.fontStyle = 'bold';
-        }
-      }
-    });
-
-    const bodyVisita = jugadoresVisita.map(j => {
-      const stats = manualStats[j.id] || { AL: 0, AB: 0, BL: 0, BB: 0 };
-      const manos = Array.from({length: 20}, (_, i) => {
-         const jugada = efectividadJugadores[j.id]?.[i];
-         return jugada?.valor || '';
-      });
-      return [
-        j.numero_dorsal, 
-        `${j.apellido} ${j.nombre}`.toUpperCase(), 
-        ...manos, 
-        stats.AL || '', stats.AB || '', stats.BL || '', stats.BB || ''
-      ];
-    });
-
-    bodyVisita.push([
-      '', 'PUNTUACIÓN POR MANO ->', ...puntosPorManoVisita.map(p => p !== 0 && p !== '' ? p.toString() : ''), '', '', '', ''
-    ]);
-
-    const finalYLocal = doc.lastAutoTable.finalY || 46;
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`EQUIPO VISITANTE: ${datosPartido.visitaNombre} (Capitán: ${datosPartido.capitanVisita || 'N/R'})`, 14, finalYLocal + 12);
-
-    autoTable(doc, {
-      startY: finalYLocal + 15,
-      head: [headBase],
-      body: bodyVisita,
-      theme: 'grid',
-      styles: { fontSize: 7, halign: 'center', cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1 },
-      columnStyles: { 1: { halign: 'left', cellWidth: 50 } },
-      headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream },
-      didParseCell: function (data) {
-        if (data.row.index === bodyVisita.length - 1) {
-          data.cell.styles.fillColor = MARCA_PDF.cream;
-          data.cell.styles.fontStyle = 'bold';
-        }
-      }
-    });
-
-    let finalYVisita = doc.lastAutoTable.finalY + 25;
-    if (finalYVisita > 170) {
-      doc.addPage();
-      finalYVisita = 30;
-    }
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-
-    doc.line(30, finalYVisita, 90, finalYVisita);
-    doc.text("Capitán / Delegado (Local)", 42, finalYVisita + 5);
-
-    doc.line(190, finalYVisita, 250, finalYVisita);
-    doc.text("Capitán / Delegado (Visitante)", 198, finalYVisita + 5);
-
-    finalYVisita += 25;
-    doc.line(30, finalYVisita, 90, finalYVisita);
-    doc.text(`Anotador: ${datosPartido.anotador || '_______________'}`, 40, finalYVisita + 5);
-
-    doc.line(110, finalYVisita, 170, finalYVisita);
-    doc.text("Juez de Calce", 130, finalYVisita + 5);
-
-    doc.line(190, finalYVisita, 250, finalYVisita);
-    doc.text("Juez de Mingo", 210, finalYVisita + 5);
-
-    const nombreArchivo = `Acta_${datosPartido.localNombre}_vs_${datosPartido.visitaNombre}.pdf`.replace(/\s+/g, '_');
-    doc.save(nombreArchivo);
+        await generarActaPDF({
+          nombreLiga,
+          logoLiga,
+          datosPartido,
+          jugadoresLocal,
+          jugadoresVisita,
+          efectividadJugadores,
+          manualStats,
+          puntosPorManoLocal,
+          puntosPorManoVisita,
+          firmas: firmasActa
+        });
       } catch (error) {
         console.error('Error al generar el PDF:', error);
       } finally {

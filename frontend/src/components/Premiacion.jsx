@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '../supabaseClient';
 import { fechaHoy } from './fechas'; // LOTE FECHAS: sello de emision en dd/mm/aaaa
-import { MARCA_PDF as MARCA, encabezadoMarca, dibujarLogoLiga, ajustarTexto } from './pdfMarca'; // LOTE PDF MARCA: kit compartido de marca para los PDF
+import { MARCA_PDF as MARCA, MARCA_PDF_BN, encabezadoMarca, dibujarLogoLiga, ajustarTexto } from './pdfMarca'; // LOTE PDF MARCA + 8K: kit de marca; el acta va en blanco y negro, los diplomas a color
 
 import EmptyState from './EmptyState';
 import NavIcon from './NavIcon';
@@ -118,10 +118,13 @@ const generarDiploma = (datos, clave, campeon, orgLiga) => {
 
 // Acta de premiacion del torneo: los 4 campeones del acta, el MVP y el
 // ranking por average global, con linea de firma del AdminLiga.
-const generarActaPremiacion = (datos, orgLiga) => {
+// LOTE 8K: encabezadoMarca es ASINCRONA (precarga el logo CONMINGO), asi que
+// el generador hace await. El acta de premiacion va en blanco y negro; los
+// diplomas mantienen la paleta de marca a color (decision de Keiko).
+const generarActaPremiacion = async (datos, orgLiga) => {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  encabezadoMarca(pdf, { nombreLiga: orgLiga?.nombre || '', logoUrl: orgLiga?.logo_url || null, titulo: 'ACTA DE PREMIACIÓN DEL TORNEO' });
-  pdf.setTextColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
+  await encabezadoMarca(pdf, { nombreLiga: orgLiga?.nombre || '', logoUrl: orgLiga?.logo_url || null, titulo: 'ACTA DE PREMIACIÓN DEL TORNEO', blancoYNegro: true });
+  pdf.setTextColor(MARCA_PDF_BN.brown[0], MARCA_PDF_BN.brown[1], MARCA_PDF_BN.brown[2]);
   pdf.setFontSize(13);
   pdf.text(String(datos.torneo.nombre), 14, 34);
   pdf.setFont('helvetica', 'normal');
@@ -150,14 +153,14 @@ const generarActaPremiacion = (datos, orgLiga) => {
     head: [['Reconocimiento', 'Jugador', 'Equipo', 'Estadística']],
     body: filasCampeones,
     styles: { fontSize: 8.5 },
-    headStyles: { fillColor: MARCA.brown, textColor: MARCA.cream },
+    headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream },
     columnStyles: { 3: { cellWidth: 52 } }
   });
 
   let y = (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 14;
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(11);
-  pdf.setTextColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
+  pdf.setTextColor(MARCA_PDF_BN.brown[0], MARCA_PDF_BN.brown[1], MARCA_PDF_BN.brown[2]);
   pdf.text('Ranking del torneo por average global', 14, y);
   autoTable(pdf, {
     startY: y + 4,
@@ -166,7 +169,7 @@ const generarActaPremiacion = (datos, orgLiga) => {
       String(i + 1), nombreJugador(f), f.equipo_nombre || '-', String(f.lances), String(f.buenos), f.average_global === null ? '-' : String(f.average_global)
     ]),
     styles: { fontSize: 8 },
-    headStyles: { fillColor: MARCA.rust, textColor: [255, 255, 255] }
+    headStyles: { fillColor: MARCA_PDF_BN.rust, textColor: [255, 255, 255] }
   });
 
   const yNota = (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 200) + 10;
@@ -174,11 +177,11 @@ const generarActaPremiacion = (datos, orgLiga) => {
   pdf.setFontSize(7.5);
   pdf.setTextColor(110, 110, 110);
   pdf.text('Para optar a un campeonato de especialidad se exigen mínimo ' + datos.lances_minimos + ' lances válidos en la especialidad, sobre actas de partidos finalizados.', 14, yNota);
-  pdf.setDrawColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
+  pdf.setDrawColor(MARCA_PDF_BN.brown[0], MARCA_PDF_BN.brown[1], MARCA_PDF_BN.brown[2]);
   pdf.setLineWidth(0.4);
   pdf.line(60, 272, 150, 272);
   pdf.setFontSize(9);
-  pdf.setTextColor(MARCA.brown[0], MARCA.brown[1], MARCA.brown[2]);
+  pdf.setTextColor(MARCA_PDF_BN.brown[0], MARCA_PDF_BN.brown[1], MARCA_PDF_BN.brown[2]);
   pdf.text('Administrador de la Liga', 105, 277.5, { align: 'center' });
   pdf.save('Acta_Premiacion_' + limpiarNombre(datos.torneo.nombre) + '.pdf');
 };
@@ -373,3 +376,4 @@ export default function Premiacion() {
     </div>
   );
 }
+

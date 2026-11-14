@@ -56,15 +56,29 @@ const marcadorDesdeManos = async (partidoId) => {
     if (eqRes.rows.length === 0) return { local: 0, visita: 0 };
     const localId = String(eqRes.rows[0].equipo_local_id);
     const visitaId = String(eqRes.rows[0].equipo_visita_id);
+    // LOTE 8K: cada mano guarda los tantos de AMBOS equipos (tantos_local y
+    // tantos_visita): en bolas criollas los dos equipos pueden puntuar en la
+    // misma mano. Fallback legacy: manos viejas que solo guardaron el equipo
+    // ganador y sus tantos (ambas columnas nuevas en 0 con tantos_anotados > 0).
     const manosRes = await db.query(
-      'SELECT equipo_ganador_id, SUM(tantos_anotados) AS total FROM public.manos WHERE partido_id = $1 GROUP BY equipo_ganador_id',
+      'SELECT m.equipo_ganador_id, m.tantos_local, m.tantos_visita, m.tantos_anotados ' +
+      'FROM public.manos m WHERE m.partido_id = $1 ORDER BY m.numero_mano',
       [partidoId]
     );
     let local = 0;
     let visita = 0;
     for (const fila of manosRes.rows) {
-      if (String(fila.equipo_ganador_id) === localId) local += parseInt(fila.total, 10) || 0;
-      if (String(fila.equipo_ganador_id) === visitaId) visita += parseInt(fila.total, 10) || 0;
+      const tLocal = parseInt(fila.tantos_local, 10) || 0;
+      const tVisita = parseInt(fila.tantos_visita, 10) || 0;
+      const tAnotados = parseInt(fila.tantos_anotados, 10) || 0;
+      const esLegacy = tLocal === 0 && tVisita === 0 && tAnotados > 0;
+      if (esLegacy) {
+        if (String(fila.equipo_ganador_id) === localId) local += tAnotados;
+        if (String(fila.equipo_ganador_id) === visitaId) visita += tAnotados;
+      } else {
+        local += tLocal;
+        visita += tVisita;
+      }
     }
     return { local, visita };
   } catch (error) {
@@ -309,13 +323,9 @@ router.put('/partidos/:id/finalizar', async (req, res) => {
       return res.status(400).json({ error: `El partido debe estar 'En Curso' para finalizarlo. Estado actual: ${chk.rows[0].estado}` });
     }
 
-    // LOTE 6D: el acta solo se puede finalizar con todas las firmas
-    // exigibles registradas (arbitro, anotador y los delegados de los
-    // equipos cuando estan registrados).
-    const firmasFinal = await firmasActa.estadoFirmas(parseInt(req.params.id, 10));
-    if (firmasFinal.faltantes.length > 0) {
-      return res.status(400).json({ error: 'Faltan firmas del acta para finalizar el partido: ' + firmasFinal.faltantes.join(', ') + '.', firmas_faltantes: firmasFinal.faltantes });
-    }
+    // LOTE 8K: el partido se finaliza PRIMERO (para preservar la hora final
+    // verdadera) y las firmas del acta se recogen despues; ya no bloquean
+    // el cierre del marcador.
 
     const { hora_final } = req.body;
     const resDb = await db.query(
@@ -391,7 +401,7 @@ router.get('/partidos/:id/nomina', async (req, res) => {
 
 // Registrar mano y jugadas
 router.post('/partidos/:id/manos', async (req, res) => {
-  const { numero_mano, equipo_ganador_id, tantos_anotados, detalle_jugadas } = req.body;
+  const { numero_mano, equipo_ganador_id, tantos_anotados, tantos_local, tantos_visita, detalle_jugadas } = req.body;
   const partidoId = req.params.id;
   
   try {
@@ -429,8 +439,29 @@ router.post('/partidos/:id/manos', async (req, res) => {
     if (ganadorId && !equiposDelPartido.includes(ganadorId)) {
       return res.status(400).json({ error: 'El equipo ganador indicado no participa en este partido.' });
     }
-    if (!Number.isInteger(tantosValor) || tantosValor < 0 || tantosValor > 6) {
-      return res.status(400).json({ error: 'Los tantos anotados deben ser un entero entre 0 y 6.' });
+    // LOTE 8K: los tantos ahora viajan por equipo (tantos_local/tantos_visita)
+    // y AMBOS equipos pueden puntuar en la misma mano; el cuerpo legacy
+    // (equipo_ganador_id + tantos_anotados) sigue aceptandose.
+    let ganadorCalculado;
+    let tantosLocal;
+    let tantosVisita;
+    const llegaNuevo = (tantos_local !== undefined && tantos_local !== null && tantos_local !== '')
+      || (tantos_visita !== undefined && tantos_visita !== null && tantos_visita !== '');
+    if (llegaNuevo) {
+      tantosLocal = Number(tantos_local === undefined || tantos_local === null || tantos_local === '' ? 0 : tantos_local);
+      tantosVisita = Number(tantos_visita === undefined || tantos_visita === null || tantos_visita === '' ? 0 : tantos_visita);
+      if (!Number.isInteger(tantosLocal) || tantosLocal < 0 || tantosLocal > 6 || !Number.isInteger(tantosVisita) || tantosVisita < 0 || tantosVisita > 6) {
+        return res.status(400).json({ error: 'Los tantos de cada equipo deben ser un entero entre 0 y 6.' });
+      }
+      // El ganador se deriva de los tantos (empate: mano sin ganador).
+      ganadorCalculado = tantosLocal > tantosVisita ? String(filaPartido.equipo_local_id) : (tantosVisita > tantosLocal ? String(filaPartido.equipo_visita_id) : null);
+    } else {
+      if (!Number.isInteger(tantosValor) || tantosValor < 0 || tantosValor > 6) {
+        return res.status(400).json({ error: 'Los tantos anotados deben ser un entero entre 0 y 6.' });
+      }
+      ganadorCalculado = ganadorId;
+      tantosLocal = ganadorId === String(filaPartido.equipo_local_id) ? tantosValor : 0;
+      tantosVisita = ganadorId === String(filaPartido.equipo_visita_id) ? tantosValor : 0;
     }
     
     // Validaciones 2 y 4: Control de Esferas y Coherencia Matemática
@@ -450,12 +481,15 @@ router.post('/partidos/:id/manos', async (req, res) => {
         }
       }
       
-      let esferasExitosasGanador = 0;
-      
+      // LOTE 8K: esferas efectivas por equipo (los dos pueden puntuar en la
+      // misma mano; antes solo se contaban las del ganador).
+      let esferasExitosasLocal = 0;
+      let esferasExitosasVisita = 0;
+
       for (const dj of detalle_jugadas) {
         const eqId = mapJugadorEquipo[dj.jugador_id];
         if (!jugadasPorEquipo[eqId]) jugadasPorEquipo[eqId] = 0;
-        
+
         const tipo = (dj.tipo_destreza || '').toLowerCase().trim();
         // LOTE 4C (N3): solo se aceptan los lanzamientos habilitados por la liga.
         if (tipo !== 'n' && !tiposLanzamiento.includes(tipo)) {
@@ -463,38 +497,48 @@ router.post('/partidos/:id/manos', async (req, res) => {
         }
         if (tiposLanzamiento.includes(tipo)) { // Arrime, Boche y Rastrero (si la liga lo permite)
           jugadasPorEquipo[eqId]++;
-          // Contamos las esferas que ganan el punto
-          if (String(eqId) === ganadorId && dj.efectividad === true) {
-            esferasExitosasGanador++;
+          // Contamos las esferas efectivas de cada equipo
+          if (String(eqId) === String(filaPartido.equipo_local_id) && dj.efectividad === true) {
+            esferasExitosasLocal++;
+          }
+          if (String(eqId) === String(filaPartido.equipo_visita_id) && dj.efectividad === true) {
+            esferasExitosasVisita++;
           }
         }
       }
-      
+
       // Regla 4: Validar límite de lanzamientos
       for (const [eq, count] of Object.entries(jugadasPorEquipo)) {
         if (count > limiteEsferas) {
           return res.status(400).json({ error: `El equipo superó el límite de ${limiteEsferas} esferas permitidas por mano. Registró: ${count}.` });
         }
       }
-      
-      // Regla 2: Coherencia de tantos
-      if (tantosValor > esferasExitosasGanador) {
-         return res.status(400).json({ error: `Incongruencia: Se intentan asignar ${tantosValor} tantos, pero el equipo ganador solo tiene ${esferasExitosasGanador} esferas más cerca del mingo marcadas como efectivas.` });
+
+      // Regla 2: Coherencia de tantos por equipo (LOTE 8K: el mensaje nombra
+      // la mano y el equipo para que el anotador sepa que celda completar).
+      if (tantosLocal > esferasExitosasLocal) {
+        return res.status(400).json({ error: `Incongruencia en la mano ${numeroMano}: se asignan ${tantosLocal} tantos al equipo local, pero solo tiene ${esferasExitosasLocal} esferas marcadas como efectivas. Completa los lanzamientos de esa mano.` });
+      }
+      if (tantosVisita > esferasExitosasVisita) {
+        return res.status(400).json({ error: `Incongruencia en la mano ${numeroMano}: se asignan ${tantosVisita} tantos al equipo visitante, pero solo tiene ${esferasExitosasVisita} esferas marcadas como efectivas. Completa los lanzamientos de esa mano.` });
       }
     }
     
     // LOTE 4C (N3): la mano es idempotente (upsert). Si ya existe para este
     // partido y numero, se actualiza y su detalle se reemplaza; asi el acta
     // se puede corregir sin duplicados.
+    // LOTE 8K: se guardan los tantos de ambos equipos (tantos_local y
+    // tantos_visita); tantos_anotados queda como el mayor, para compatibilidad
+    // con lecturas legacy.
     const previaRes = await db.query('SELECT id FROM public.manos WHERE partido_id = $1 AND numero_mano = $2', [partidoId, numeroMano]);
     let manoId;
     let manoDb;
     if (previaRes.rows.length > 0) {
       manoId = previaRes.rows[0].id;
-      manoDb = await db.query('UPDATE public.manos SET equipo_ganador_id = $1, tantos_anotados = $2 WHERE id = $3 RETURNING *', [ganadorId, tantosValor, manoId]);
+      manoDb = await db.query('UPDATE public.manos SET equipo_ganador_id = $1, tantos_anotados = $2, tantos_local = $3, tantos_visita = $4 WHERE id = $5 RETURNING *', [ganadorCalculado, Math.max(tantosLocal, tantosVisita), tantosLocal, tantosVisita, manoId]);
       await db.query('DELETE FROM public.detalle_jugadas WHERE mano_id = $1', [manoId]);
     } else {
-      manoDb = await db.query('INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados) VALUES ($1, $2, $3, $4) RETURNING *', [partidoId, numeroMano, ganadorId, tantosValor]);
+      manoDb = await db.query('INSERT INTO public.manos (partido_id, numero_mano, equipo_ganador_id, tantos_anotados, tantos_local, tantos_visita) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [partidoId, numeroMano, ganadorCalculado, Math.max(tantosLocal, tantosVisita), tantosLocal, tantosVisita]);
       manoId = manoDb.rows[0].id;
     }
     // LOTE 4C (N3): persistencia de los lanzamientos individuales (arrime 'a',
@@ -508,41 +552,27 @@ router.post('/partidos/:id/manos', async (req, res) => {
     await registrarAuditoria(req.usuario.id, 'REGISTRAR_MANO', 'manos', null, { partido_id: parseInt(partidoId), numero_mano: numeroMano }, req.ip, await obtenerOrgDePartido(partidoId));
     
     // Regla 1: Comprobar límite de puntuación global para Finalización Automática
-    const puntosRes = await db.query(`
-      SELECT equipo_ganador_id, SUM(tantos_anotados) as total FROM public.manos WHERE partido_id = $1 GROUP BY equipo_ganador_id
-    `, [partidoId]);
-    
+    // LOTE 8K: el marcador se calcula con los tantos de ambos equipos y la
+    // meta cierra el partido SIN retener por firmas (estas se recogen despues).
+    const marcadorAcumulado = await marcadorDesdeManos(partidoId);
+
     let partidoFinalizado = false;
-    let firmasPendientes = false; // LOTE 6D: retencion del cierre por meta si faltan firmas
-    for (const fila of puntosRes.rows) {
-      if (fila.total >= metaPuntos) {
-         // LOTE 6D: la meta de puntos solo cierra el partido si las firmas
-         // exigibles del acta estan completas; si falta alguna, el anotador
-         // ve el aviso y cierra con FINALIZAR ACTA despues de recoger las
-         // firmas en su dispositivo o en el del arbitro.
-         const firmasMeta = await firmasActa.estadoFirmas(parseInt(partidoId, 10));
-         if (firmasMeta.faltantes.length > 0) {
-           firmasPendientes = true;
-           break;
-         }
-         const horaFinal = horaCanonicaCaracas();
-         await db.query(`UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2`, [horaFinal, partidoId]);
-         partidoFinalizado = true;
-         // LOTE 4D (P1): el cierre por meta tambien deja resultado oficial.
-         const marcadorOficialMeta = await marcadorDesdeManos(partidoId);
-         await registrarResultadoOficial(partidoId, marcadorOficialMeta.local, marcadorOficialMeta.visita, 'Acta', req.usuario.id, null);
-         // LOTE 5 (N4): aviso del marcador final a los delegados
-         await notificarMarcadorFinal(partidoId, req.usuario.id);
-         
-         const io = req.app.get('io');
-         if (io) {
-           io.to(`partido_${partidoId}`).emit('partido_finalizado', { partido_id: partidoId, ganador_id: fila.equipo_ganador_id, hora_final: horaFinal, motivo: 'Límite de puntos alcanzado' });
-         }
-         break;
+    if (marcadorAcumulado.local >= metaPuntos || marcadorAcumulado.visita >= metaPuntos) {
+      const horaFinal = horaCanonicaCaracas();
+      await db.query(`UPDATE public.partidos SET estado = 'Finalizado', hora_final = $1 WHERE id = $2`, [horaFinal, partidoId]);
+      partidoFinalizado = true;
+      // LOTE 4D (P1): el cierre por meta tambien deja resultado oficial.
+      await registrarResultadoOficial(partidoId, marcadorAcumulado.local, marcadorAcumulado.visita, 'Acta', req.usuario.id, null);
+      // LOTE 5 (N4): aviso del marcador final a los delegados
+      await notificarMarcadorFinal(partidoId, req.usuario.id);
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`partido_${partidoId}`).emit('partido_finalizado', { partido_id: partidoId, hora_final: horaFinal, motivo: 'Límite de puntos alcanzado' });
       }
     }
-    
-    res.json({ mensaje: 'Mano registrada.', mano: manoDb.rows[0], partido_finalizado: partidoFinalizado, firmas_pendientes: firmasPendientes });
+
+    res.json({ mensaje: 'Mano registrada.', mano: manoDb.rows[0], partido_finalizado: partidoFinalizado });
   } catch (error) {
     if (error && error.code === '23505') {
       return res.status(409).json({ error: 'Esa mano ya fue registrada para este partido.' });

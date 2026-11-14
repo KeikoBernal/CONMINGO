@@ -16,7 +16,7 @@ import EmptyState from '../EmptyState'; // FASE 3C: estado vacio de marca en tod
 import TarjetaResumen from '../TarjetaResumen'; // FASE B1 UX: tarjetas de resumen de la pestana Inicio
 import { tecladoModal } from '../Accesibilidad';
 import { formatearFecha, formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y bitacora en dd/mm/aaaa, 12 horas
-import { MARCA_PDF, encabezadoMarca } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca en los reportes PDF
+import { MARCA_PDF, MARCA_PDF_BN, encabezadoMarca } from '../pdfMarca'; // LOTE PDF MARCA + 8K: encabezado de marca y paleta blanco y negro para reportes
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -258,7 +258,9 @@ const exportarRespaldoBDBase = async (formato) => {
     }
   };
 
-  const generarReporte = (datos, titulo, formato, pdfColumnas) => {
+  // LOTE 8K: generarReporte es ASINCRONA en PDF porque el encabezado de marca
+  // precarga el logo CONMINGO; los reportes del superadmin salen en blanco y negro.
+  const generarReporte = async (datos, titulo, formato, pdfColumnas) => {
     if (!datos || datos.length === 0) {
       setMensaje({ texto: 'No hay datos para exportar en esta vista.', tipo: 'error' });
       return;
@@ -281,14 +283,14 @@ const exportarRespaldoBDBase = async (formato) => {
     } 
     else if (formato === 'pdf') {
       const doc = new jsPDF('landscape');
-      encabezadoMarca(doc, { titulo: 'REPORTE OFICIAL', subtitulo: `Reporte de ${titulo}` });
+      await encabezadoMarca(doc, { titulo: 'REPORTE OFICIAL', subtitulo: `Reporte de ${titulo}`, blancoYNegro: true });
       doc.setFontSize(10);
       doc.text(`Fecha de generación: ${formatearFechaHora(new Date())}`, 14, 30);
       const filasPDF = datos.map(item => pdfColumnas.map(col => item[col.key] || 'N/A'));
       const cabecerasPDF = pdfColumnas.map(col => col.label);
       autoTable(doc, {
         startY: 36, head: [cabecerasPDF], body: filasPDF, theme: 'grid',
-        headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream }, styles: { fontSize: 8 }
+        headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream }, styles: { fontSize: 8 }
       });
       doc.save(`${nombreArchivo}.pdf`);
     }

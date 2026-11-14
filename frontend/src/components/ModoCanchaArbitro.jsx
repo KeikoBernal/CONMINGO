@@ -14,7 +14,7 @@ export default function ModoCanchaArbitro({
   tiempoTurno, tiempoGlobal, formatoT,
   anotadorConectado, socketConectado,
   onEmitirTarjeta, onAbrirIncidencias, onSuspender,
-  firmasActa, onFirmar, isSubmitting,
+  firmasActa, onFirmar, isSubmitting, onDescargarActa,
   onVerPlanilla, onVolverPanel
 }) {
   const [jugadorSancion, setJugadorSancion] = useState('');
@@ -84,8 +84,8 @@ export default function ModoCanchaArbitro({
             <div className="text-5xl font-black text-brand-rust leading-tight">{totalVisita}</div>
           </div>
         </div>
-        {estado === 'Finalizado' && (
-          <button onClick={() => window.open('/?vista=puntajes&partido_id=' + partido.id, '_blank')} className="mt-3 w-full bg-brand-gold text-white py-3 rounded-lg font-bold text-sm hover:bg-brand-rust transition-colors shadow-sm flex items-center justify-center gap-2">
+        {estado === 'Finalizado' && onDescargarActa && (
+          <button onClick={onDescargarActa} className="mt-3 w-full bg-brand-gold text-white py-3 rounded-lg font-bold text-sm hover:bg-brand-rust transition-colors shadow-sm flex items-center justify-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
             Descargar Acta (PDF)
           </button>
@@ -138,11 +138,15 @@ export default function ModoCanchaArbitro({
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             <span className="text-base">Ver y Registrar Incidencias</span>
           </button>
+        </>
+      )}
 
-          {/* FIRMAS DIGITALES DEL ACTA */}
-          <div className="bg-white rounded-xl border border-brand-gold/30 shadow-sm p-4">
+      {/* FIRMAS DIGITALES DEL ACTA (LOTE 8K: se recogen despues de finalizar
+          el puntaje; visibles tambien con el partido Finalizado) */}
+      {estado !== 'Suspendido' && (
+        <div className="bg-white rounded-xl border border-brand-gold/30 shadow-sm p-4">
             <div className="text-xs font-bold text-brand-brown/60 uppercase tracking-wider mb-1">Firmas del Acta</div>
-            <p className="text-[0.7rem] text-brand-brown/60 mb-3">Entrega este dispositivo al responsable de cada equipo para firmar. El anotador firma desde su propio panel.</p>
+            <p className="text-[0.7rem] text-brand-brown/60 mb-3">Las firmas no bloquean el cierre del puntaje: recógelas después de finalizar para dejar el acta completa. Entrega este dispositivo al responsable de cada equipo para firmar. El anotador firma desde su propio panel.</p>
             <div className="space-y-2">
               {(firmasActa.firmas || []).map(f => {
                 const etiquetaFirma = f.rol_firma === 'arbitro' ? 'Arbitro' : f.rol_firma === 'anotador' ? 'Anotador' : f.rol_firma === 'delegado_local' ? 'Delegado ' + (partido?.local_nombre || 'Local') : 'Delegado ' + (partido?.visita_nombre || 'Visita');
@@ -168,8 +172,11 @@ export default function ModoCanchaArbitro({
                 );
               })}
             </div>
-          </div>
+        </div>
+      )}
 
+      {accionesActivas && (
+        <>
           {/* CONTROL DE JUEGO: SOLO FUERZA MAYOR */}
           <div className="bg-white rounded-xl border border-red-200 shadow-sm p-4 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
@@ -184,3 +191,4 @@ export default function ModoCanchaArbitro({
     </div>
   );
 }
+

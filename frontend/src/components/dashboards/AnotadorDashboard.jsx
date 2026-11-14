@@ -24,6 +24,8 @@ import CronometroFlotante from '../CronometroFlotante'; // LOTE 8E UX: cronometr
 import { SkeletonTarjetas } from '../SkeletonCarga'; // FASE 2 UX: esqueletos de carga de marca
 import { tecladoModal } from '../Accesibilidad';
 import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, formatearHora, horaCanonica, fechaHoy } from '../fechas'; // LOTE FECHAS: formato unico dd/mm/aaaa y horas de 12 horas
+// LOTE 8K: acta oficial en PDF compartida (blanco y negro, logos y firmas incrustadas).
+import { generarActaPDF, cargarDatosActa, generarActaDesdePartido } from '../actaPdf';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -472,6 +474,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
   const guardarManosPersistidas = async () => {
     let guardadas = 0;
     let fallidas = 0;
+    let primerError = null;
     const mapaLanzamientos = { A: ['a', true], a: ['a', false], B: ['b', true], b: ['b', false], R: ['r', true], r: ['r', false], N: ['n', false] };
     for (let mIdx = 0; mIdx < 20; mIdx++) {
       const jugadas = [];
@@ -484,24 +487,26 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
       const tantosLocal = parseInt(puntosPorManoLocal[mIdx], 10) || 0;
       const tantosVisita = parseInt(puntosPorManoVisita[mIdx], 10) || 0;
       if (jugadas.length === 0 && tantosLocal === 0 && tantosVisita === 0) continue;
-      let ganadorId = null;
-      let tantos = 0;
-      if (tantosLocal > tantosVisita) { ganadorId = partidoActivo.equipo_local_id; tantos = tantosLocal; }
-      else if (tantosVisita > tantosLocal) { ganadorId = partidoActivo.equipo_visita_id; tantos = tantosVisita; }
+      // LOTE 8K: el cuerpo viaja con los tantos de ambos equipos (el backend
+      // acepta tambien el formato legacy equipo_ganador_id + tantos_anotados).
+      const cuerpo = JSON.stringify({ numero_mano: mIdx + 1, tantos_local: tantosLocal, tantos_visita: tantosVisita, detalle_jugadas: jugadas });
       if (!enLinea) {
         // FASE D UX: sin senal cada mano se guarda en la cola local; el backend hace
         // upsert por (partido, numero de mano), asi que el reenvio es idempotente.
-        encolar('anotador', { metodo: 'POST', ruta: `/partidos/${partidoActivo.id}/manos`, cuerpo: JSON.stringify({ numero_mano: mIdx + 1, equipo_ganador_id: ganadorId, tantos_anotados: tantos, detalle_jugadas: jugadas }), etiqueta: 'Mano ' + (mIdx + 1) + ' del acta' });
+        encolar('anotador', { metodo: 'POST', ruta: `/partidos/${partidoActivo.id}/manos`, cuerpo, etiqueta: 'Mano ' + (mIdx + 1) + ' del acta' });
         refrescarCola();
         guardadas++;
         continue;
       }
       try {
-        const res = await fetchConToken(`/partidos/${partidoActivo.id}/manos`, { method: 'POST', body: JSON.stringify({ numero_mano: mIdx + 1, equipo_ganador_id: ganadorId, tantos_anotados: tantos, detalle_jugadas: jugadas }) });
-        if (res.ok) guardadas++; else fallidas++;
+        const res = await fetchConToken(`/partidos/${partidoActivo.id}/manos`, { method: 'POST', body: cuerpo });
+        if (res.ok) { guardadas++; continue; }
+        fallidas++;
+        const data = await res.json().catch(() => ({}));
+        if (!primerError && data.error) primerError = data.error;
       } catch (err) { fallidas++; }
     }
-    return { guardadas, fallidas };
+    return { guardadas, fallidas, error: primerError };
   };
 
   // LOTE 6D: registra la firma dibujada. El anotador firma su propio slot y
@@ -536,34 +541,34 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
   const finalizarPartido = async () => {
     if (isSubmitting) return;
-    // FASE D UX: el cierre del acta exige que el servidor valide las firmas exigibles;
-    // sin conexion no se puede garantizar, asi que se bloquea con aviso claro.
-    if (!enLinea) return mostrarToast('Finaliza el acta con conexion: el servidor valida las firmas exigibles antes de cerrar.', 'error');
-    if (!(await pedirConfirmacion('Finalizar acta', '¿Cerrar acta y registrar hora final?'))) return;
-    
+    // FASE D UX: el cierre del acta lo valida el servidor; sin conexion no se
+    // puede garantizar que la hora final quede registrada a tiempo.
+    if (!enLinea) return mostrarToast('Finaliza el acta con conexion: el servidor registra la hora final verdadera del partido.', 'error');
+    if (!(await pedirConfirmacion('Finalizar acta', '¿Cerrar el puntaje y registrar la hora final? Las firmas se pueden recoger despues.'))) return;
+
     setIsSubmitting(true);
     // LOTE 4C (N3): se persisten las manos del acta (jugadas y tantos) antes
     // de cerrar el partido; es lo que alimenta las estadisticas individuales.
     const manosPersistidas = await guardarManosPersistidas();
     const hora = horaCanonica();
     const res = await fetchConToken(`/partidos/${partidoActivo.id}/finalizar`, { method: 'PUT', body: JSON.stringify({ hora_final: hora }) });
-    // LOTE 6D: el backend rechaza el cierre si faltan firmas exigibles del acta.
     const dataFinal = await res.json().catch(() => ({}));
     setIsSubmitting(false);
-    if (!res.ok && Array.isArray(dataFinal.firmas_faltantes) && dataFinal.firmas_faltantes.length > 0) {
-      cargarFirmasActa(partidoActivo.id);
-      mostrarToast('Faltan firmas del acta para finalizar: ' + dataFinal.firmas_faltantes.join(', ') + '. Recoge las firmas pendientes en este dispositivo o en el del árbitro y vuelve a intentar.', 'error');
-      return;
-    }
     if (res.ok) {
       setPartidoActivo(prev => ({ ...prev, estado: 'Finalizado', hora_final: hora }));
       setCronometroGlobalActivo(false); setCronometroTurnoActivo(false);
       socketRef.current?.emit('partido_finalizado', { partidoId: partidoActivo.id, hora_final: hora });
       socketRef.current?.emit('sync_cronometro', { partido_id: partidoActivo.id, tiempoTurno, cronometroTurnoActivo: false, tiempoGlobal, cronometroGlobalActivo: false });
-      localStorage.removeItem(`backup_partido_${partidoActivo.id}`); 
+      localStorage.removeItem(`backup_partido_${partidoActivo.id}`);
       localStorage.removeItem('partidoActivoId');
+      // LOTE 8K: la hora final verdadera ya quedo registrada; las firmas se
+      // recogen despues y no bloquean el cierre del puntaje.
+      if (firmasActa.faltantes?.length > 0) {
+        mostrarToast('Puntaje cerrado. Recoge las firmas pendientes del acta (' + firmasActa.faltantes.join(', ') + ').', 'info');
+        cargarFirmasActa(partidoActivo.id);
+      }
       if (manosPersistidas.fallidas > 0) {
-        mostrarToast(`${manosPersistidas.fallidas} mano(s) no pudieron guardarse en el acta (${manosPersistidas.guardadas} guardadas). Comunícalo al AdminLiga para completar el registro.`, 'error');
+        mostrarToast(`${manosPersistidas.fallidas} mano(s) no pudieron guardarse en el acta (${manosPersistidas.guardadas} guardadas). ${manosPersistidas.error || 'Comunícalo al AdminLiga para completar el registro.'}`, 'error');
       }
     }
   };
@@ -572,6 +577,40 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
     const nuevoEstado = !cronometroTurnoActivo;
     setCronometroTurnoActivo(nuevoEstado);
     socketRef.current?.emit('sync_cronometro', { partido_id: partidoActivo.id, tiempoTurno, cronometroTurnoActivo: nuevoEstado, tiempoGlobal, cronometroGlobalActivo });
+  };
+
+  // LOTE 8K: descarga el acta oficial en PDF de un partido del historial
+  // (datos, planilla persistida y firmas vienen del backend).
+  const descargarActaPdf = async (partidoId) => {
+    try {
+      const { partido, nomina, planilla, firmas } = await cargarDatosActa(partidoId, { fetchConToken, apiUrl: API_URL });
+      await generarActaDesdePartido(partido, nomina, planilla, firmas, { nombreLiga: orgLiga?.nombre || '', logoLiga: orgLiga?.logo_url || null });
+    } catch (err) {
+      mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
+    }
+  };
+
+  // LOTE 8K: descarga el acta del partido activo con el estado local del panel
+  // (sin releer el backend) y las firmas ya cargadas.
+  const descargarActaActiva = async () => {
+    try {
+      await generarActaPDF({
+        nombreLiga: orgLiga?.nombre || '',
+        logoLiga: orgLiga?.logo_url || null,
+        datosPartido: {
+          arbitro: partidoActivo.arbitro_nombre, anotador: partidoActivo.anotador_nombre,
+          capitanLocal: partidoActivo.capitan_local_nombre, capitanVisita: partidoActivo.capitan_visita_nombre,
+          localNombre: partidoActivo.local_nombre, visitaNombre: partidoActivo.visita_nombre,
+          fecha: formatearFecha(partidoActivo.fecha_hora), horaInicio: partidoActivo.hora_inicio, horaFinal: partidoActivo.hora_final
+        },
+        jugadoresLocal, jugadoresVisita,
+        efectividadJugadores, manualStats,
+        puntosPorManoLocal, puntosPorManoVisita,
+        firmas: firmasActa?.firmas || null
+      });
+    } catch (err) {
+      mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
+    }
   };
 
   const resetTurno = () => {
@@ -609,9 +648,11 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
 
     let nuevoLocal = [...puntosPorManoLocal], nuevoVisita = [...puntosPorManoVisita];
     const idx = parseInt(manoIdx)
-    
-    if (esLocal) { nuevoLocal[idx] = ptsValidados; nuevoVisita[idx] = 0; } 
-    else { nuevoVisita[idx] = ptsValidados; nuevoLocal[idx] = 0; }
+
+    // LOTE 8K: los dos equipos pueden puntuar en la misma mano; marcar el
+    // tanto de uno ya NO pone en 0 el del otro (0 solo si se marca 0).
+    if (esLocal) { nuevoLocal[idx] = ptsValidados; }
+    else { nuevoVisita[idx] = ptsValidados; }
     
     setPuntosPorManoLocal(nuevoLocal); setPuntosPorManoVisita(nuevoVisita);
     socketRef.current?.emit('tantos_asignados', { partido_id: parseInt(partidoActivo.id), tantosLocal: nuevoLocal, tantosVisita: nuevoVisita });
@@ -954,10 +995,17 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                             </span>
                             • {p.hora_final ? formatearHora(p.hora_final) : 'Sin hora'}
                           </div>
-                          <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="w-full bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                            Ver Acta / Descargar PDF
-                          </button>
+                          {/* LOTE 8K: Proyectar abre la pantalla publica; Descargar PDF genera el acta. */}
+                          <div className="flex gap-2">
+                            <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="flex-1 bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                              Proyectar
+                            </button>
+                            <button onClick={() => descargarActaPdf(p.id)} className="flex-1 bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                              Descargar PDF
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1017,7 +1065,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                       Modo Cancha
                     </button>
                     {partidoActivo.estado === 'Finalizado' && (
-                      <button onClick={() => window.open(`/?vista=puntajes&partido_id=${partidoActivo.id}`, '_blank')} className="bg-brand-gold text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-sm flex items-center gap-2 text-sm">
+                      <button onClick={descargarActaActiva} className="bg-brand-gold text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-sm flex items-center gap-2 text-sm">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         Descargar Acta (PDF)
                       </button>
@@ -1080,6 +1128,7 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
                     efectividadJugadores={efectividadJugadores}
                     manualStats={manualStats}
                     puntosPorManoLocal={puntosPorManoLocal} puntosPorManoVisita={puntosPorManoVisita}
+                    firmasActa={firmasActa}
                     alHacerClicCelda={(jId, mIdx) => setModalRegistro({ jId, mIdx })}
                     alHacerClicPuntuacion={(esLocal, manoIdx) => setModalTantos({ esLocal, manoIdx })}
                     alSeleccionarStatCell={(jId, tipo) => setModalStatPanel({ jId, tipo })}
@@ -1091,10 +1140,12 @@ export default function AnotadorDashboard({ usuario, cerrarSesion }) {
               <div className="w-full lg:w-80 flex flex-col gap-5 shrink-0 lg:sticky lg:top-6">
 
                 {/* FIRMAS DIGITALES DEL ACTA (LOTE 6D) */}
-                {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
+                {/* LOTE 8K: las firmas se recogen DESPUES de finalizar el puntaje;
+                    siguen visibles con el partido Finalizado (no en Suspendido). */}
+                {partidoActivo.estado !== 'Suspendido' && (
                   <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
                     <h3 className="text-base font-bold text-brand-brown mb-1">Firmas del Acta</h3>
-                    <p className="text-[0.7rem] text-brand-brown/60 mb-3">Sin las firmas exigibles el acta no se puede finalizar. Los delegados firman aquí entregando este dispositivo al responsable de cada equipo.</p>
+                    <p className="text-[0.7rem] text-brand-brown/60 mb-3">Las firmas no bloquean el cierre del puntaje: recógelas después de finalizar para dejar el acta completa. Los delegados firman aquí entregando este dispositivo al responsable de cada equipo.</p>
                     <div className="space-y-2">
                       {(firmasActa.firmas || []).map(f => {
                         const etiquetaFirma = f.rol_firma === 'arbitro' ? 'Árbitro' : f.rol_firma === 'anotador' ? 'Anotador' : f.rol_firma === 'delegado_local' ? 'Delegado ' + (partidoActivo.local_nombre || 'Local') : 'Delegado ' + (partidoActivo.visita_nombre || 'Visita');
