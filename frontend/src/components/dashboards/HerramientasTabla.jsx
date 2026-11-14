@@ -60,7 +60,8 @@ export function TableTools({ rows, filteredRows, filter, setFilter, columns, cat
       // LOTE PDF MARCA + 8K: banda de marca en blanco y negro con logos de la liga y CONMINGO.
       await encabezadoMarca(pdf, { nombreLiga, logoUrl, titulo: 'REPORTE OFICIAL', subtitulo: context.modulo, blancoYNegro: true });
       pdf.setTextColor(60, 60, 60); pdf.setFontSize(8); pdf.text(`Usuario: ${context.usuario}   |   Generado: ${context.generado}`, 14, 30); pdf.text(`Filtros: ${Object.values(context.filtros).join(' · ')}`, 14, 35);
-      autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown }, // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text(`Documento generado desde el módulo ${modulo} · CONMINGO`, 14, pdf.internal.pageSize.getHeight() - 10); } });
+      // LOTE 8K3: cabecera blanca con texto oscuro, sin relleno negro.
+      autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown }, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text(`Documento generado desde el módulo ${modulo} · CONMINGO`, 14, pdf.internal.pageSize.getHeight() - 10); } });
       pdf.save(`${safeName}.pdf`);
     }
   };
