@@ -298,6 +298,38 @@ const invalidarPermisoPartido = async (partidoId) => {
 app.set('invalidarPermisoPartido', invalidarPermisoPartido);
 
 // ============================================================
+// LOTE 8J: reseteo del estado de la planilla persistida (FIX #16).
+// Al reagendar o reeditar la fecha de un partido que estuvo suspendido, la
+// planilla guardada en planilla_estado puede seguir trayendo estadoPartido
+// 'Suspendido' de una suspension anterior; el anotador y el arbitro que se
+// unan al partido recibian esa suspension vieja (aviso y expulsion) aunque
+// la base de datos ya dijera 'Agendado'. Este helper resetea SOLO el estado
+// de la planilla, en memoria y en la tabla, sin borrar el acta parcial
+// (efectividad, tantos y estadisticas se conservan para el nuevo intento).
+// Las rutas lo invocan via req.app.get, igual que invalidarPermisoPartido.
+// ============================================================
+const resetearEstadoPlanilla = async (partidoId, nuevoEstado) => {
+  const pid = parseInt(partidoId, 10);
+  if (Number.isNaN(pid)) return;
+  const estadoFinal = nuevoEstado || 'Agendado';
+  if (partidosEnMemoria[pid]) {
+    partidosEnMemoria[pid].estadoPartido = estadoFinal;
+    delete partidosEnMemoria[pid].hora_inicio;
+    delete partidosEnMemoria[pid].hora_final;
+  }
+  try {
+    await db.query(
+      "UPDATE public.planilla_estado SET datos = (datos - 'hora_inicio' - 'hora_final') || jsonb_build_object('estadoPartido', $2::text), updated_at = now() WHERE partido_id = $1",
+      [pid, estadoFinal]
+    );
+  } catch (e) {
+    console.warn('[planilla] No se pudo resetear el estado persistido:', e?.message || e);
+  }
+  io.to('partido_' + pid).emit('actualizar_planilla', { estadoPartido: estadoFinal });
+};
+app.set('resetearEstadoPlanilla', resetearEstadoPlanilla);
+
+// ============================================================
 // LOTE F: mensajería multi-liga. Las salas de rol dejan de ser globales:
 // ahora son "rol_<rol>__org_<uuid de la organización>" para que los
 // mensajes de rol no crucen entre ligas (el superadmin mantiene las
