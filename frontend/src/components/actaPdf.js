@@ -11,27 +11,10 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatearFecha, formatearHora } from './fechas';
-import { encabezadoMarca, MARCA_PDF_BN } from './pdfMarca';
-
-// Descarga una imagen (URL firmada de Storage) y la devuelve como
-// dataURL lista para jsPDF. Devuelve null si no esta disponible.
-export const urlADataURL = async (url) => {
-  try {
-    if (!url) return null;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const dataUrl = await new Promise((resolve) => {
-      const lector = new FileReader();
-      lector.onload = () => resolve(lector.result);
-      lector.onerror = () => resolve(null);
-      lector.readAsDataURL(blob);
-    });
-    return typeof dataUrl === 'string' && dataUrl.startsWith('data:image/') ? dataUrl : null;
-  } catch (e) {
-    return null;
-  }
-};
+// LOTE 8K FIX: urlADataURL vive en pdfMarca (la usa tambien el encabezado
+// para convertir el logo de la liga) y se re-exporta por compatibilidad.
+import { encabezadoMarca, MARCA_PDF_BN, urlADataURL } from './pdfMarca';
+export { urlADataURL };
 
 // Genera y descarga el acta oficial en PDF. Los datos son los mismos que
 // pinta la PlanillaUniversal; firmas es el estado de firmasActa del backend
@@ -185,10 +168,14 @@ export const generarActaPDF = async ({
 // de la API para los endpoints publicos.
 export const cargarDatosActa = async (partidoId, { fetchConToken, apiUrl }) => {
   const id = encodeURIComponent(partidoId);
-  const resPartido = await fetchConToken(`/publico/partidos/${id}`);
+  // LOTE 8K FIX (reporte de Keiko): los endpoints /publico son PUBLICOS y
+  // viven en la raiz de la API; fetchConToken prefija el router del rol
+  // (/operativo o /admin-liga), donde esas rutas NO existen (404) y por eso
+  // fallaban las descargas del acta. Se consultan con fetch plano.
+  const resPartido = await fetch(`${apiUrl}/publico/partidos/${id}`);
   const partido = await resPartido.json();
   if (!resPartido.ok) throw new Error(partido.error || 'Partido no encontrado.');
-  const resNomina = await fetchConToken(`/publico/partidos/${id}/nomina`);
+  const resNomina = await fetch(`${apiUrl}/publico/partidos/${id}/nomina`);
   const nomina = resNomina.ok ? await resNomina.json() : [];
   let planilla = {};
   try {
@@ -232,3 +219,4 @@ export const generarActaDesdePartido = async (partido, nomina, planilla, firmas,
     firmas
   });
 };
+
