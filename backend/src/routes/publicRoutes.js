@@ -83,7 +83,7 @@ router.get('/partidos-activos', async (req, res) => {
       LEFT JOIN public.sedes s ON p.sede_id = s.id
       WHERE (o.eliminado_en IS NULL) -- LOTE 8B: la cartelera no muestra partidos de ligas eliminadas
         AND (p.estado = 'En Curso'
-         OR (p.estado = 'Agendado' AND p.fecha_hora::timestamp >= (NOW() AT TIME ZONE 'America/Caracas')))
+         OR (p.estado = 'Agendado' AND p.fecha_hora::timestamp >= (NOW() AT TIME ZONE 'America/Caracas') - INTERVAL '60 minutes')) -- LOTE 8I: hora de gracia de 60 min; un Agendado recien vencido sigue publicandose como retrasado
       ORDER BY (p.estado = 'En Curso') DESC, t.nombre ASC, p.fecha_hora ASC
     `);
     res.json(resDb.rows);

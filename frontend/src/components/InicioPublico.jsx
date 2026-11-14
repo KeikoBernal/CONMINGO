@@ -26,6 +26,10 @@ const BolaCriolla = ({ tamano = 'h-12 w-12' }) => (
 // del mingo. Las posiciones estan en px relativos al centro del mingo; el
 // umbral es la fraccion del scroll total que espera cada bola antes de
 // rodar y la ventana es la fraccion del scroll que tarda en llegar.
+// LOTE 8I: hora de gracia del negocio (Keiko): un partido cuya hora ya paso se muestra
+// como Retrasado durante 60 minutos antes de salir de la cartelera.
+const HORA_GRACIA_MS = 60 * 60 * 1000;
+
 const ARRIME_VENTANA = 0.5;
 const BOLAS_ARRIME = [
   { src: '/bola1.svg', tamano: 'w-20 h-20', umbral: 0, desde: { x: -640, y: 120, giro: -170 }, hasta: { x: -34, y: 8, giro: -12 } },
@@ -111,12 +115,13 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
     };
   }, []);
 
-  // Solo partidos en vivo o agendados a futuro (los pasados y
-  // suspendidos quedan fuera del inicio publico).
+  // Partidos en vivo, agendados a futuro y retrasados dentro de la hora
+  // de gracia (60 min). Los pasados con mas de 60 minutos y los suspendidos
+  // quedan fuera del inicio publico.
   const ahora = new Date();
   const enVivo = partidos.filter((p) => p.estado === 'En Curso');
   const agendados = partidos
-    .filter((p) => p.estado === 'Agendado' && new Date(p.fecha_hora) >= ahora)
+    .filter((p) => p.estado === 'Agendado' && new Date(p.fecha_hora).getTime() >= ahora.getTime() - HORA_GRACIA_MS)
     .sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
 
   const abrirMarcador = (p) => window.open(`/?vista=puntajes&partido_id=${p.uuid_publico || p.id}`, '_blank');
@@ -135,13 +140,15 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
     return bola.desde[campo] + (bola.hasta[campo] - bola.desde[campo]) * suave;
   };
 
-  const TarjetaPartido = ({ p }) => (
+  const TarjetaPartido = ({ p }) => {
+    const esRetrasado = p.estado === 'Agendado' && new Date(p.fecha_hora).getTime() < Date.now(); // dentro de la hora de gracia
+    return (
     <article className="group bg-white border border-brand-gold/30 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-brand-rust transition-all">
       <div>
         <div className="flex justify-between items-center mb-4">
           <span className="text-xs font-bold text-brand-blue uppercase tracking-wide">{p.torneo_nombre || 'Encuentro'}</span>
-          <span className={`text-xs font-bold px-3 py-1 rounded-full ${p.estado === 'En Curso' ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-brand-cream text-brand-brown border border-brand-gold/30'}`}>
-            {p.estado === 'En Curso' ? 'En vivo' : 'Agendado'}
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${p.estado === 'En Curso' ? 'bg-green-100 text-green-700 animate-pulse' : esRetrasado ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-brand-cream text-brand-brown border border-brand-gold/30'}`}>
+            {p.estado === 'En Curso' ? 'En vivo' : esRetrasado ? 'Retrasado' : 'Agendado'}
           </span>
         </div>
 
@@ -171,7 +178,8 @@ export default function InicioPublico({ partidos = [], onIniciarSesion }) {
         {p.estado === 'En Curso' ? 'Ver marcador en vivo' : 'Ver en la pizarra publica'}
       </button>
     </article>
-  );
+    );
+  };
 
   return (
     <div className="relative animate-slide-up">

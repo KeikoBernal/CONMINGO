@@ -1353,7 +1353,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 {modalCapitan.candidatos.map(c => <option key={c.id} value={c.id}>{c.nombre} {c.apellido} (Dorsal #{c.numero_dorsal})</option>)}
               </select>
               <div className="flex gap-3">
-                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Asignar y Continuar{guardandoModal ? 'Guardando...' : 'Asignar y Continuar'}</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Guardando...' : 'Asignar y Continuar'}</button>
                 <button type="button" onClick={() => setModalCapitan({...modalCapitan, visible: false})} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -1386,7 +1386,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 <textarea rows="2" className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalTransferencia.motivo} onChange={e => setModalTransferencia({...modalTransferencia, motivo: e.target.value})}></textarea>
               </div>
               <div className="flex gap-3">
-                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Transferir{guardandoModal ? 'Guardando...' : 'Transferir'}</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-rust text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Guardando...' : 'Transferir'}</button>
                 <button type="button" onClick={() => setModalTransferencia(null)} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -1405,7 +1405,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                 <input autoFocus type="datetime-local" min={ahoraIsoLocal} className="w-full p-2 border border-brand-gold/30 rounded focus:ring-brand-rust focus:border-brand-rust" value={modalReagendar.nuevaFecha} onChange={e => setModalReagendar({...modalReagendar, nuevaFecha: e.target.value})} required />
               </div>
               <div className="flex gap-3">
-                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Confirmar Fecha{guardandoModal ? 'Guardando...' : 'Confirmar Fecha'}</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Guardando...' : 'Confirmar Fecha'}</button>
                 <button type="button" onClick={() => setModalReagendar({ visible: false, partido: null, nuevaFecha: '' })} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -1424,7 +1424,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
               <select className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.arbitro_id} onChange={e => setModalEditarPartido({...modalEditarPartido, arbitro_id: e.target.value})}><option value="">-- Árbitro --</option>{recursosTorneo.arbitros.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
               <select className="w-full p-2 border border-brand-gold/30 rounded" value={modalEditarPartido.anotador_id} onChange={e => setModalEditarPartido({...modalEditarPartido, anotador_id: e.target.value})}><option value="">-- Anotador --</option>{recursosTorneo.anotadores.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}</select>
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Guardar{guardandoModal ? 'Guardando...' : 'Guardar'}</button>
+                <button type="submit" disabled={guardandoModal} className="flex-1 bg-brand-blue text-white py-2 rounded font-semibold hover:bg-brand-brown transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Guardando...' : 'Guardar'}</button>
                 <button type="button" onClick={() => setModalEditarPartido({ visible: false })} className="flex-1 bg-gray-200 text-brand-brown py-2 rounded font-semibold hover:bg-gray-300 transition-colors">Cancelar</button>
               </div>
             </form>
@@ -3106,7 +3106,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                           </CampoSelect>
                         </div>
                         <CampoTexto etiqueta="Fecha y hora del encuentro" tipo="datetime-local" min={ahoraIsoLocal} valor={formPartidoSuelto.fecha_hora} onChange={e => setFormPartidoSuelto({...formPartidoSuelto, fecha_hora: e.target.value})} requerido />
-                        <button type="submit" disabled={guardandoModal} className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-4 disabled:opacity-50 disabled:cursor-not-allowed">Confirmar Agendamiento{guardandoModal ? 'Guardando...' : 'Confirmar Agendamiento'}</button>
+                        <button type="submit" disabled={guardandoModal} className="w-full bg-brand-rust text-white py-3.5 rounded-lg font-bold hover:bg-brand-brown transition-colors shadow-md mt-4 disabled:opacity-50 disabled:cursor-not-allowed">{guardandoModal ? 'Guardando...' : 'Confirmar Agendamiento'}</button>
                       </form>
                     </div>
                   )}
