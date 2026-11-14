@@ -11,7 +11,9 @@ import CalendarioPartidos from '../CalendarioPartidos';
 import { TableTools, EMPTY_FILTER, rowMatchesFilter, EncabezadoTabla, usePaginacion, PaginacionTabla, BotonAccionTabla } from './HerramientasTabla';
 import CampoTexto from '../CampoTexto';
 import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, fechaHoy } from '../fechas'; // LOTE FECHAS: fechas en dd/mm/aaaa y horas 12h de Venezuela
-import { encabezadoMarca, MARCA_PDF } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca (logo y nombre de la liga) en los PDF
+import { encabezadoMarca, MARCA_PDF_BN } from '../pdfMarca'; // LOTE PDF MARCA + 8K: encabezado de marca y paleta blanco y negro para reportes
+// LOTE 8K: acta oficial en PDF compartida (blanco y negro, logos y firmas incrustadas).
+import { generarActaDesdePartido } from '../actaPdf';
 import CampoSelect from '../CampoSelect';
 import Sidebar from '../Sidebar';
 import TourGuia, { tourPendiente, marcarTourVisto } from '../TourGuia';
@@ -1034,53 +1036,32 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
         const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
         descargarBlob(blob, `${nombreArchivo}.xls`);
       } else if (formato === 'pdf') {
-        const pdf = new jsPDF();
-        // LOTE PDF MARCA: banda de marca con logo y nombre de la liga.
-        encabezadoMarca(pdf, { nombreLiga: orgData.nombre, logoUrl: orgData.logo_url, titulo: 'PLANILLA OFICIAL', subtitulo: 'Documento pre-impreso del encuentro' });
-        pdf.setTextColor(70, 45, 30); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
-        pdf.text(`${partidoData.local_nombre || 'Por definir'} vs ${partidoData.visita_nombre || 'Por definir'}`, 14, 32);
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
-        pdf.text(`Fecha: ${partidoData.fecha_hora}   |   Generado: ${formatearFechaHora(new Date())}`, 14, 38);
-        autoTable(pdf, { startY: 44, head: [['Cédula', 'Nombre', 'Apellido', 'Dorsal', 'Equipo']], body: nominaData.map(j => [j.cedula ?? '—', j.nombre ?? '—', j.apellido ?? '—', j.numero_dorsal ?? '—', j.equipo_nombre || 'N/A']), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream } });
-                // LOTE 6D: firmas digitales del acta. Se consultan las firmas registradas
-        // y cada una se incrusta sobre su linea; los slots sin firma quedan en blanco.
+        // LOTE 8K (pedido de Keiko): el botón PDF ya NO genera la nómina
+        // pre-impresa; genera el ACTA COMPLETA del partido (lanzamientos,
+        // tantos por mano, marcador y firmas registradas), en blanco y negro
+        // con los logos de CONMINGO y de la liga. Los otros formatos siguen
+        // siendo la nómina.
+        let planillaData = {};
+        try {
+          const resPlanilla = await fetch(`${API_URL}/publico/partidos/${partidoId}/planilla`);
+          if (resPlanilla.ok) planillaData = await resPlanilla.json();
+        } catch (e) {
+          // Sin planilla persistida el acta sale con las tablas en blanco.
+        }
         let estadoFirmasPdf = null;
         try {
           const resFirmasPdf = await fetchConToken(`/partidos/${partidoId}/firmas`);
           if (resFirmasPdf.ok) estadoFirmasPdf = await resFirmasPdf.json();
         } catch (e) {
-          // Sin firmas el PDF sale con las lineas vacias.
+          // Sin firmas el acta sale con las lineas vacias.
         }
-        const slotsFirmaPdf = [
-          { rol: 'arbitro', etiqueta: 'Firma Árbitro', x: 14 },
-          { rol: 'anotador', etiqueta: 'Firma Anotador', x: 56 },
-          { rol: 'delegado_local', etiqueta: 'Firma Deleg. Local', x: 98 },
-          { rol: 'delegado_visita', etiqueta: 'Firma Deleg. Visita', x: 140 }
-        ];
-        const filaFirmas = (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 30;
-        pdf.setDrawColor(120);
-        for (const slot of slotsFirmaPdf) pdf.line(slot.x, filaFirmas, slot.x + 38, filaFirmas);
-        for (const slot of slotsFirmaPdf) {
-          const firmaSlot = (estadoFirmasPdf?.firmas || []).find(fr => fr.rol_firma === slot.rol && fr.firmada && fr.url_firmada);
-          if (!firmaSlot) continue;
-          try {
-            const resImg = await fetch(firmaSlot.url_firmada);
-            const blobImg = await resImg.blob();
-            const dataUrlImg = await new Promise((resolve) => { const lector = new FileReader(); lector.onload = () => resolve(lector.result); lector.readAsDataURL(blobImg); });
-            pdf.addImage(dataUrlImg, 'PNG', slot.x + 2, filaFirmas - 16, 34, 14);
-          } catch (e) {
-            // La imagen no esta disponible: queda la linea en blanco.
-          }
-        }
-        pdf.setFontSize(7); pdf.setTextColor(100);
-        for (const slot of slotsFirmaPdf) pdf.text(slot.etiqueta, slot.x, filaFirmas + 5);
-        pdf.save(`${nombreArchivo}.pdf`);
+        await generarActaDesdePartido(partidoData, nominaData, planillaData, estadoFirmasPdf, { nombreLiga: orgData.nombre, logoLiga: orgData.logo_url });
       }
       setMensaje('');
     } catch (e) { setMensaje('Error al exportar la planilla.'); }
   };
 
-  const exportarReporteEstadisticas = (formato) => {
+  const exportarReporteEstadisticas = async (formato) => {
     if (!estadisticas) return mostrarToast('No hay datos estadísticos cargados.', 'error');
     const nombreArchivo = `Reporte_Estadisticas_Liga_${temporadaFiltro}`;
 
@@ -1106,13 +1087,13 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
       descargarBlob(blob, `${nombreArchivo}.xls`);
     } else if (formato === 'pdf') {
       const pdf = new jsPDF();
-      // LOTE PDF MARCA: banda de marca con logo y nombre de la liga.
-      encabezadoMarca(pdf, { nombreLiga: orgData.nombre, logoUrl: orgData.logo_url, titulo: 'REPORTE OFICIAL', subtitulo: 'Estadísticas de la liga' });
-      pdf.setTextColor(70, 45, 30); pdf.setFontSize(8);
+      // LOTE PDF MARCA + 8K: banda de marca en blanco y negro con logos de la liga y CONMINGO.
+      await encabezadoMarca(pdf, { nombreLiga: orgData.nombre, logoUrl: orgData.logo_url, titulo: 'REPORTE OFICIAL', subtitulo: 'Estadísticas de la liga', blancoYNegro: true });
+      pdf.setTextColor(60, 60, 60); pdf.setFontSize(8);
       pdf.text(`Usuario: ${usuario?.email || usuario?.nombre || usuario?.username}   |   Generado: ${formatearFechaHora(new Date())}   |   Temporada: ${temporadaFiltro}`, 14, 30);
-      autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream } });
+      autoTable(pdf, { startY: 36, head: [['Métrica', 'Valor']], body: [['Partidos Jugados', estadisticas.partidos_jugados ?? '—'], ['Torneos Totales', estadisticas.total_torneos ?? '—'], ['Equipos Inscritos', estadisticas.total_equipos ?? '—'], ['Jugadores Activos', estadisticas.total_jugadores ?? '—'], ['Tarjetas Acumuladas', estadisticas.total_tarjetas ?? '—']], styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream } });
       if (estadisticas.mejores_jugadores?.length) {
-        autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream } });
+        autoTable(pdf, { startY: (pdf.lastAutoTable ? pdf.lastAutoTable.finalY : 60) + 8, head: [['Jugador', 'Equipo', 'Jugadas efectivas']], body: estadisticas.mejores_jugadores.map(j => [`${j.nombre} ${j.apellido}`, j.equipo || '—', j.efectivas ?? '—']), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream } });
       }
       pdf.save(`${nombreArchivo}.pdf`);
     }
@@ -2502,7 +2483,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                         ]}
                         acciones={(p) => (
                           <>
-                            <button onClick={() => window.open('/?vista=puntajes&partido_id=' + (p.uuid_publico || p.id), '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Acta Visual</button>
+                            <button onClick={() => window.open('/?vista=puntajes&partido_id=' + (p.uuid_publico || p.id), '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Proyectar</button>
                             <button onClick={() => abrirFirmasAdmin(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Firmas</button>
                             <button onClick={() => abrirQrPartido(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">QR</button>
                             <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
@@ -2536,7 +2517,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
                             <td className="text-center"><strong>{p.local_nombre}</strong> <span className="text-brand-rust mx-1">vs</span> <strong>{p.visita_nombre}</strong></td>
                             <td className="text-center font-black text-lg">{p.marcador_local !== null ? `${p.marcador_local} - ${p.marcador_visita}` : 'N/A'}</td>
                             <td className="flex justify-center gap-2">
-                              <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.uuid_publico || p.id}`, '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Acta Visual</button>
+                              <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.uuid_publico || p.id}`, '_blank')} className="bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> Proyectar</button>
                               <button onClick={() => abrirFirmasAdmin(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Firmas</button>
                               <button onClick={() => abrirQrPartido(p)} className="bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">QR</button>
                               <button onClick={() => exportarPlanillaFormato(p.id, 'excel')} className="bg-white border border-brand-gold/40 text-brand-brown hover:bg-brand-rust hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">Excel</button>
@@ -3320,3 +3301,4 @@ const bitacoraConTexto = bitacora.map(evento => ({
     </div>
   );
 }
+
