@@ -99,8 +99,10 @@ const guardarFirma = async ({ partidoId, rolFirma, imagen, usuario }) => {
     const { rows } = await db.query('SELECT id, estado, arbitro_id, anotador_id FROM public.partidos WHERE id = $1', [partidoId]);
     if (rows.length === 0) return { error: 'Partido no encontrado.', status: 404 };
     const partido = rows[0];
-    if (partido.estado === 'Finalizado' || partido.estado === 'Cancelado') {
-      return { error: 'No se pueden registrar firmas en un partido finalizado o cancelado.', status: 400 };
+    // LOTE 8K: el partido se FINALIZA primero (para preservar la hora final
+    // verdadera) y las firmas se recogen despues; solo Cancelado bloquea.
+    if (partido.estado === 'Cancelado') {
+      return { error: 'No se pueden registrar firmas en un partido cancelado.', status: 400 };
     }
     const esArbitro = String(partido.arbitro_id || '') === String(usuario.id);
     const esAnotador = String(partido.anotador_id || '') === String(usuario.id);
@@ -138,3 +140,4 @@ const guardarFirma = async ({ partidoId, rolFirma, imagen, usuario }) => {
 };
 
 module.exports = { ROLES_FIRMA, firmasExigibles, estadoFirmas, guardarFirma };
+

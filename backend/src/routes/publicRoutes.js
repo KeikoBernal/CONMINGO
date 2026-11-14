@@ -4,6 +4,9 @@ const db = require('../config/db');
 // LOTE 7B: los endpoints publicos aceptan el id entero o el uuid_publico
 // opaco (los links nuevos de la fase 7c usaran el uuid).
 const { resolverIdPartido } = require('../utilidades/resolverIds');
+// LOTE 8K: el acta oficial en PDF (pantalla publica y paneles) necesita la
+// planilla persistida y el estado de las firmas sin exponer datos personales.
+const { estadoFirmas } = require('../utilidades/firmasActa');
 
 // 1. OBTENER PARTIDO ESPECÍFICO CON METADATOS (Árbitro, Anotador, Capitaes)
 router.get('/partidos/:id', async (req, res) => {
@@ -92,4 +95,37 @@ router.get('/partidos-activos', async (req, res) => {
   }
 });
 
+// 4. PLANILLA PERSISTIDA DEL PARTIDO (LOTE 8K): lanzamientos por jugador y
+// tantos por mano que la pantalla publica y el acta en PDF necesitan.
+router.get('/partidos/:id/planilla', async (req, res) => {
+  try {
+    const partidoId = await resolverIdPartido(req.params.id);
+    if (!partidoId) {
+      return res.status(400).json({ error: 'Formato de ID inválido. Debe ser el número del partido o su uuid público.' });
+    }
+    const resDb = await db.query('SELECT datos FROM public.planilla_estado WHERE partido_id = $1', [partidoId]);
+    // Sin planilla persistida se responde vacio: el acta sale con las tablas en blanco.
+    res.json(resDb.rows.length > 0 ? (resDb.rows[0].datos || {}) : {});
+  } catch (error) { res.status(500).json({ error: 'Error al consultar la planilla del partido' }); }
+});
+
+// 5. ESTADO DE FIRMAS DEL ACTA (LOTE 8K): roles, si estan firmadas y la URL
+// firmada de la imagen. Sin nombres personales: es una vista publica.
+router.get('/partidos/:id/firmas', async (req, res) => {
+  try {
+    const partidoId = await resolverIdPartido(req.params.id);
+    if (!partidoId) {
+      return res.status(400).json({ error: 'Formato de ID inválido. Debe ser el número del partido o su uuid público.' });
+    }
+    const estado = await estadoFirmas(partidoId);
+    res.json((estado.firmas || []).map((f) => ({
+      rol_firma: f.rol_firma,
+      exigible: f.exigible,
+      firmada: f.firmada,
+      url_firmada: f.url_firmada
+    })));
+  } catch (error) { res.status(500).json({ error: 'Error al consultar las firmas del acta' }); }
+});
+
 module.exports = router;
+
