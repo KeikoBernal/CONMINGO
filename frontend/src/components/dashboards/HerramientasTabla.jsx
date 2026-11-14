@@ -4,7 +4,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import CampoTexto from '../CampoTexto';
 import { formatearFechaHora } from '../fechas'; // LOTE FECHAS: sello y columnas de fecha de los reportes en dd/mm/aaaa
-import { encabezadoMarca, MARCA_PDF } from '../pdfMarca'; // LOTE PDF MARCA: encabezado de marca (logo y nombre de la liga) en los PDF
+import { encabezadoMarca, MARCA_PDF_BN } from '../pdfMarca'; // LOTE PDF MARCA + 8K: encabezado de marca (logo y nombre de la liga) y paleta blanco y negro para reportes
 
 // Componente compartido de filtrado, busqueda y descargas para las tablas del
 // sistema (Administrador de liga, Delegado, Arbitro y Anotador). El modulo se
@@ -39,7 +39,9 @@ export function TableTools({ rows, filteredRows, filter, setFilter, columns, cat
     generado: formatearFechaHora(new Date()),
     filtros: { busqueda: filter.search || 'Todas', categorias: filter.categories?.length ? filter.categories.join(', ') : 'Todas', desde: filter.dateFrom || 'Sin límite', hasta: filter.dateTo || 'Sin límite' },
   };
-  const exportRows = (format) => {
+  // LOTE 8K: exportRows es ASINCRONA porque el encabezado de marca precarga
+  // el logo CONMINGO. Los reportes salen en blanco y negro.
+  const exportRows = async (format) => {
     const safeName = filename.replace(/[^a-z0-9áéíóúñ_-]+/gi, '_');
     const data = filteredRows.map(row => Object.fromEntries(columns.map(({ key, label }) => [label, dateFields.includes(key) ? (row[key] ? formatearFechaHora(row[key]) : '') : row[key] ?? ''])));
     const csvCell = value => `"${String(value).replaceAll('"', '""')}"`;
@@ -55,10 +57,10 @@ export function TableTools({ rows, filteredRows, filter, setFilter, columns, cat
       XLSX.writeFile(workbook, `${safeName}.xlsx`);
     } else {
       const pdf = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' });
-      // LOTE PDF MARCA: banda de marca con logo y nombre de la liga (si el panel los pasa).
-      encabezadoMarca(pdf, { nombreLiga, logoUrl, titulo: 'REPORTE OFICIAL', subtitulo: context.modulo });
-      pdf.setTextColor(70, 45, 30); pdf.setFontSize(8); pdf.text(`Usuario: ${context.usuario}   |   Generado: ${context.generado}`, 14, 30); pdf.text(`Filtros: ${Object.values(context.filtros).join(' · ')}`, 14, 35);
-      autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF.brown, textColor: MARCA_PDF.cream }, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text(`Documento generado desde el módulo ${modulo} · CONMINGO`, 14, pdf.internal.pageSize.getHeight() - 10); } });
+      // LOTE PDF MARCA + 8K: banda de marca en blanco y negro con logos de la liga y CONMINGO.
+      await encabezadoMarca(pdf, { nombreLiga, logoUrl, titulo: 'REPORTE OFICIAL', subtitulo: context.modulo, blancoYNegro: true });
+      pdf.setTextColor(60, 60, 60); pdf.setFontSize(8); pdf.text(`Usuario: ${context.usuario}   |   Generado: ${context.generado}`, 14, 30); pdf.text(`Filtros: ${Object.values(context.filtros).join(' · ')}`, 14, 35);
+      autoTable(pdf, { startY: 42, head: [columns.map(column => column.label)], body: data.map(row => columns.map(column => row[column.label])), styles: { fontSize: 8 }, headStyles: { fillColor: MARCA_PDF_BN.brown, textColor: MARCA_PDF_BN.cream }, didDrawPage: () => { pdf.setFontSize(8); pdf.setTextColor(100); pdf.text(`Documento generado desde el módulo ${modulo} · CONMINGO`, 14, pdf.internal.pageSize.getHeight() - 10); } });
       pdf.save(`${safeName}.pdf`);
     }
   };
@@ -150,4 +152,5 @@ const descargarBlob = (blob, filename) => {
   anchor.click();
   URL.revokeObjectURL(url);
 };
+
 

@@ -23,6 +23,8 @@ import ConfirmDialog from '../ConfirmDialog'; // FASE 1 UX: dialogo de confirmac
 import ModoCanchaArbitro from '../ModoCanchaArbitro'; // FASE 3 UX: modo cancha para el arbitro a pie de cancha
 import { tecladoModal } from '../Accesibilidad';
 import { formatearFecha, formatearFechaHora, formatearHoraDeFecha, formatearHora, fechaHoy } from '../fechas'; // LOTE FECHAS: formato unico dd/mm/aaaa y horas de 12 horas
+// LOTE 8K: acta oficial en PDF compartida (blanco y negro, logos y firmas incrustadas).
+import { generarActaPDF, cargarDatosActa, generarActaDesdePartido } from '../actaPdf';
 
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -365,6 +367,40 @@ const guardarSorteo = async () => {
       mostrarToast('Error de conexión al registrar la firma.', 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // LOTE 8K: descarga el acta oficial en PDF de un partido del historial
+  // (datos, planilla persistida y firmas vienen del backend).
+  const descargarActaPdf = async (partidoId) => {
+    try {
+      const { partido, nomina, planilla, firmas } = await cargarDatosActa(partidoId, { fetchConToken, apiUrl: API_URL });
+      await generarActaDesdePartido(partido, nomina, planilla, firmas, { nombreLiga: orgLiga?.nombre || '', logoLiga: orgLiga?.logo_url || null });
+    } catch (err) {
+      mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
+    }
+  };
+
+  // LOTE 8K: descarga el acta del partido activo con el estado local del panel
+  // (el arbitro no maneja stats manuales: van vacios, como en su planilla).
+  const descargarActaActiva = async () => {
+    try {
+      await generarActaPDF({
+        nombreLiga: orgLiga?.nombre || '',
+        logoLiga: orgLiga?.logo_url || null,
+        datosPartido: {
+          arbitro: partidoActivo.arbitro_nombre, anotador: partidoActivo.anotador_nombre,
+          capitanLocal: partidoActivo.capitan_local_nombre, capitanVisita: partidoActivo.capitan_visita_nombre,
+          localNombre: partidoActivo.local_nombre, visitaNombre: partidoActivo.visita_nombre,
+          fecha: formatearFecha(partidoActivo.fecha_hora), horaInicio: partidoActivo.hora_inicio, horaFinal: partidoActivo.hora_final
+        },
+        jugadoresLocal, jugadoresVisita,
+        efectividadJugadores,
+        puntosPorManoLocal, puntosPorManoVisita,
+        firmas: firmasActa?.firmas || null
+      });
+    } catch (err) {
+      mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
     }
   };
 
@@ -851,10 +887,17 @@ const suspenderPartido = async () => {
                             </span>
                             • {p.hora_final ? formatearHora(p.hora_final) : 'Sin hora'}
                           </div>
-                          <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="w-full bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                            Ver Acta / Descargar PDF
-                          </button>
+                          {/* LOTE 8K: Proyectar abre la pantalla publica; Descargar PDF genera el acta. */}
+                          <div className="flex gap-2">
+                            <button onClick={() => window.open(`/?vista=puntajes&partido_id=${p.id}`, '_blank')} className="flex-1 bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                              Proyectar
+                            </button>
+                            <button onClick={() => descargarActaPdf(p.id)} className="flex-1 bg-white text-brand-brown py-2 rounded-lg border border-brand-gold/40 text-xs font-bold hover:bg-brand-rust hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                              Descargar PDF
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -881,6 +924,7 @@ const suspenderPartido = async () => {
               onSuspender={suspenderPartido}
               firmasActa={firmasActa}
               onFirmar={setModalFirma}
+              onDescargarActa={descargarActaActiva}
               isSubmitting={isSubmitting}
               onVerPlanilla={() => cambiarModoVista(false)}
               onVolverPanel={() => {
@@ -911,7 +955,7 @@ const suspenderPartido = async () => {
                       Modo Cancha
                     </button>
                     {partidoActivo.estado === 'Finalizado' && (
-                      <button onClick={() => window.open(`/?vista=puntajes&partido_id=${partidoActivo.id}`, '_blank')} className="bg-brand-gold text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-sm flex items-center gap-2 text-sm">
+                      <button onClick={descargarActaActiva} className="bg-brand-gold text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-rust transition-colors shadow-sm flex items-center gap-2 text-sm">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         Descargar Acta (PDF)
                       </button>
@@ -1005,10 +1049,12 @@ const suspenderPartido = async () => {
                 </div>
 
                 {/* FIRMAS DIGITALES DEL ACTA (LOTE 6D) */}
-                {partidoActivo.estado !== 'Finalizado' && partidoActivo.estado !== 'Suspendido' && (
+                {/* LOTE 8K: las firmas se recogen DESPUES de finalizar el puntaje;
+                    siguen visibles con el partido Finalizado (no en Suspendido). */}
+                {partidoActivo.estado !== 'Suspendido' && (
                   <div className="bg-white p-5 rounded-xl border border-brand-gold/30 shadow-sm">
                     <h3 className="text-base font-bold text-brand-brown mb-1">Firmas del Acta</h3>
-                    <p className="text-[0.7rem] text-brand-brown/60 mb-3">Los delegados firman aquí entregando este dispositivo al responsable de cada equipo. El anotador firma desde su propio panel.</p>
+                    <p className="text-[0.7rem] text-brand-brown/60 mb-3">Las firmas no bloquean el cierre del puntaje: recógelas después de finalizar para dejar el acta completa. Los delegados firman aquí entregando este dispositivo al responsable de cada equipo. El anotador firma desde su propio panel.</p>
                     <div className="space-y-2">
                       {(firmasActa.firmas || []).map(f => {
                         const etiquetaFirma = f.rol_firma === 'arbitro' ? 'Árbitro' : f.rol_firma === 'anotador' ? 'Anotador' : f.rol_firma === 'delegado_local' ? 'Delegado ' + (partidoActivo.local_nombre || 'Local') : 'Delegado ' + (partidoActivo.visita_nombre || 'Visita');

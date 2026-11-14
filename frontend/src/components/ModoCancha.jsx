@@ -232,8 +232,9 @@ export default function ModoCancha({
             </div>
           </div>
         ))}
-        <p className="text-[0.7rem] text-brand-brown/50 text-center">Asignar tantos cierra la mano y pasa a la siguiente. Si te equivocaste, vuelve con Anterior y toca el numero correcto.</p>
+        <p className="text-[0.7rem] text-brand-brown/50 text-center">Los dos equipos pueden puntuar en la misma mano: registra el tanto de cada uno (0 si no anoto). La mano se cierra cuando ambos tienen su tanto y pasa a la siguiente. Si te equivocaste, vuelve con Anterior y toca el numero correcto.</p>
       </div>
     </div>
   );
 }
+

@@ -21,6 +21,9 @@ export default function PantallaPuntajes() {
   const [manualStats, setManualStats] = useState({});
   const [puntosPorManoLocal, setPuntosPorManoLocal] = useState(Array(20).fill(''));
   const [puntosPorManoVisita, setPuntosPorManoVisita] = useState(Array(20).fill(''));
+  // LOTE 8K: estado de las firmas del acta (roles, firmada y url de la imagen)
+  // para que el PDF de la planilla publica las incruste.
+  const [firmasActa, setFirmasActa] = useState(null);
 
   const [cargando, setCargando] = useState(true);
   const socketRef = useRef(null);
@@ -80,6 +83,13 @@ export default function PantallaPuntajes() {
               setJugadoresLocal(nomina.filter(j => j.equipo_id === data.equipo_local_id));
               setJugadoresVisita(nomina.filter(j => j.equipo_id === data.equipo_visita_id));
               setCargando(false);
+            })
+            // LOTE 8K: firmas del acta para el PDF; si falla, el acta sale sin ellas.
+            .finally(() => {
+              fetch(`${API_URL}/publico/partidos/${id}/firmas`)
+                .then(res => (res.ok ? res.json() : null))
+                .then(firmas => { if (Array.isArray(firmas)) setFirmasActa(firmas); })
+                .catch(() => {});
             });
         } else {
           // INSERCIÓN: Manejo explícito de error en carga si el partido no existe o hay error de DB
@@ -168,6 +178,7 @@ export default function PantallaPuntajes() {
               jugadoresLocal={jugadoresLocal} jugadoresVisita={jugadoresVisita}
               efectividadJugadores={efectividadJugadores} manualStats={manualStats}
               puntosPorManoLocal={puntosPorManoLocal} puntosPorManoVisita={puntosPorManoVisita}
+              firmasActa={firmasActa}
             />
           </div>
         </div>
