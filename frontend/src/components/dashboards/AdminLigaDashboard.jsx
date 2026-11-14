@@ -1046,12 +1046,31 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
 
       const nombreArchivo = `Planilla_${partidoData.local_nombre}_vs_${partidoData.visita_nombre}`.replace(/\s+/g, '_');
 
+      // LOTE 8K4 (reporte de Keiko): los CSV/Excel/JSON ahora incluyen TODOS
+      // los datos del acta: resultado, tantos por mano y lanzamientos por
+      // jugador (letra de cada mano y totales AL/AB/BL/BB), igual que el PDF.
+      const tantoEn = (arr, i) => (Array.isArray(arr) && arr[i] !== null && arr[i] !== undefined && arr[i] !== '') ? arr[i] : '';
+      const hayMano = (i) => tantoEn(planillaExport.tantosLocal, i) !== '' || tantoEn(planillaExport.tantosVisita, i) !== '';
+      const lanzamientosDe = (j) => {
+        const efect = (planillaExport.efectividad || {})[j.id] || {};
+        return Array.from({ length: 20 }, (_, i) => (efect[i] && efect[i].valor) || '');
+      };
+      const statsDe = (j) => ((planillaExport.manualStats || {})[j.id] || { AL: 0, AB: 0, BL: 0, BB: 0 });
+      const encabezadosManos = Array.from({ length: 20 }, (_, i) => `Mano ${i + 1}`);
+
       if (formato === 'json') {
-        const blob = new Blob([JSON.stringify({ partido: partidoData, resultado: { marcador_local: marcadorLocal, marcador_visita: marcadorVisita }, nomina: nominaData }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ partido: partidoData, resultado: { marcador_local: marcadorLocal, marcador_visita: marcadorVisita }, planilla: planillaExport, nomina: nominaData }, null, 2)], { type: 'application/json' });
         descargarBlob(blob, `${nombreArchivo}.json`);
       } else if (formato === 'csv') {
-        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${formatearFecha(partidoData.fecha_hora)}\nEstado,${partidoData.estado}\nResultado,"${textoResultado}"\n\nCedula,Nombre,Apellido,Dorsal,Equipo\n`;
-        nominaData.forEach(j => { csv += `${j.cedula},"${j.nombre}","${j.apellido}",${j.numero_dorsal},"${j.equipo_nombre || 'N/A'}"\n`; });
+        let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${formatearFecha(partidoData.fecha_hora)}\nEstado,${partidoData.estado}\nResultado,"${textoResultado}"\n\nTANTOS POR MANO\nMano,Local,Visita\n`;
+        for (let i = 0; i < 20; i++) {
+          if (hayMano(i)) csv += `${i + 1},${tantoEn(planillaExport.tantosLocal, i)},${tantoEn(planillaExport.tantosVisita, i)}\n`;
+        }
+        csv += `Total,${marcadorLocal},${marcadorVisita}\n\nLANZAMIENTOS POR JUGADOR\nEquipo,Nombre,Apellido,Dorsal,AL,AB,BL,BB,${encabezadosManos.join(',')}\n`;
+        nominaData.forEach(j => {
+          const stats = statsDe(j);
+          csv += `"${j.equipo_nombre || 'N/A'}","${j.nombre}","${j.apellido}",${j.numero_dorsal ?? ''},${stats.AL ?? 0},${stats.AB ?? 0},${stats.BL ?? 0},${stats.BB ?? 0},${lanzamientosDe(j).join(',')}\n`;
+        });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         descargarBlob(blob, `${nombreArchivo}.csv`);
       } else if (formato === 'excel') {
@@ -1059,8 +1078,16 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
         html += `<tr><th>Fecha</th><th>${formatearFecha(partidoData.fecha_hora)}</th></tr>`;
         html += `<tr><th>Estado</th><th>${partidoData.estado}</th></tr>`;
         html += `<tr><th>Resultado</th><th>${textoResultado}</th></tr></table><br/>`;
-        html += `<table border="1"><tr><th>Cédula</th><th>Nombre</th><th>Apellido</th><th>Dorsal</th></tr>`;
-        nominaData.forEach(j => { html += `<tr><td>${j.cedula}</td><td>${j.nombre}</td><td>${j.apellido}</td><td>${j.numero_dorsal}</td></tr>`; });
+        html += `<table border="1"><tr><th>TANTOS POR MANO</th><th>Local</th><th>Visita</th></tr>`;
+        for (let i = 0; i < 20; i++) {
+          if (hayMano(i)) html += `<tr><td>Mano ${i + 1}</td><td>${tantoEn(planillaExport.tantosLocal, i)}</td><td>${tantoEn(planillaExport.tantosVisita, i)}</td></tr>`;
+        }
+        html += `<tr><td><b>Total</b></td><td><b>${marcadorLocal}</b></td><td><b>${marcadorVisita}</b></td></tr></table><br/>`;
+        html += `<table border="1"><tr><th>Equipo</th><th>Nombre</th><th>Apellido</th><th>Dorsal</th><th>AL</th><th>AB</th><th>BL</th><th>BB</th>${encabezadosManos.map(m => `<th>${m}</th>`).join('')}</tr>`;
+        nominaData.forEach(j => {
+          const stats = statsDe(j);
+          html += `<tr><td>${j.equipo_nombre || 'N/A'}</td><td>${j.nombre}</td><td>${j.apellido}</td><td>${j.numero_dorsal ?? ''}</td><td>${stats.AL ?? 0}</td><td>${stats.AB ?? 0}</td><td>${stats.BL ?? 0}</td><td>${stats.BB ?? 0}</td>${lanzamientosDe(j).map(l => `<td>${l}</td>`).join('')}</tr>`;
+        });
         html += `</table>`;
         const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
         descargarBlob(blob, `${nombreArchivo}.xls`);
@@ -3330,6 +3357,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
     </div>
   );
 }
+
 
 
 
