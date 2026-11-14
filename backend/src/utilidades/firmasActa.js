@@ -38,14 +38,38 @@ const firmasExigibles = async (partidoId) => {
   }
 };
 
-// URL firmada (1 hora) para mostrar la imagen de una firma.
+// Devuelve la imagen de una firma lista para mostrar e incrustar en el PDF.
+// LOTE 8K5 (reporte de Keiko: "Firma registrada (imagen no disponible)" y el
+// "wrong PNG signature" anterior): las firmas se guardaban en Storage como el
+// TEXTO base64 de la imagen, no como los bytes PNG decodificados, asi que el
+// navegador y jsPDF las rechazaban. Esta funcion descarga el objeto, verifica
+// la firma de bytes PNG real (89 50 4E 47) y si el objeto es base64 legado lo
+// decodifica al vuelo; devuelve un dataURL directo (funciona en <img>, en el
+// endpoint publico y en jsPDF sin depender de CORS) y como ultimo recurso la
+// URL firmada.
+const esPngReal = (buf) => Buffer.isBuffer(buf) && buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+
 const urlFirmada = async (imagenPath) => {
   try {
-    const { data, error } = await supabaseAdmin.storage.from(BUCKET_FIRMAS).createSignedUrl(imagenPath, 3600);
+    const { data, error } = await supabaseAdmin.storage.from(BUCKET_FIRMAS).download(imagenPath);
     if (error) throw error;
-    return data?.signedUrl || null;
+    const buf = Buffer.from(await data.arrayBuffer());
+    if (esPngReal(buf)) {
+      return 'data:image/png;base64,' + buf.toString('base64');
+    }
+    // Objeto legado: el texto base64 de la imagen guardado como archivo.
+    const texto = buf.toString('utf8').trim();
+    const base64Limpio = texto.includes(',') ? texto.split(',').pop().trim() : texto;
+    const decodificado = Buffer.from(base64Limpio, 'base64');
+    if (esPngReal(decodificado)) {
+      return 'data:image/png;base64,' + decodificado.toString('base64');
+    }
+    // No es PNG ni base64 legado: URL firmada por si es JPEG u otro formato.
+    const firmada = await supabaseAdmin.storage.from(BUCKET_FIRMAS).createSignedUrl(imagenPath, 3600);
+    if (firmada.error) throw firmada.error;
+    return firmada.data?.signedUrl || null;
   } catch (error) {
-    console.error('[firmas-acta] No se pudo firmar la URL de la firma:', { imagenPath, error: error?.message || error });
+    console.error('[firmas-acta] No se pudo preparar la imagen de la firma:', { imagenPath, error: error?.message || error });
     return null;
   }
 };
@@ -122,7 +146,15 @@ const guardarFirma = async ({ partidoId, rolFirma, imagen, usuario }) => {
     }
     const path = partidoId + '/' + rolFirma + '.png';
     const base64 = imgStr.split(',')[1];
-    const { error: errorStorage } = await supabaseAdmin.storage.from(BUCKET_FIRMAS).upload(path, base64, { contentType: 'image/png', upsert: true });
+    // LOTE 8K5 (causa raiz de las firmas invisibles en el PDF): se suben los
+    // BYTES PNG decodificados, no el texto base64. Antes el archivo quedaba
+    // como texto con etiqueta image/png y ni el navegador ni jsPDF podian
+    // leerlo ("wrong PNG signature").
+    const bytesPng = Buffer.from(base64, 'base64');
+    if (!esPngReal(bytesPng)) {
+      return { error: 'La imagen de la firma esta corrupta. Vuelve a firmar.', status: 400 };
+    }
+    const { error: errorStorage } = await supabaseAdmin.storage.from(BUCKET_FIRMAS).upload(path, bytesPng, { contentType: 'image/png', upsert: true });
     if (errorStorage) {
       console.error('[firmas-acta] No se pudo subir la imagen a Storage:', { path, error: errorStorage?.message || errorStorage });
       return { error: 'No se pudo guardar la imagen de la firma.', status: 500 };
@@ -140,4 +172,5 @@ const guardarFirma = async ({ partidoId, rolFirma, imagen, usuario }) => {
 };
 
 module.exports = { ROLES_FIRMA, firmasExigibles, estadoFirmas, guardarFirma };
+
 
