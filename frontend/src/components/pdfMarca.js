@@ -42,12 +42,48 @@ const formatoImagen = (url) => {
   return null;
 };
 
+// LOTE 8K4 (error "wrong PNG signature" al descargar el acta): jsPDF valida
+// los bytes magicos de cada imagen AL GUARDAR el documento, no al llamar
+// addImage, asi que un dataURL mal etiquetado (WEBP, SVG o un PNG mal
+// declarado por el servidor) revienta la descarga aunque addImage este en un
+// try/catch. Este validador comprueba la firma base64 real: PNG empieza con
+// iVBORw0KGgo y JPEG con /9j/.
+const esImagenPdfValida = (dataUrl) => {
+  if (typeof dataUrl !== 'string' || !dataUrl.includes(',')) return false;
+  const base64 = dataUrl.split(',')[1] || '';
+  if (dataUrl.startsWith('data:image/png')) return base64.startsWith('iVBORw0KGgo');
+  if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return base64.startsWith('/9j/');
+  return false;
+};
+
+// Re-encode via <img> + canvas a PNG real: convierte WEBP, SVG, GIF o
+// cualquier imagen que el navegador pueda cargar.
+const reconvertirAPng = (url) => new Promise((resolve) => {
+  const imagen = new Image();
+  imagen.crossOrigin = 'anonymous';
+  imagen.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = imagen.naturalWidth || imagen.width || 1;
+      canvas.height = imagen.naturalHeight || imagen.height || 1;
+      canvas.getContext('2d').drawImage(imagen, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    } catch (e) {
+      resolve(null);
+    }
+  };
+  imagen.onerror = () => resolve(null);
+  imagen.src = url;
+});
+
 // Descarga una imagen (URL firmada de Storage o remota) y la devuelve como
-// dataURL lista para jsPDF. Devuelve null si no esta disponible.
-// LOTE 8K3 (reporte de Keiko: firmas que no aparecen en el PDF): ahora hace
-// dos intentos de fetch y un fallback con <img crossOrigin> + canvas, para
-// cubrir respuestas lentas o bloqueos puntuales de lectura; si todo falla
-// devuelve null y el acta lo deja constancia en lugar de callarse.
+// dataURL PNG o JPEG REAL, listo para jsPDF. Devuelve null si no esta
+// disponible.
+// LOTE 8K3: dos intentos de fetch y fallback con <img crossOrigin> + canvas.
+// LOTE 8K4 (error "wrong PNG signature"): solo se acepta un dataURL cuya
+// firma base64 sea realmente PNG o JPEG; cualquier otro formato (WEBP, SVG,
+// GIF, tipos MIME mal declarados) se reconvierte a PNG con canvas antes de
+// devolverlo, para que la descarga del PDF nunca reviente.
 export const urlADataURL = async (url) => {
   if (!url) return null;
   for (let intento = 0; intento < 2; intento++) {
@@ -61,31 +97,16 @@ export const urlADataURL = async (url) => {
           lector.onerror = () => resolve(null);
           lector.readAsDataURL(blob);
         });
-        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) return dataUrl;
+        if (esImagenPdfValida(dataUrl)) return dataUrl;
+        break; // imagen descargada pero en formato no incrustable: reconvertir
       }
     } catch (e) {
-      // Se reintenta una vez; si vuelve a fallar pasa al fallback.
+      // Se reintenta una vez; si vuelve a fallar pasa a la reconversion.
     }
   }
   try {
-    const dataUrl = await new Promise((resolve) => {
-      const imagen = new Image();
-      imagen.crossOrigin = 'anonymous';
-      imagen.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = imagen.naturalWidth || imagen.width || 1;
-          canvas.height = imagen.naturalHeight || imagen.height || 1;
-          canvas.getContext('2d').drawImage(imagen, 0, 0);
-          resolve(canvas.toDataURL('image/png'));
-        } catch (e) {
-          resolve(null);
-        }
-      };
-      imagen.onerror = () => resolve(null);
-      imagen.src = url;
-    });
-    if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) return dataUrl;
+    const dataUrl = await reconvertirAPng(url);
+    if (esImagenPdfValida(dataUrl)) return dataUrl;
   } catch (e) {
     // Sin imagen disponible.
   }
@@ -98,7 +119,17 @@ export const urlADataURL = async (url) => {
 // dibujo de relleno. Devuelve null si no se puede obtener.
 export const normalizarLogoLiga = async (logoUrl) => {
   if (typeof logoUrl !== 'string' || !logoUrl) return null;
-  if (logoUrl.startsWith('data:image/')) return formatoImagen(logoUrl) ? logoUrl : null;
+  // LOTE 8K4: un dataURL mal etiquetado (bytes que no son un PNG o JPEG real)
+  // se reconvierte a PNG con canvas para no reventar la descarga del PDF.
+  if (logoUrl.startsWith('data:image/')) {
+    if (esImagenPdfValida(logoUrl)) return logoUrl;
+    try {
+      const reconvertido = await reconvertirAPng(logoUrl);
+      return esImagenPdfValida(reconvertido) ? reconvertido : null;
+    } catch (e) {
+      return null;
+    }
+  }
   if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) return urlADataURL(logoUrl);
   return null;
 };
@@ -205,8 +236,11 @@ export const encabezadoMarca = async (pdf, { nombreLiga = '', logoUrl = null, ti
   const logoLigaData = await normalizarLogoLiga(logoUrl);
   const logoConmingo = await obtenerLogoConmingo();
   const logoIzquierdo = logoLigaData || logoConmingo;
-  const formatoIzquierdo = logoIzquierdo && logoIzquierdo.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
-  if (logoIzquierdo) {
+  // LOTE 8K4: el formato se deduce de la firma real del dataURL; si la imagen
+  // no es incrustable no se dibuja (la cabecera queda solo con el texto) y la
+  // descarga del PDF nunca revienta con "wrong PNG signature".
+  const formatoIzquierdo = formatoImagen(logoIzquierdo);
+  if (logoIzquierdo && formatoIzquierdo) {
     try {
       pdf.setFillColor(255, 255, 255);
       pdf.setDrawColor(paleta.gold[0], paleta.gold[1], paleta.gold[2]);
@@ -254,4 +288,5 @@ export const ajustarTexto = (pdf, texto, anchoMax, tamanoInicial, tamanoMinimo =
   }
   return tamano;
 };
+
 

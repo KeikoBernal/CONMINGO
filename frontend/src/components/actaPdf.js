@@ -150,7 +150,10 @@ export const generarActaPDF = async ({
         try { img = await urlADataURL(firma.url_firmada); } catch (e) { img = null; }
       }
       if (img) {
-        doc.addImage(img, 'PNG', slot.x + 7, yFirmas - 16, 40, 14);
+        // LOTE 8K4: el formato se deduce del dataURL (urlADataURL ya garantiza
+        // que los bytes son un PNG o JPEG real); nunca se declara PNG a ciegas.
+        const formatoFirma = (img.startsWith('data:image/jpeg') || img.startsWith('data:image/jpg')) ? 'JPEG' : 'PNG';
+        doc.addImage(img, formatoFirma, slot.x + 7, yFirmas - 16, 40, 14);
       } else {
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(7.5);
@@ -228,5 +231,6 @@ export const generarActaDesdePartido = async (partido, nomina, planilla, firmas,
     firmas
   });
 };
+
 
 
