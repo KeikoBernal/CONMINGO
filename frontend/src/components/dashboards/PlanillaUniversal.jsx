@@ -42,6 +42,16 @@ export default function PlanillaUniversal({
 
     setTimeout(async () => {
       try {
+        // LOTE 8K6 (pedido de Keiko): la seccion de incidencias y sanciones
+        // del acta se alimenta del endpoint publico de disciplina del partido.
+        let disciplina = null;
+        try {
+          if (partidoId) {
+            const API_URL_ACTA = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+            const resDisciplina = await fetch(`${API_URL_ACTA}/publico/partidos/${partidoId}/disciplina`);
+            if (resDisciplina.ok) disciplina = await resDisciplina.json();
+          }
+        } catch (e) { /* sin disciplina registrada la seccion se omite */ }
         await generarActaPDF({
           nombreLiga,
           logoLiga,
@@ -52,7 +62,8 @@ export default function PlanillaUniversal({
           manualStats,
           puntosPorManoLocal,
           puntosPorManoVisita,
-          firmas: firmasActa
+          firmas: firmasActa,
+          disciplina
         });
       } catch (error) {
         console.error('Error al generar el PDF:', error);
@@ -238,3 +249,4 @@ export default function PlanillaUniversal({
     </div>
   );
 }
+
