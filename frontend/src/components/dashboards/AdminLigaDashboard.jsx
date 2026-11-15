@@ -1032,6 +1032,28 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
         const resPlanillaExport = await fetch(`${API_URL}/publico/partidos/${partidoId}/planilla`);
         if (resPlanillaExport.ok) planillaExport = await resPlanillaExport.json();
       } catch (e) { /* sin planilla persistida: el marcador viene del resultado oficial */ }
+
+      // LOTE 8K6 (pedido de Keiko): disciplina del partido (tarjetas,
+      // incidencias del arbitro y protestas) incluida en TODOS los formatos
+      // de exportacion, igual que en el acta en PDF.
+      let disciplinaExport = { tarjetas: [], incidencias: [], protestas: [] };
+      try {
+        const resDisciplinaExport = await fetch(`${API_URL}/publico/partidos/${partidoId}/disciplina`);
+        if (resDisciplinaExport.ok) disciplinaExport = await resDisciplinaExport.json();
+      } catch (e) { /* sin disciplina registrada la seccion sale vacia */ }
+      const involucradoDisciplina = (x) => {
+        const base = [x.jugador_apellido, x.jugador_nombre].filter(Boolean).join(' ');
+        return x.numero_dorsal !== null && x.numero_dorsal !== undefined && x.numero_dorsal !== '' ? `${base} (N° ${x.numero_dorsal})` : base;
+      };
+      const resolucionProtesta = (p) => (p.estado === 'Resuelta'
+        ? (p.medida_marcador_local !== null && p.medida_marcador_local !== undefined
+            ? `Resuelta. Marcador ajustado a ${p.medida_marcador_local} - ${p.medida_marcador_visita}.` + (p.nota_resolucion ? ' ' + p.nota_resolucion : '')
+            : ('Resuelta.' + (p.nota_resolucion ? ' ' + p.nota_resolucion : '')))
+        : (p.estado === 'Pendiente Confirmacion' ? 'Pendiente de confirmación de los oficiales.' : (p.estado || 'Pendiente') + '.'));
+      const filasDisciplinaExport = [];
+      (disciplinaExport.tarjetas || []).forEach(t => filasDisciplinaExport.push([`Tarjeta ${t.color || ''}`, involucradoDisciplina(t), t.motivo || '']));
+      (disciplinaExport.incidencias || []).forEach(i => filasDisciplinaExport.push([`Incidencia: ${i.tipo || ''}`, involucradoDisciplina(i), i.descripcion || '']));
+      (disciplinaExport.protestas || []).forEach(p => filasDisciplinaExport.push([`Protesta${p.equipo_protestante ? ': ' + p.equipo_protestante : ''}`, p.motivo || '', resolucionProtesta(p)]));
       const sumaTantos = (arr) => (Array.isArray(arr) ? arr.reduce((acc, v) => acc + (Number(v) || 0), 0) : 0);
       const marcadorLocal = partidoData.marcador_local !== null && partidoData.marcador_local !== undefined
         ? Number(partidoData.marcador_local)
@@ -1059,7 +1081,7 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
       const encabezadosManos = Array.from({ length: 20 }, (_, i) => `Mano ${i + 1}`);
 
       if (formato === 'json') {
-        const blob = new Blob([JSON.stringify({ partido: partidoData, resultado: { marcador_local: marcadorLocal, marcador_visita: marcadorVisita }, planilla: planillaExport, nomina: nominaData }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ partido: partidoData, resultado: { marcador_local: marcadorLocal, marcador_visita: marcadorVisita }, planilla: planillaExport, nomina: nominaData, disciplina: disciplinaExport }, null, 2)], { type: 'application/json' });
         descargarBlob(blob, `${nombreArchivo}.json`);
       } else if (formato === 'csv') {
         let csv = `Encuentro,${partidoData.local_nombre} vs ${partidoData.visita_nombre}\nFecha,${formatearFecha(partidoData.fecha_hora)}\nEstado,${partidoData.estado}\nResultado,"${textoResultado}"\n\nTANTOS POR MANO\nMano,Local,Visita\n`;
@@ -1071,6 +1093,11 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
           const stats = statsDe(j);
           csv += `"${j.equipo_nombre || 'N/A'}","${j.nombre}","${j.apellido}",${j.numero_dorsal ?? ''},${stats.AL ?? 0},${stats.AB ?? 0},${stats.BL ?? 0},${stats.BB ?? 0},${lanzamientosDe(j).join(',')}\n`;
         });
+        // LOTE 8K6: seccion de disciplina en el CSV.
+        if (filasDisciplinaExport.length > 0) {
+          csv += `\nINCIDENCIAS Y SANCIONES\nRegistro,Involucrado,Motivo o Resolución\n`;
+          filasDisciplinaExport.forEach(f => { csv += `"${f[0]}","${f[1]}","${String(f[2]).replace(/"/g, '""')}"\n`; });
+        }
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         descargarBlob(blob, `${nombreArchivo}.csv`);
       } else if (formato === 'excel') {
@@ -1089,6 +1116,12 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
           html += `<tr><td>${j.equipo_nombre || 'N/A'}</td><td>${j.nombre}</td><td>${j.apellido}</td><td>${j.numero_dorsal ?? ''}</td><td>${stats.AL ?? 0}</td><td>${stats.AB ?? 0}</td><td>${stats.BL ?? 0}</td><td>${stats.BB ?? 0}</td>${lanzamientosDe(j).map(l => `<td>${l}</td>`).join('')}</tr>`;
         });
         html += `</table>`;
+        // LOTE 8K6: seccion de disciplina en el Excel.
+        if (filasDisciplinaExport.length > 0) {
+          html += `<br/><table border="1"><tr><th colspan="3">INCIDENCIAS Y SANCIONES</th></tr><tr><th>Registro</th><th>Involucrado</th><th>Motivo o Resolución</th></tr>`;
+          filasDisciplinaExport.forEach(f => { html += `<tr><td>${f[0]}</td><td>${f[1]}</td><td>${f[2]}</td></tr>`; });
+          html += `</table>`;
+        }
         const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
         descargarBlob(blob, `${nombreArchivo}.xls`);
       } else if (formato === 'pdf') {
@@ -1111,7 +1144,16 @@ const exportarPlanillaFormato = async (partidoId, formato) => {
         } catch (e) {
           // Sin firmas el acta sale con las lineas vacias.
         }
-        await generarActaDesdePartido(partidoData, nominaData, planillaData, estadoFirmasPdf, { nombreLiga: orgData.nombre, logoLiga: orgData.logo_url });
+        // LOTE 8K6 (pedido de Keiko): disciplina del partido (tarjetas,
+        // incidencias y protestas) para la seccion final del acta.
+        let disciplinaPdf = null;
+        try {
+          const resDisciplinaPdf = await fetch(`${API_URL}/publico/partidos/${partidoId}/disciplina`);
+          if (resDisciplinaPdf.ok) disciplinaPdf = await resDisciplinaPdf.json();
+        } catch (e) {
+          // Sin disciplina registrada la seccion se omite.
+        }
+        await generarActaDesdePartido(partidoData, nominaData, planillaData, estadoFirmasPdf, { nombreLiga: orgData.nombre, logoLiga: orgData.logo_url, disciplina: disciplinaPdf });
       }
       setMensaje('');
     } catch (e) { setMensaje('Error al exportar la planilla.'); }
@@ -3357,6 +3399,7 @@ const bitacoraConTexto = bitacora.map(evento => ({
     </div>
   );
 }
+
 
 
 
