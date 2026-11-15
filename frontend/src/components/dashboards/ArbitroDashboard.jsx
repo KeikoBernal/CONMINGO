@@ -374,8 +374,10 @@ const guardarSorteo = async () => {
   // (datos, planilla persistida y firmas vienen del backend).
   const descargarActaPdf = async (partidoId) => {
     try {
-      const { partido, nomina, planilla, firmas } = await cargarDatosActa(partidoId, { fetchConToken, apiUrl: API_URL });
-      await generarActaDesdePartido(partido, nomina, planilla, firmas, { nombreLiga: orgLiga?.nombre || '', logoLiga: orgLiga?.logo_url || null });
+      // LOTE 8K6: cargarDatosActa tambien trae la disciplina del partido
+      // (tarjetas, incidencias y protestas) para la seccion del acta.
+      const { partido, nomina, planilla, firmas, disciplina } = await cargarDatosActa(partidoId, { fetchConToken, apiUrl: API_URL });
+      await generarActaDesdePartido(partido, nomina, planilla, firmas, { nombreLiga: orgLiga?.nombre || '', logoLiga: orgLiga?.logo_url || null, disciplina });
     } catch (err) {
       mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
     }
@@ -394,6 +396,12 @@ const guardarSorteo = async () => {
         const resFirmas = await fetchConToken(`/partidos/${partidoActivo.id}/firmas`);
         if (resFirmas.ok) { firmasActuales = await resFirmas.json(); setFirmasActa(firmasActuales); }
       } catch (e) { /* usa el estado conocido */ }
+      // LOTE 8K6: disciplina del partido (endpoint publico, fetch plano).
+      let disciplina = null;
+      try {
+        const resDisciplina = await fetch(`${API_URL}/publico/partidos/${partidoActivo.id}/disciplina`);
+        if (resDisciplina.ok) disciplina = await resDisciplina.json();
+      } catch (e) { /* sin disciplina registrada la seccion se omite */ }
       await generarActaPDF({
         nombreLiga: orgLiga?.nombre || '',
         logoLiga: orgLiga?.logo_url || null,
@@ -406,7 +414,8 @@ const guardarSorteo = async () => {
         jugadoresLocal, jugadoresVisita,
         efectividadJugadores,
         puntosPorManoLocal, puntosPorManoVisita,
-        firmas: Array.isArray(firmasActuales) ? firmasActuales : (firmasActuales?.firmas || null)
+        firmas: Array.isArray(firmasActuales) ? firmasActuales : (firmasActuales?.firmas || null),
+        disciplina
       });
     } catch (err) {
       mostrarToast(err?.message || 'No se pudo generar el acta en PDF.', 'error');
@@ -1124,4 +1133,5 @@ const suspenderPartido = async () => {
     </div>
   );
 }
+
 

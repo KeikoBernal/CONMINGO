@@ -131,6 +131,56 @@ router.get('/partidos/:id/firmas', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error al consultar las firmas del acta' }); }
 });
 
+// 6. DISCIPLINA DEL PARTIDO (LOTE 8K6, pedido de Keiko): tarjetas emitidas,
+// incidencias reportadas por el árbitro y protestas del partido. Alimenta la
+// sección "INCIDENCIAS Y SANCIONES" del acta oficial en PDF. Vista pública
+// sin datos personales de los autores: solo lo que firma el acta.
+router.get('/partidos/:id/disciplina', async (req, res) => {
+  try {
+    const partidoId = await resolverIdPartido(req.params.id);
+    if (!partidoId) {
+      return res.status(400).json({ error: 'Formato de ID inválido. Debe ser el número del partido o su uuid público.' });
+    }
+    const visible = await db.query(`
+      SELECT p.id FROM public.partidos p
+      JOIN public.torneos t ON p.torneo_id = t.id
+      JOIN public.organizaciones o ON t.organizacion_id = o.id
+      WHERE p.id = $1 AND o.eliminado_en IS NULL -- LOTE 8B: disciplina oculta si la liga esta eliminada
+    `, [partidoId]);
+    if (visible.rows.length === 0) return res.status(404).json({ error: 'Partido no encontrado' });
+    const tarjetas = await db.query(`
+      SELECT tc.color, tc.motivo,
+             TO_CHAR(tc.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal
+      FROM public.tarjetas tc
+      LEFT JOIN public.jugadores j ON tc.jugador_id = j.id
+      WHERE tc.partido_id = $1
+      ORDER BY tc.created_at ASC
+    `, [partidoId]);
+    const incidencias = await db.query(`
+      SELECT i.tipo, i.descripcion,
+             TO_CHAR(i.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             j.nombre AS jugador_nombre, j.apellido AS jugador_apellido, j.numero_dorsal
+      FROM public.incidencias_partido i
+      LEFT JOIN public.jugadores j ON i.jugador_id = j.id
+      WHERE i.partido_id = $1
+      ORDER BY i.created_at ASC
+    `, [partidoId]);
+    const protestas = await db.query(`
+      SELECT pr.motivo, pr.estado, pr.nota_resolucion,
+             pr.medida_marcador_local, pr.medida_marcador_visita,
+             TO_CHAR(pr.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS creado_en,
+             eq.nombre AS equipo_protestante
+      FROM public.protestas pr
+      LEFT JOIN public.equipos eq ON pr.equipo_protestante_id = eq.id
+      WHERE pr.partido_id = $1
+      ORDER BY pr.created_at ASC
+    `, [partidoId]);
+    res.json({ tarjetas: tarjetas.rows, incidencias: incidencias.rows, protestas: protestas.rows });
+  } catch (error) { res.status(500).json({ error: 'Error al consultar la disciplina del partido' }); }
+});
+
 module.exports = router;
+
 
 

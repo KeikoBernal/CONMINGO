@@ -31,6 +31,7 @@ export const generarActaPDF = async ({
   puntosPorManoLocal = Array(20).fill(''),
   puntosPorManoVisita = Array(20).fill(''),
   firmas = null,
+  disciplina = null,
   nombreArchivo = null
 } = {}) => {
   const doc = new jsPDF('landscape');
@@ -120,6 +121,67 @@ export const generarActaPDF = async ({
     }
   });
 
+  // LOTE 8K6 (pedido de Keiko): sección de disciplina del acta. Reúne las
+  // tarjetas emitidas en el partido, las incidencias reportadas por el
+  // árbitro y las protestas presentadas por los delegados. Si no hay nada
+  // registrado la sección se omite y el acta queda como antes.
+  const disc = disciplina || {};
+  const nombreJugadorDisciplina = (x) => {
+    if (!x || (!x.jugador_nombre && !x.jugador_apellido)) return '';
+    const base = [x.jugador_apellido, x.jugador_nombre].filter(Boolean).join(' ').toUpperCase();
+    return x.numero_dorsal !== null && x.numero_dorsal !== undefined && x.numero_dorsal !== ''
+      ? `${base} (N° ${x.numero_dorsal})`
+      : base;
+  };
+  const filasDisciplina = [];
+  (disc.tarjetas || []).forEach(t => {
+    filasDisciplina.push([
+      'Tarjeta ' + (t.color || ''),
+      nombreJugadorDisciplina(t),
+      t.motivo || ''
+    ]);
+  });
+  (disc.incidencias || []).forEach(i => {
+    filasDisciplina.push([
+      'Incidencia: ' + (i.tipo || ''),
+      nombreJugadorDisciplina(i),
+      i.descripcion || ''
+    ]);
+  });
+  (disc.protestas || []).forEach(p => {
+    const resolucionProtesta = p.estado === 'Resuelta'
+      ? (p.medida_marcador_local !== null && p.medida_marcador_local !== undefined
+          ? `Resuelta. Marcador ajustado a ${p.medida_marcador_local} - ${p.medida_marcador_visita}.` + (p.nota_resolucion ? ' ' + p.nota_resolucion : '')
+          : ('Resuelta.' + (p.nota_resolucion ? ' ' + p.nota_resolucion : '')))
+      : (p.estado === 'Pendiente Confirmacion' ? 'Pendiente de confirmación de los oficiales.' : (p.estado || 'Pendiente') + '.');
+    filasDisciplina.push([
+      'Protesta' + (p.equipo_protestante ? ': ' + p.equipo_protestante : ''),
+      p.motivo || '',
+      resolucionProtesta
+    ]);
+  });
+  if (filasDisciplina.length > 0) {
+    const finalYVisitaDisc = doc.lastAutoTable.finalY || 46;
+    let yDisc = finalYVisitaDisc + 12;
+    if (yDisc > 160) {
+      doc.addPage();
+      yDisc = 30;
+    }
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(35, 35, 35);
+    doc.text('INCIDENCIAS Y SANCIONES', 14, yDisc);
+    autoTable(doc, {
+      startY: yDisc + 3,
+      head: [['REGISTRO', 'INVOLUCRADO', 'MOTIVO / RESOLUCIÓN']],
+      body: filasDisciplina,
+      theme: 'grid',
+      styles: { fontSize: 7.5, halign: 'left', cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1 },
+      columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 80 }, 2: { cellWidth: 'auto' } },
+      headStyles: { fillColor: MARCA_PDF_BN.cream, textColor: MARCA_PDF_BN.brown } // LOTE 8K3: cabecera blanca con texto oscuro
+    });
+  }
+
   // LOTE 8K: firmas reales del acta (capitanes/delegados, arbitro y anotador;
   // los roles Juez de Calce y Juez de Mingo no se usan en la liga). Cada
   // firma digital registrada se incrusta sobre su linea; las pendientes
@@ -203,11 +265,20 @@ export const cargarDatosActa = async (partidoId, { fetchConToken, apiUrl }) => {
   } catch (e) {
     // Sin firmas el acta sale con las lineas en blanco.
   }
-  return { partido, nomina, planilla, firmas };
+  // LOTE 8K6: disciplina del partido (tarjetas, incidencias y protestas)
+  // para la seccion final del acta. Endpoint publico: fetch plano.
+  let disciplina = null;
+  try {
+    const resDisciplina = await fetch(`${apiUrl}/publico/partidos/${id}/disciplina`);
+    if (resDisciplina.ok) disciplina = await resDisciplina.json();
+  } catch (e) {
+    // Sin disciplina registrada la seccion se omite.
+  }
+  return { partido, nomina, planilla, firmas, disciplina };
 };
 
 // Puente entre lo que devuelven los endpoints publicos y generarActaPDF.
-export const generarActaDesdePartido = async (partido, nomina, planilla, firmas, { nombreLiga = '', logoLiga = null } = {}) => {
+export const generarActaDesdePartido = async (partido, nomina, planilla, firmas, { nombreLiga = '', logoLiga = null, disciplina = null } = {}) => {
   return generarActaPDF({
     nombreLiga,
     logoLiga,
@@ -228,9 +299,11 @@ export const generarActaDesdePartido = async (partido, nomina, planilla, firmas,
     manualStats: planilla.manualStats || {},
     puntosPorManoLocal: planilla.tantosLocal || Array(20).fill(''),
     puntosPorManoVisita: planilla.tantosVisita || Array(20).fill(''),
-    firmas
+    firmas,
+    disciplina
   });
 };
+
 
 
 
